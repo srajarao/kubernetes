@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-nano
+  namespace: default
+  labels:
+    app: fastapi-nano
+    device: nano
+    tier: agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: fastapi-nano
+  template:
+    metadata:
+      labels:
+        app: fastapi-nano
+        device: nano
+        tier: agent
+    spec:
+      runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/hostname: nano
+      containers:
+      - name: fastapi-nano
+        image: 192.168.5.1:5000/fastapi_nano:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 8888
+          name: jupyter
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+            nvidia.com/gpu: 1
+        env:
+        - name: DEVICE_TYPE
+          value: "nano"
+        - name: GPU_ENABLED
+          value: "true"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: vmstore
+          mountPath: /mnt/vmstore
+        - name: nano-home
+          mountPath: /home/nano
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: vmstore
+        nfs:
+          server: 192.168.5.1
+          path: /export/vmstore
+      - name: nano-home
+        nfs:
+          server: 192.168.5.1
+          path: /export/vmstore/nano_home
+      tolerations:
+      - key: "node-role.kubernetes.io/agent"
+        operator: "Exists"
+        effect: "NoSchedule"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-nano-service
+  namespace: default
+  labels:
+    app: fastapi-nano
+    device: nano
+spec:
+  selector:
+    app: fastapi-nano
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 8888
+    targetPort: 8888
+    protocol: TCP
+    name: jupyter
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-nano-nodeport
+  namespace: default
+  labels:
+    app: fastapi-nano
+    device: nano
+spec:
+  selector:
+    app: fastapi-nano
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30002
+    protocol: TCP
+    name: http
+  - port: 8888
+    targetPort: 8888
+    nodePort: 30003
+    protocol: TCP
+    name: jupyter
+  type: NodePort

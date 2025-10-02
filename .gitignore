@@ -1,0 +1,61 @@
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+
+# Docker
+.dockerignore
+
+# Kubernetes secrets (if any)
+secrets/
+*.key
+*.crt
+*.pem
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.backup
+*.bak
+
+# Node modules (if any Node.js components)
+node_modules/
+
+# Build artifacts
+dist/
+build/
+*.tar
+*.tar.gz
+
+# Local test outputs
+test-results/
+coverage/
+
+# Personal notes
+NOTES.md
+TODO.md

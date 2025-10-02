@@ -1,0 +1,67 @@
+# Dockerfile for FastAPI on Jetson Nano (ARM64, with GPU/CUDA support)
+# Optimized for limited resources but with GPU acceleration
+
+FROM nvcr.io/nvidia/l4t-pytorch:r35.2.1-pth2.0-py3
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV DEVICE_TYPE=nano
+ENV GPU_ENABLED=true
+
+# Create non-root user
+RUN groupadd -r nano && useradd -r -g nano nano
+
+# Install system dependencies (minimal for nano)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    curl \
+    wget \
+    git \
+    htop \
+    nano \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create application directory
+WORKDIR /app
+
+# Create virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy requirements file
+COPY requirements.nano.txt .
+
+# Install Python dependencies (minimal set for nano)
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.nano.txt
+
+# Copy application code and healthcheck
+COPY src/ ./src/
+COPY config/ ./config/
+
+# Copy the main FastAPI app as entrypoint
+COPY src/fastapi_app.py /usr/local/bin/fastapi_app.py
+COPY src/fastapi_healthcheck.py /workspace/fastapi_healthcheck.py
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/data /mnt/vmstore
+
+# Set ownership
+RUN chown -R nano:nano /app
+
+# Switch to non-root user
+USER nano
+
+# Health check using the comprehensive healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/ || exit 1
+
+# Expose port
+EXPOSE 8000 8888
+
+# Use FastAPI app as startup command
+WORKDIR /workspace
+CMD ["python3", "/usr/local/bin/fastapi_app.py"]
