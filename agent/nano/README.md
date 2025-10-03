@@ -7,14 +7,21 @@ Complete setup for Jetson Nano as a Kubernetes (k3s) agent node in the cluster. 
 ```
 /home/sanjay/containers/kubernetes/agent/nano/
 ├── config/
-│   └── nano-config.env                 # Nano-specific configuration
+│   ├── .token/                         # Authentication tokens for k3s
+│   ├── nano-config.env                 # Nano-specific configuration
+│   ├── postgres.env                    # PostgreSQL configuration
+│   └── start-fastapi-nano.yaml         # Kubernetes deployment YAML
 ├── src/
-│   └── main.py                         # FastAPI application
+│   ├── backup_home.sh                  # Backup script
+│   ├── fastapi_app.py                  # FastAPI application
+│   ├── fastapi_healthcheck.py          # Health check script
+│   ├── init_db.sql                     # Database initialization
+│   ├── main.py                         # Main FastAPI application
+│   └── start-jupyter.sh                # Jupyter start script
 ├── k3s-nano-agent-setup.sh            # Main k3s agent setup script
 ├── setup-nano-network.sh              # Network configuration script
 ├── validate-nano-setup.sh             # Validation script
 ├── cleanup-nano.sh                    # Cleanup script
-├── start-fastapi-nano.yaml            # Kubernetes deployment
 ├── dockerfile.nano.req                # Docker image definition
 ├── requirements.nano.txt              # Python dependencies
 └── README.md                          # This file

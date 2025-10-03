@@ -18,8 +18,9 @@ echo -e "${GREEN}Starting nano agent setup...${NC}\n"
 
 # Source configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/nano-config.env" ]; then
-    source "$SCRIPT_DIR/nano-config.env"
+CONFIG_DIR="$SCRIPT_DIR/config"
+if [ -f "$CONFIG_DIR/nano-config.env" ]; then
+    source "$CONFIG_DIR/nano-config.env"
     echo -e "${GREEN}Configuration loaded from nano-config.env${NC}"
     echo -e "  Tower IP: ${TOWER_IP}"
     echo -e "  Nano IP: ${NANO_IP}"
@@ -45,11 +46,12 @@ function debug_msg() {
 }
 
 function print_result() {
+    local timestamp=$(date '+%H:%M:%S')
     if [ "$1" -eq 0 ]; then
-        echo -e "$2 $TICK"
+        echo -e "[$timestamp] $2 $TICK"
         debug_msg "$2 succeeded"
     else
-        echo -e "$2 $CROSS"
+        echo -e "[$timestamp] $2 $CROSS"
         debug_msg "$2 failed"
     fi
 }
@@ -62,25 +64,10 @@ function cleanup_k3s_agent_installation() {
     KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
     debug_msg "KUBECONFIG_PATH set to $KUBECONFIG_PATH"
 
-    # Forcefully delete existing Kubernetes resources
-    if [ -f "$KUBECONFIG_PATH" ] && command -v kubectl >/dev/null 2>&1; then
-        debug_msg "Kubeconfig found and kubectl available, proceeding with cleanup"
-        if [ "$DEBUG" -eq 1 ]; then
-            echo -e "  Attempting forceful cleanup of old 'fastapi-nano' resources... $TICK"
-        fi
-        # Delete the Deployment and Service (ignore if not found)
-        debug_msg "Deleting deployment fastapi-nano"
-        timeout 30s KUBECONFIG="$KUBECONFIG_PATH" kubectl delete deployment fastapi-nano --ignore-not-found >/dev/null 2>&1
-        print_result $? "  Cleaned up K8s Deployment/Service/RS/Pods"
-    else
-        debug_msg "Kubeconfig not found or kubectl not available, skipping cleanup"
-        print_result 0 "  No kubeconfig or kubectl found, skipping cleanup"
-    fi
-
-    # Check for the k3s uninstall script and run it if it exists
+    # Check for the k3s uninstall script and run it FIRST
     debug_msg "Checking for k3s-agent-uninstall.sh"
     if [ -f "/usr/local/bin/k3s-agent-uninstall.sh" ]; then
-        debug_msg "Found k3s-agent-uninstall.sh, running cleanup"
+        debug_msg "Found k3s-agent-uninstall.sh, running cleanup first"
         if [ "$DEBUG" -eq 1 ]; then
             echo -e "  Found k3s agent uninstall script, running cleanup..."
         fi
@@ -90,10 +77,15 @@ function cleanup_k3s_agent_installation() {
         debug_msg "No k3s-agent-uninstall.sh found"
         print_result 0 "  No k3s agent uninstall script found (initial setup or clean system)"
     fi
-    # Remove stale kubeconfig
+
+    # Remove stale kubeconfig immediately after k3s uninstall
     debug_msg "Removing stale kubeconfig"
     rm -f /home/sanjay/k3s.yaml >/dev/null 2>&1
     print_result $? "  Removed stale /home/sanjay/k3s.yaml"
+
+    # Skip kubectl cleanup since k3s uninstall removes all resources
+    debug_msg "Skipping kubectl cleanup - k3s uninstall removes all resources"
+    print_result 0 "  Skipped kubectl cleanup (handled by k3s uninstall)"
 }
 
 function remove_dangling_docker_images() {
@@ -321,6 +313,24 @@ EOF
                 # Restart the service to load registries.yaml
                 sudo systemctl restart k3s-agent
                 print_result $? "  Restarted k3s-agent service to load registries.yaml"
+                
+                # Ensure route to AGX subnet persists after k3s networking setup
+                echo -e "${GREEN}  Ensuring route to AGX subnet (192.168.10.0/24) via Tower...${NC}"
+                if ! ip route show | grep -q "192.168.10.0/24 via $TOWER_IP"; then
+                    sudo ip route add 192.168.10.0/24 via $TOWER_IP dev $NANO_IFACE metric 100
+                    print_result $? "  Route to AGX subnet added"
+                else
+                    echo -e "${GREEN}  Route to AGX subnet already exists${NC}"
+                    print_result 0 "  Route to AGX subnet verified"
+                fi
+                
+                # Add iptables rule to allow traffic to AGX subnet (if not already allowed)
+                if ! sudo iptables -C FORWARD -s $NANO_IP -d 192.168.10.0/24 -j ACCEPT 2>/dev/null; then
+                    sudo iptables -I FORWARD -s $NANO_IP -d 192.168.10.0/24 -j ACCEPT
+                    print_result $? "  Added iptables rule for AGX traffic"
+                else
+                    print_result 0 "  iptables rule for AGX traffic already exists"
+                fi
             fi
         else
             print_result 1 "  Server CA cert not found at $TOKEN_CERT (cannot join cluster)"
@@ -361,7 +371,7 @@ EOF
 function apply_fastapi_deployment_yaml() {
     debug_msg "Running apply_fastapi_deployment_yaml"
     echo -e "${GREEN}\n== Apply FastAPI Deployment YAML ==${NC}"
-    DEPLOYMENT_YAML="$SCRIPT_DIR/start-fastapi-nano.yaml"
+    DEPLOYMENT_YAML="$CONFIG_DIR/start-fastapi-nano.yaml"
     debug_msg "DEPLOYMENT_YAML set to $DEPLOYMENT_YAML"
     if [ -f "$DEPLOYMENT_YAML" ]; then
         debug_msg "Deployment YAML found, applying with kubectl"

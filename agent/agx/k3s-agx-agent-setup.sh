@@ -38,11 +38,12 @@ function debug_msg() {
 }
 
 function print_result() {
+    local timestamp=$(date '+%H:%M:%S')
     if [ "$1" -eq 0 ]; then
-        echo -e "$2 $TICK"
+        echo -e "[$timestamp] $2 $TICK"
         debug_msg "$2 succeeded"
     else
-        echo -e "$2 $CROSS"
+        echo -e "[$timestamp] $2 $CROSS"
         debug_msg "$2 failed"
     fi
 }
@@ -62,26 +63,10 @@ function cleanup_k3s_agent_installation() {
     KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
     debug_msg "KUBECONFIG_PATH set to $KUBECONFIG_PATH"
 
-    # --- NEW: Forcefully delete existing Kubernetes resources ---
-    if [ -f "$KUBECONFIG_PATH" ] && command -v kubectl >/dev/null 2>&1; then
-        debug_msg "Kubeconfig found and kubectl available, proceeding with cleanup"
-        if [ "$DEBUG" -eq 1 ]; then
-            echo -e "  Attempting forceful cleanup of old 'fastapi-agx' resources... $TICK"
-        fi
-        # 1. Delete the Deployment and Service (ignore if not found)
-        debug_msg "Deleting deployment fastapi-agx"
-        timeout 30s KUBECONFIG="$KUBECONFIG_PATH" kubectl delete deployment fastapi-agx --ignore-not-found >/dev/null 2>&1
-        print_result $? "  Cleaned up K8s Deployment/Service/RS/Pods"
-    else
-        debug_msg "Kubeconfig not found or kubectl not available, skipping cleanup"
-        print_result 0 "  No kubeconfig or kubectl found, skipping cleanup"
-    fi
-    # -----------------------------------------------------------
-
-    # Check for the k3s uninstall script and run it if it exists
+    # Check for the k3s uninstall script and run it FIRST
     debug_msg "Checking for k3s-agent-uninstall.sh"
     if [ -f "/usr/local/bin/k3s-agent-uninstall.sh" ]; then
-        debug_msg "Found k3s-agent-uninstall.sh, running cleanup"
+        debug_msg "Found k3s-agent-uninstall.sh, running cleanup first"
         if [ "$DEBUG" -eq 1 ]; then
             echo -e "  Found k3s agent uninstall script, running cleanup..."
         fi
@@ -91,10 +76,15 @@ function cleanup_k3s_agent_installation() {
         debug_msg "No k3s-agent-uninstall.sh found"
         print_result 0 "  No k3s agent uninstall script found (initial setup or clean system)"
     fi
-    # Removed stale /home/sanjay/k3s.yaml
+
+    # Remove stale kubeconfig immediately after k3s uninstall
     debug_msg "Removing stale kubeconfig"
     rm -f /home/sanjay/k3s.yaml >/dev/null 2>&1
     print_result $? "  Removed stale /home/sanjay/k3s.yaml"
+
+    # Skip kubectl cleanup since k3s uninstall removes all resources
+    debug_msg "Skipping kubectl cleanup - k3s uninstall removes all resources"
+    print_result 0 "  Skipped kubectl cleanup (handled by k3s uninstall)"
 }
 
 function install_k3s_agent_with_token() {
@@ -205,6 +195,24 @@ EOF
                 # Restart the service to load registries.yaml
                 sudo systemctl restart k3s-agent
                 print_result $? "  Restarted k3s-agent service to load registries.yaml"
+                
+                # Ensure route to Nano subnet persists after k3s networking setup
+                echo -e "${GREEN}  Ensuring route to Nano subnet (192.168.5.0/24) via Tower...${NC}"
+                if ! ip route show | grep -q "192.168.5.0/24 via $TOWER_IP"; then
+                    sudo ip route add 192.168.5.0/24 via $TOWER_IP dev $AGX_IFACE metric 100
+                    print_result $? "  Route to Nano subnet added"
+                else
+                    echo -e "${GREEN}  Route to Nano subnet already exists${NC}"
+                    print_result 0 "  Route to Nano subnet verified"
+                fi
+                
+                # Add iptables rule to allow traffic to Nano subnet (if not already allowed)
+                if ! sudo iptables -C FORWARD -s $AGX_IP -d 192.168.5.0/24 -j ACCEPT 2>/dev/null; then
+                    sudo iptables -I FORWARD -s $AGX_IP -d 192.168.5.0/24 -j ACCEPT
+                    print_result $? "  Added iptables rule for Nano traffic"
+                else
+                    print_result 0 "  iptables rule for Nano traffic already exists"
+                fi
             fi
         else
             print_result 1 "  Server CA cert not found at $TOKEN_CERT (cannot join cluster)"

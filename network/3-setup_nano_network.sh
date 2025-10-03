@@ -78,7 +78,21 @@ sudo chmod 600 $NETPLAN_FILE
 sudo netplan apply
 echo "   ...Static IP applied with preserved internet connectivity."
 
-# --- STEP 2: Verify Connectivity ---
+# --- STEP 3: Update /etc/hosts for hostname resolution ---
+echo "3. Updating /etc/hosts for device hostname resolution..."
+HOST_ENTRIES="
+192.168.10.1 tower
+192.168.10.11 agx
+192.168.5.21 nano
+"
+if ! grep -q "192.168.10.1 tower" /etc/hosts; then
+    echo "$HOST_ENTRIES" | sudo tee -a /etc/hosts > /dev/null
+    echo "   ✅ Host entries added to /etc/hosts"
+else
+    echo "   ✅ Host entries already in /etc/hosts"
+fi
+
+# --- STEP 4: Verify Connectivity ---
 echo "2. Testing connectivity to Tower ($TOWER_IP)..."
 ping -c 3 $TOWER_IP
 
@@ -105,6 +119,16 @@ if [ $? -eq 0 ]; then
         echo "   📁 Testing file access..."
         if ls $MOUNT_POINT > /dev/null 2>&1; then
             echo "   ✅ File access confirmed!"
+            
+            # Make mount persistent in /etc/fstab
+            FSTAB_ENTRY="$TOWER_IP:/export/vmstore $MOUNT_POINT nfs defaults 0 0"
+            if ! grep -q "$FSTAB_ENTRY" /etc/fstab; then
+                echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab > /dev/null
+                echo "   ✅ Added persistent mount to /etc/fstab"
+            else
+                echo "   ✅ Persistent mount already in /etc/fstab"
+            fi
+            
         else
             echo "   ⚠️  Mount exists but file access may be limited"
         fi

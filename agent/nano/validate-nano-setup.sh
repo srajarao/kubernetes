@@ -13,8 +13,9 @@ CROSS="${RED}❌${NC}"
 
 # Source configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/nano-config.env" ]; then
-    source "$SCRIPT_DIR/nano-config.env"
+CONFIG_DIR="$SCRIPT_DIR/config"
+if [ -f "$CONFIG_DIR/nano-config.env" ]; then
+    source "$CONFIG_DIR/nano-config.env"
 fi
 
 echo -e "${GREEN}Nano Agent Validation${NC}"
