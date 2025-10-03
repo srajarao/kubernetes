@@ -42,9 +42,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY src/ ./src/
 COPY config/ ./config/
 
-# Copy the comprehensive healthcheck as main entrypoint
-COPY src/fastapi_healthcheck.py /usr/local/bin/fastapi_healthcheck.py
-COPY src/fastapi_app.py /workspace/fastapi_app.py
+# Copy the main FastAPI app as entrypoint
+COPY src/fastapi_app.py /usr/local/bin/fastapi_app.py
+COPY src/fastapi_healthcheck.py /workspace/fastapi_healthcheck.py
 
 # Create necessary directories
 RUN mkdir -p /app/logs /app/data /mnt/vmstore
@@ -60,8 +60,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8000 8888
 
-# Use comprehensive healthcheck as startup command
+# Use FastAPI app as startup command
 WORKDIR /workspace
-CMD ["python3", "/usr/local/bin/fastapi_healthcheck.py"]
+CMD ["python3", "/usr/local/bin/fastapi_app.py"]

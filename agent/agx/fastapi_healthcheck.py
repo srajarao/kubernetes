@@ -1,19 +1,20 @@
 #!/opt/venv/bin/python
 """
 Unified healthcheck for Jetson (L4T r36.x)
-This script performs a series of checks on the system and then launches a FastAPI Nano server.
+This script performs a series of checks on the system and then launches a FastAPI server.
 If any check fails, the script will exit with a specific error code.
 
 Exit codes:
-  0 = all checks passed and app started
-  1 = libstdc++ load failed
-  2 = cuSPARSELt load failed
-  3 = PyTorch check failed
-  4 = TensorFlow check failed
-  5 = TensorRT check failed
-  6 = Jupyter Lab check failed
-    7 = FastAPI Nano dependencies check failed
-  8 = Database connection failed
+    0 = all checks passed and app started
+    1 = libstdc++ load failed
+    2 = cuSPARSELt load failed
+    3 = PyTorch check failed
+    4 = TensorFlow check failed
+    5 = TensorRT check failed
+    6 = Jupyter Lab check failed
+    7 = FastAPI dependencies check failed
+    8 = Database connection failed
+    9 = Transformers dependency check failed
 """
 import os, sys, ctypes, subprocess
 import importlib
@@ -31,11 +32,12 @@ EXIT_TORCH_FAIL = 3
 EXIT_TF_FAIL = 4
 EXIT_TRT_FAIL = 5
 EXIT_JUPYTER_FAIL = 6
-EXIT_FASTAPI_NANO_FAIL = 7
+EXIT_FASTAPI_FAIL = 7
 EXIT_DB_FAIL = 8
+EXIT_TRANSFORMERS_FAIL = 9
 
-# Load environment variables from the postgres.env file in the workspace root.
-load_dotenv(dotenv_path='postgres.env')
+# Load environment variables from the correct postgres.env file.
+load_dotenv(dotenv_path='/workspace/postgres.env')
 
 # A Pydantic model to define the data structure for an Item
 class Item(BaseModel):
@@ -184,38 +186,41 @@ def check_jupyter():
         print("❌ Jupyter Lab: FAIL ->", e)
         return False
 
-def check_fastapi_nano_deps():
-    print("\n=== FastAPI Nano Project Dependencies Check ===")
+def check_fastapi_deps():
+    print("\n=== FastAPI Project Dependencies Check ===")
     dependencies = {
         "psycopg2": "psycopg2", "python-dotenv": "dotenv",
-    "fastapi_nano": "fastapi", "uvicorn": "uvicorn",
+        "fastapi": "fastapi", "uvicorn": "uvicorn",
         "pydantic": "pydantic", "scipy": "scipy",
-        "pandas": "pandas", "scikit-learn": "sklearn"
+        "pandas": "pandas", "scikit-learn": "sklearn",
+        "transformers": "transformers"
     }
+    print("Verifying packages:")
+    for pkg in dependencies.keys():
+        print(f"- {pkg}")
     missing_deps = []
     for pkg, import_name in dependencies.items():
         try:
-            importlib.import_module(import_name)
+            module = importlib.import_module(import_name)
+            if import_name == "transformers":
+                print(f"Transformers version: {getattr(module, '__version__', 'unknown')}")
         except ImportError:
             missing_deps.append(pkg)
     if missing_deps:
-        print(f"❌ FastAPI Nano dependencies missing: {', '.join(missing_deps)}")
+        print(f"❌ FastAPI dependencies missing: {', '.join(missing_deps)}")
         return False
-    print("✅ FastAPI Nano Dependencies: PASS")
+    print("✅ FastAPI Dependencies: PASS")
     return True
 
 def connect_to_db():
     print("\n=== PostgreSQL Database Connection Check ===")
-    print("POSTGRES_USER:", os.getenv("POSTGRES_USER"))
-    print("POSTGRES_HOST:", os.getenv("POSTGRES_HOST"))
-    print("POSTGRES_DB:", os.getenv("POSTGRES_DB"))
     try:
         conn = psycopg2.connect(
-            user=os.getenv("POSTGRES_USER"),
-            password=os.getenv("POSTGRES_PASSWORD"),
-            host=os.getenv("POSTGRES_HOST"),
-            port=os.getenv("POSTGRES_PORT", "5432"),
-            database=os.getenv("POSTGRES_DB")
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            host=os.getenv("DB_HOST"),
+            port=os.getenv("DB_PORT"),
+            database=os.getenv("DB_NAME")
         )
         conn.close()
         print("✅ Database Connection: PASS")
@@ -224,23 +229,15 @@ def connect_to_db():
         print(f"❌ Error while connecting to PostgreSQL: {error}")
         return False
 
-# === 2. FASTAPI NANO APPLICATION ===
+# === 2. FASTAPI APPLICATION ===
 
-def get_fastapi_nano_app():
+def get_fastapi_app():
     app = FastAPI()
 
 
     @app.get("/")
     async def root():
-        return {"message": "Hello from FastAPI Nano!"}
-
-    @app.get("/health")
-    async def health():
-        return {"status": "ok"}
-
-    @app.get("/ready")
-    async def ready():
-        return {"status": "ready"}
+        return {"message": "Hello from FastAPI!"}
 
     @app.get("/items/{item_id}")
     def read_item(item_id: int):
@@ -263,11 +260,11 @@ def get_fastapi_nano_app():
     async def search(query: Optional[str] = Body(None, embed=True), image: Optional[str] = Body(None, embed=True), chat_thread: Optional[list] = Body(default_factory=list, embed=True)):
         # Only text search implemented for local demo
         conn = psycopg2.connect(
-            user=os.getenv("POSTGRES_USER"),
-            password=os.getenv("POSTGRES_PASSWORD"),
-            host=os.getenv("POSTGRES_HOST"),
-            port=os.getenv("POSTGRES_PORT", "5432"),
-            database=os.getenv("POSTGRES_DB")
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            host=os.getenv("DB_HOST"),
+            port=os.getenv("DB_PORT"),
+            database=os.getenv("DB_NAME")
         )
         cur = conn.cursor()
         # Search for documents matching query in title or content
@@ -297,24 +294,24 @@ def get_fastapi_nano_app():
 def main():
     print("Arch:", os.uname().machine)
     all_checks_passed = (
-        load_libstdcxx() and
-        check_cusparselt() and
-        check_torch() and
-        check_tensorflow() and
-        check_tensorrt() and
-        check_jupyter() and
-    check_fastapi_nano_deps() and
-        connect_to_db()
+        load_libstdcxx()
+        and check_cusparselt()
+        and check_torch()
+        and check_tensorflow()
+        and check_tensorrt()
+        and check_jupyter()
+        and check_fastapi_deps()
+        and connect_to_db()
     )
 
     if all_checks_passed:
         print("\n✅✅✅ ALL HEALTH CHECKS PASSED ✅✅✅")
-        print("\nStarting FastAPI Nano server...")
+        print("\nStarting FastAPI server...")
         try:
-            app = get_fastapi_nano_app()
+            app = get_fastapi_app()
             uvicorn.run(app, host="0.0.0.0", port=8000)
         except Exception as e:
-            print(f"❌❌❌ FAILED TO START FASTAPI NANO SERVER: {e} ❌❌❌")
+            print(f"❌❌❌ FAILED TO START FASTAPI SERVER: {e} ❌❌❌")
             sys.exit(EXIT_OK)
     else:
         print("\n❌❌❌ ONE OR MORE CHECKS FAILED ❌❌❌")
@@ -324,7 +321,7 @@ def main():
         if not check_tensorflow(): sys.exit(EXIT_TF_FAIL)
         if not check_tensorrt(): sys.exit(EXIT_TRT_FAIL)
         if not check_jupyter(): sys.exit(EXIT_JUPYTER_FAIL)
-        if not check_fastapi_nano_deps(): sys.exit(EXIT_FASTAPI_NANO_FAIL)
+        if not check_fastapi_deps(): sys.exit(EXIT_FASTAPI_FAIL)
         if not connect_to_db(): sys.exit(EXIT_DB_FAIL)
 
 if __name__ == "__main__":

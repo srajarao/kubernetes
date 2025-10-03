@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-agx
+  labels:
+    app: fastapi-agx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-agx
+  template:
+    metadata:
+      labels:
+        app: fastapi-agx
+    spec:
+      runtimeClassName: nvidia  # Uses the NVIDIA Container Runtime
+      hostNetwork: true         # Allows direct access to the host's network interfaces
+      nodeSelector:
+        kubernetes.io/hostname: agx
+      securityContext:
+        runAsUser: 0            # Runs as root user inside the container
+      containers:
+        - name: fastapi
+          image: 192.168.10.1:5000/fastapi_agx:latest
+       
+          # -------------------------------------------------------------------
+          # FIX 1: Force use of local image to bypass pull issue
+          # -------------------------------------------------------------------
+          imagePullPolicy: "IfNotPresent" # <--- CHANGE THIS
+          
+          # -------------------------------------------------------------------
+          # FIX 2: Set working directory to the mounted code path
+          # -------------------------------------------------------------------
+          workingDir: /workspace  # <--- ADD THIS
+          
+          # -------------------------------------------------------------------
+          # FIX 3: Command to start the FastAPI application with Uvicorn
+          # -------------------------------------------------------------------
+          command: ["python", "src/fastapi_app.py"]
+          # -------------------------------------------------------------------
+
+          env:
+            - name: DB_HOST
+              value: "192.168.10.1"
+            - name: DB_NAME
+              value: "postgres"
+            - name: DB_USER
+              value: "postgres"
+            - name: DB_PASSWORD
+              value: "AspenHills123!"
+            - name: DB_PORT
+              value: "5432"
+            - name: PULSE_SERVER
+              value: "unix:/tmp/pulse/native"  # For PulseAudio pass-through
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+              nvidia.com/gpu: 1  # Requests access to the single GPU
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: pulse
+              mountPath: /tmp/pulse
+      volumes:
+        - name: workspace
+          hostPath:
+            path: /home/sanjay/containers/fastapi  # Maps your local code to /workspace
+        - name: pulse
+          hostPath:
+            path: /run/user/1000/pulse
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-agx-service
+  labels:
+    app: fastapi-agx
+spec:
+  type: NodePort
+  selector:
+    app: fastapi-agx
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 30080  # Access at http://192.168.10.11:30080

@@ -37,6 +37,10 @@ click==8.1.7
 # Development and debugging
 python-multipart==0.0.6
 
+# Jupyter Lab for interactive development
+jupyterlab==4.0.7
+notebook==7.0.6
+
 # GPU monitoring and CUDA support
 # Note: PyTorch and TensorFlow come from base L4T container
 # Note: TensorRT comes from system installation
