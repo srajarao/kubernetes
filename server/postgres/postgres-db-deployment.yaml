@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-db
+  template:
+    metadata:
+      labels:
+        app: postgres-db
+    spec:
+      containers:
+        - name: postgres-db
+          image: localhost:5000/postgres:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TZ
+              value: America/Los_Angeles
+            - name: POSTGRES_PASSWORD
+              value: mysecretpassword
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d/init.sql
+              subPath: init.sql
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          ports:
+            - containerPort: 5432
+              hostPort: 5432
+      volumes:
+        - name: pgdata
+          emptyDir: {}
+        - name: init-sql
+          configMap:
+            name: init-sql
+        - name: workspace
+          hostPath:
+            path: /home/sanjay/containers/kubernetes/server/postgres
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db
+spec:
+  type: NodePort
+  ports:
+    - port: 5432
+      targetPort: 5432
+      nodePort: 32432
+  selector:
+    app: postgres-db
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: init-sql
+  labels:
+    app: postgres-db
+data:
+  init.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;

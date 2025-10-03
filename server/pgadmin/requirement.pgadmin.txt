@@ -1,0 +1,3 @@
+# Requirements for pgAdmin4 development container
+pgadmin4
+psycopg2

@@ -1,0 +1,28 @@
+# Start from the base image.
+FROM postgres:16-bookworm
+
+# Install necessary tools for building extensions.
+# This includes git, build-essential, and the PostgreSQL development headers.
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    postgresql-server-dev-16
+
+# Use a build argument to determine the mode.
+ARG OFFLINE_MODE=false
+
+# This single RUN command handles both online and offline modes.
+RUN if [ "$OFFLINE_MODE" = "true" ]; then \
+        echo "Building in offline mode: Copying local repository..."; \
+        cp -R ./pgvector_repo /pgvector; \
+    else \
+        echo "Building in online mode: Cloning from GitHub..."; \
+        git clone --depth 1 https://github.com/pgvector/pgvector.git /pgvector; \
+    fi
+
+# Now, regardless of how the files got here, perform the installation.
+WORKDIR /pgvector
+RUN make && make install
+
+# Clean up the source code to reduce the image size.
+RUN rm -rf /pgvector

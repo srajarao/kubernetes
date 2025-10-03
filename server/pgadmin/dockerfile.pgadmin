@@ -1,0 +1,30 @@
+# Use the official pgAdmin 4 image as base
+FROM dpage/pgadmin4:latest
+
+
+# Expose the default port
+EXPOSE 80
+
+# Optionally copy custom config or scripts
+# COPY ./src/your_custom_config.py /pgadmin4/config_local.py
+
+
+# Switch to root user so we can create the data directory and set ownership
+USER root
+
+# Ensure the pgAdmin data directory exists and is owned by the pgadmin user.
+# The official image typically runs as user with UID 5050; we'll create the dir
+# and set ownership so a host bind-mount with files owned by that UID works.
+RUN mkdir -p /var/lib/pgadmin && chown -R 5050:0 /var/lib/pgadmin || true
+# Note: the project workspace is mounted at runtime by the devcontainer, so we don't
+# copy the workspace into the image here. Project-level scripts should be run
+# in a postCreateCommand so they can access the mounted files.
+# If you need a PostgreSQL client inside the image, add the appropriate package
+# manager and install step for the base image here.
+
+
+# Entrypoint is already set by the base image
+# CMD ["/entrypoint.sh"]
+
+# Switch to root user
+USER root

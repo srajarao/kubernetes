@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1.7
+FROM nvcr.io/nvidia/l4t-jetpack:r36.4.0
+
+ENV DEBIAN_FRONTEND=noninteractive \
+     PIP_NO_CACHE_DIR=1 \
+     PYTHONUNBUFFERED=1 \
+     VIRTUAL_ENV=/opt/venv \
+     PATH="/opt/venv/bin:$PATH"
+ 
+USER root
+
+# Healthcheck wiring (download from Gist)  
+# RUN wget -O /usr/local/bin/healthcheck.py https://gist.githubusercontent.com/srajarao/f2aa0b784d0bf209fbcf260f1141da75/raw/7880e3176f66786b2358354a7b1944643887034d/healthcheck.py && \ 
+#     chmod +x /usr/local/bin/healthcheck.py && \ 
+#     ln -sf /usr/local/bin/healthcheck.py /usr/local/bin/healthcheck 	
+
+# Copy requirements file
+COPY requirements.online.req.txt /workspace/requirements.online.req.txt
+COPY postgres.env                /workspace/postgres.env
+
+# OS + Python deps
+RUN --mount=type=cache,target=/var/cache/apt \
+        apt-get update && \
+        apt-get install -y --no-install-recommends \
+            python3.10 python3.10-venv  \
+            ca-certificates curl wget git build-essential \
+            libopenblas0 libgomp1 postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install pip for Python 3.11
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+    python3.10 get-pip.py && \
+    rm get-pip.py
+
+# --- Install cuSPARSELt (Online) ---
+RUN wget https://developer.download.nvidia.com/compute/cusparselt/0.8.0/local_installers/cusparselt-local-tegra-repo-ubuntu2204-0.8.0_0.8.0-1_arm64.deb -O /tmp/cusparselt.deb && \
+    dpkg -i /tmp/cusparselt.deb && \
+    cp /var/cusparselt-local-tegra-repo-ubuntu2204-0.8.0/cusparselt-*-keyring.gpg /usr/share/keyrings/ && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends cusparselt && \
+    rm -f /tmp/cusparselt.deb && ldconfig
+
+# --- Venv Setup ---
+RUN python3.10 -m venv --system-site-packages $VIRTUAL_ENV
+RUN $VIRTUAL_ENV/bin/pip install --upgrade pip setuptools wheel
+
+
+# Copy requirements file
+COPY requirements.online.req.txt /workspace/requirements.online.req.txt
+
+# 1. Install PyTorch and TensorFlow from their specific NVIDIA URLs
+#    This is critical because these versions are not on PyPI.
+RUN $VIRTUAL_ENV/bin/pip install \
+    https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl \
+    https://developer.download.nvidia.com/compute/redist/jp/v61/tensorflow/tensorflow-2.16.1+nv24.08-cp310-cp310-linux_aarch64.whl
+
+# 2. Install all other packages from requirements.txt
+#    This command ignores torch and tensorflow which are already installed.
+RUN $VIRTUAL_ENV/bin/pip install -r /workspace/requirements.online.req.txt
+
+# Expose Jupyter port
+EXPOSE 8889
+EXPOSE 8000
+
+# --- FINAL COMMANDS ---
+# Copy the single startup script and make it executable
+# --- Final Setup ---
+COPY src/fastapi_healthcheck.py /usr/local/bin/healthcheck.py
+COPY src/start-jupyter.sh /usr/local/bin/start-jupyter.sh
+RUN chmod +x /usr/local/bin/healthcheck.py /usr/local/bin/start-jupyter.sh
+ 
+ 
+# Set the default command for the container
+WORKDIR /workspace
+COPY src/fastapi_app.py /workspace/fastapi_app.py
+#CMD ["uvicorn", "fastapi_app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["bash"] 

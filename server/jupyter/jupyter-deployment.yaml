@@ -1,0 +1,106 @@
+# Jupyter Lab Deployment for Kubernetes Cluster
+# Provides data science environment with access to cluster resources
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyter-lab
+  namespace: default
+  labels:
+    app: jupyter-lab
+    tier: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jupyter-lab
+  template:
+    metadata:
+      labels:
+        app: jupyter-lab
+        tier: frontend
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: tower  # Deploy on tower for stability
+      containers:
+      - name: jupyter-lab
+        image: jupyter/tensorflow-notebook:latest
+        ports:
+        - containerPort: 8888
+          name: jupyter
+        env:
+        - name: JUPYTER_ENABLE_LAB
+          value: "yes"
+        - name: JUPYTER_TOKEN
+          value: "jupyter-k8s-demo"
+        - name: POSTGRES_HOST
+          value: "postgres-service"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          value: "vectordb"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        volumeMounts:
+        - name: jupyter-storage
+          mountPath: /home/jovyan/work
+        - name: cluster-config
+          mountPath: /home/jovyan/.kube
+          readOnly: true
+        command: ["start-notebook.sh"]
+        args:
+        - "--NotebookApp.token=jupyter-k8s-demo"
+        - "--NotebookApp.password=''"
+        - "--NotebookApp.allow_root=True"
+        - "--NotebookApp.ip=0.0.0.0"
+        - "--NotebookApp.port=8888"
+        - "--NotebookApp.allow_origin='*'"
+        - "--NotebookApp.disable_check_xsrf=True"
+      volumes:
+      - name: jupyter-storage
+        nfs:
+          server: 192.168.5.1
+          path: /export/vmstore/jupyter
+      - name: cluster-config
+        secret:
+          secretName: jupyter-kubeconfig
+          optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jupyter-service
+  labels:
+    app: jupyter-lab
+spec:
+  type: NodePort
+  ports:
+  - port: 8888
+    targetPort: 8888
+    nodePort: 30888
+    protocol: TCP
+    name: jupyter
+  selector:
+    app: jupyter-lab
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jupyter-kubeconfig
+type: Opaque
+data:
+  config: ""  # Will be populated with base64 encoded kubeconfig
