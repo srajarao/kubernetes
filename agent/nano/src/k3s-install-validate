@@ -89,6 +89,23 @@ function cleanup_k3s_agent_installation() {
 }
 
 
+function check_certificate_trust() {
+    echo -e "\n${GREEN}Certificate Trust Checks${NC}"
+    TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
+    if [ -f "$TOKEN_CERT" ]; then
+        print_result 0 "  Server CA cert found at $TOKEN_CERT"
+        grep server ~/.kube/config >/dev/null 2>&1
+        print_result $? "  kubeconfig server entry present"
+        openssl s_client -connect ${TOWER_IP}:6443 -showcerts </dev/null >/dev/null 2>&1
+        print_result $? "  API server certificate presented"
+    else
+        print_result 1 "  Server CA cert not found at $TOKEN_CERT"
+    fi
+
+}
+
+
+
 
 #Main Script Execution Starts Here
 
@@ -102,9 +119,11 @@ echo "Tower IP          : $TOWER_IP"
 echo "Nano IP           : $NANO_IP"
 echo "AGX IP            : $AGX_IP"
 
-debug_msg "Running cleanup_k3s_agent_installation"
-echo
+
 echo -e "${GREEN}== Cleanup k3s Agent Installation ==${NC}"
 cleanup_k3s_agent_installation
+
+echo -e "${GREEN}== Certificate Trust Checks ==${NC}"
+check_certificate_trust()
 
 
