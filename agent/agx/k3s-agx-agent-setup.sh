@@ -67,6 +67,20 @@ function cleanup_k3s_agent_installation() {
     debug_msg "Checking for k3s-agent-uninstall.sh"
     if [ -f "/usr/local/bin/k3s-agent-uninstall.sh" ]; then
         debug_msg "Found k3s-agent-uninstall.sh, running cleanup first"
+
+        # CRITICAL: Delete pods running on THIS node only, especially GPU-using ones, to free resources
+        debug_msg "Deleting pods on agx node before k3s uninstall to free GPU resources"
+        if [ -f "$KUBECONFIG_PATH" ] && kubectl --kubeconfig="$KUBECONFIG_PATH" get pods >/dev/null 2>&1; then
+            echo -e "  Deleting pods on agx node to free GPU resources..."
+            # Only delete pods scheduled on the agx node
+            kubectl --kubeconfig="$KUBECONFIG_PATH" delete pods -l kubernetes.io/hostname=agx --force --grace-period=0 >/dev/null 2>&1
+            print_result $? "  Deleted pods on agx node (GPU resources freed)"
+            # Give pods time to terminate
+            sleep 5
+        else
+            debug_msg "No valid kubeconfig found, skipping pod deletion"
+        fi
+
         if [ "$DEBUG" -eq 1 ]; then
             echo -e "  Found k3s agent uninstall script, running cleanup..."
         fi
