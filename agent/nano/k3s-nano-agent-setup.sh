@@ -655,27 +655,25 @@ function check_fastapi_pod_status() {
 }
 
 # Main execution
-debug_msg "Starting main execution"
-echo "Starting main execution..."
 debug_msg "Calling cleanup_k3s_agent_installation"
 cleanup_k3s_agent_installation
-echo -e "${GREEN}===============================================${NC}"
-debug_msg "Calling remove_dangling_docker_images"
-remove_dangling_docker_images
-echo -e "${GREEN}===============================================${NC}"
-debug_msg "Calling build_and_save_fastapi_image"
-build_and_save_fastapi_image
-echo -e "${GREEN}===============================================${NC}"
-debug_msg "Calling install_k3s_agent_with_token"
-install_k3s_agent_with_token
-echo -e "${GREEN}===============================================${NC}"
-debug_msg "Calling apply_fastapi_deployment_yaml"
-apply_fastapi_deployment_yaml
-echo -e "${GREEN}===============================================${NC}"
-debug_msg "Calling verify_node_ready"
-verify_node_ready
-echo -e "${GREEN}===============================================${NC}"
-debug_msg "Calling check_fastapi_pod_status"
-check_fastapi_pod_status
-debug_msg "Script completed"
-echo -e "  ${YELLOW}Script completed${NC}"
+#echo -e "${GREEN}===============================================${NC}"
+#debug_msg "Calling remove_dangling_docker_images"
+#remove_dangling_docker_images
+#echo -e "${GREEN}===============================================${NC}"
+#debug_msg "Calling build_and_save_fastapi_image"
+#build_and_save_fastapi_image
+#echo -e "${GREEN}===============================================${NC}"
+#debug_msg "Calling install_k3s_agent_with_token"
+#install_k3s_agent_with_token
+#echo -e "${GREEN}===============================================${NC}"
+#debug_msg "Calling apply_fastapi_deployment_yaml"
+#apply_fastapi_deployment_yaml
+#echo -e "${GREEN}===============================================${NC}"
+#debug_msg "Calling verify_node_ready"
+#verify_node_ready
+#echo -e "${GREEN}===============================================${NC}"
+#debug_msg "Calling check_fastapi_pod_status"
+#check_fastapi_pod_status
+#debug_msg "Script completed"
+#echo -e "  ${YELLOW}Script completed${NC}"
