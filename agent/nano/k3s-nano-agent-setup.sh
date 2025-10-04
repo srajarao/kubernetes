@@ -56,8 +56,6 @@ function print_result() {
     fi
 }
 
-<<<<<<< HEAD
-=======
 function cleanup_k3s_agent_installation() {
     debug_msg "Running cleanup_k3s_agent_installation"
     echo -e "${GREEN}\n== Cleanup k3s Agent Installation ==${NC}"
@@ -131,7 +129,6 @@ function cleanup_k3s_agent_installation() {
     debug_msg "Skipping kubectl cleanup - k3s uninstall removes all resources"
     print_result 0 "  Skipped kubectl cleanup (handled by k3s uninstall)"
 }
->>>>>>> 342b99ba9ead396dc0a73635a218f5deb43e34cf
 
 function remove_dangling_docker_images() {
     debug_msg "Running remove_dangling_docker_images"
@@ -901,28 +898,6 @@ function cleanup_k3s_agent_installation (){
 # Main execution
 debug_msg "Calling cleanup_k3s_agent_installation"
 cleanup_k3s_agent_installation
-<<<<<<< HEAD
-#echo -e "${GREEN}===============================================${NC}"
-#debug_msg "Calling remove_dangling_docker_images"
-#remove_dangling_docker_images
-#echo -e "${GREEN}===============================================${NC}"
-#debug_msg "Calling build_and_save_fastapi_image"
-#build_and_save_fastapi_image
-#echo -e "${GREEN}===============================================${NC}"
-#debug_msg "Calling install_k3s_agent_with_token"
-#install_k3s_agent_with_token
-#echo -e "${GREEN}===============================================${NC}"
-#debug_msg "Calling apply_fastapi_deployment_yaml"
-#apply_fastapi_deployment_yaml
-#echo -e "${GREEN}===============================================${NC}"
-#debug_msg "Calling verify_node_ready"
-#verify_node_ready
-#echo -e "${GREEN}===============================================${NC}"
-#debug_msg "Calling check_fastapi_pod_status"
-#check_fastapi_pod_status
-#debug_msg "Script completed"
-#echo -e "  ${YELLOW}Script completed${NC}"
-=======
 echo -e "${GREEN}===============================================${NC}"
 debug_msg "Calling remove_dangling_docker_images"
 remove_dangling_docker_images
@@ -940,4 +915,3 @@ debug_msg "Calling check_fastapi_pod_status"
 check_fastapi_pod_status
 debug_msg "Script completed"
 echo -e "  ${YELLOW}Script completed${NC}"
->>>>>>> 342b99ba9ead396dc0a73635a218f5deb43e34cf

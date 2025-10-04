@@ -80,6 +80,10 @@ function cleanup_k3s_agent_installation() {
     rm -f "$KUBECONFIG_PATH" >/dev/null 2>&1
     print_result $? "  Removed stale $KUBECONFIG_PATH"
 
+    # Remove dangling Docker images to free up space
+    debug_msg "Running remove_dangling_docker_images"
+    sudo docker image prune -f >/dev/null 2>&1
+    print_result $? "  Removed dangling Docker images"
 
 }
 
