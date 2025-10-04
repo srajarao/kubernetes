@@ -68,8 +68,14 @@ function cleanup_k3s_agent_installation() {
     debug_msg "Checking for any remaining nano pods to clean up"
     if [ -f "$KUBECONFIG_PATH" ] && kubectl --kubeconfig="$KUBECONFIG_PATH" get pods -l app=fastapi-nano --no-headers 2>/dev/null | grep -q .; then
         debug_msg "Found nano pods, cleaning them up"
-        kubectl --kubeconfig="$KUBECONFIG_PATH" delete pods -l app=fastapi-nano --ignore-not-found=true >/dev/null 2>&1
-        print_result $? "  Cleaned up existing fastapi-nano pods"
+        # Use timeout and force delete to avoid hanging on terminating pods
+        timeout 30s kubectl --kubeconfig="$KUBECONFIG_PATH" delete pods -l app=fastapi-nano --ignore-not-found=true --force --grace-period=0 >/dev/null 2>&1
+        DELETE_STATUS=$?
+        if [ $DELETE_STATUS -eq 0 ]; then
+            print_result 0 "  Cleaned up existing fastapi-nano pods"
+        else
+            print_result 1 "  Failed to clean up pods (may be already terminating)"
+        fi
         # Give pods time to terminate
         sleep 2
     else
