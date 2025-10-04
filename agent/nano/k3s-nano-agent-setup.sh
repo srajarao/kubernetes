@@ -100,7 +100,6 @@ function cleanup_k3s_agent_installation() {
     debug_msg "Skipping kubectl cleanup - k3s uninstall removes all resources"
     print_result 0 "  Skipped kubectl cleanup (handled by k3s uninstall)"
 }
-}
 
 function remove_dangling_docker_images() {
     debug_msg "Running remove_dangling_docker_images"
@@ -142,13 +141,20 @@ function build_and_save_fastapi_image() {
             if [ "$DOCKERFILE_MTIME" -le "$TAR_MTIME" ] 2>/dev/null; then
                 debug_msg "Using cached image"
                 print_result 0 "  Using cached fastapi_nano image (Dockerfile unchanged)"
-                docker load -i "$TAR_FILE" >/dev/null 2>&1
-                LOAD_STATUS=$?
-                if [ $LOAD_STATUS -eq 0 ]; then
-                    print_result 0 "  Loaded fastapi_nano image from cache"
+                # Check if image is already available locally first
+                if docker images fastapi_nano:latest | grep -q fastapi_nano; then
+                    debug_msg "Image already available locally, skipping load"
+                    print_result 0 "  fastapi_nano:latest image already available"
                 else
-                    print_result 1 "  Failed to load cached image, will rebuild"
-                    BUILT_IMAGE=true
+                    debug_msg "Loading image from tar cache"
+                    docker load -i "$TAR_FILE" >/dev/null 2>&1
+                    LOAD_STATUS=$?
+                    if [ $LOAD_STATUS -eq 0 ]; then
+                        print_result 0 "  Loaded fastapi_nano image from cache"
+                    else
+                        print_result 1 "  Failed to load cached image, will rebuild"
+                        BUILT_IMAGE=true
+                    fi
                 fi
             else
                 debug_msg "Dockerfile changed, rebuilding"
