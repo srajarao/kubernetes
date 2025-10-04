@@ -18,7 +18,7 @@ echo -e "${GREEN}Starting nano agent setup...${NC}\n"
 
 # Source configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$SCRIPT_DIR/config"
+CONFIG_DIR="$SCRIPT_DIR/app/config"
 if [ -f "$CONFIG_DIR/nano-config.env" ]; then
     source "$CONFIG_DIR/nano-config.env"
     echo -e "${GREEN}Configuration loaded from nano-config.env${NC}"
