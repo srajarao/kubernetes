@@ -64,10 +64,23 @@ function cleanup_k3s_agent_installation() {
     KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
     debug_msg "KUBECONFIG_PATH set to $KUBECONFIG_PATH"
 
-    # Check for the k3s uninstall script and run it FIRST
+    # FIRST: Clean up any remaining nano-related pods BEFORE uninstalling agent
+    debug_msg "Checking for any remaining nano pods to clean up"
+    if [ -f "$KUBECONFIG_PATH" ] && kubectl --kubeconfig="$KUBECONFIG_PATH" get pods -l app=fastapi-nano --no-headers 2>/dev/null | grep -q .; then
+        debug_msg "Found nano pods, cleaning them up"
+        kubectl --kubeconfig="$KUBECONFIG_PATH" delete pods -l app=fastapi-nano --ignore-not-found=true >/dev/null 2>&1
+        print_result $? "  Cleaned up existing fastapi-nano pods"
+        # Give pods time to terminate
+        sleep 2
+    else
+        debug_msg "No nano pods found to clean up"
+        print_result 0 "  No existing fastapi-nano pods to clean up"
+    fi
+
+    # THEN: Check for the k3s uninstall script and run it
     debug_msg "Checking for k3s-agent-uninstall.sh"
     if [ -f "/usr/local/bin/k3s-agent-uninstall.sh" ]; then
-        debug_msg "Found k3s-agent-uninstall.sh, running cleanup first"
+        debug_msg "Found k3s-agent-uninstall.sh, running cleanup"
         if [ "$DEBUG" -eq 1 ]; then
             echo -e "  Found k3s agent uninstall script, running cleanup..."
         fi
@@ -86,6 +99,7 @@ function cleanup_k3s_agent_installation() {
     # Skip kubectl cleanup since k3s uninstall removes all resources
     debug_msg "Skipping kubectl cleanup - k3s uninstall removes all resources"
     print_result 0 "  Skipped kubectl cleanup (handled by k3s uninstall)"
+}
 }
 
 function remove_dangling_docker_images() {
