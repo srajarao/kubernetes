@@ -175,7 +175,7 @@ function build_and_save_fastapi_image() {
             docker tag fastapi_nano:latest ${TOWER_IP}:5000/fastapi_nano:latest
             print_result $? "  Tagged image for local registry"
             debug_msg "Pushing image to registry"
-            docker push ${TOWER_IP}:5000/fastapi_nano:latest
+            docker push ${TOWER_IP}:5000/fastapi_nano:latest >/dev/null 2>&1
             PUSH_STATUS=$?
             print_result $PUSH_STATUS "  Pushed image to local registry ${TOWER_IP}:5000"
         fi
@@ -414,6 +414,8 @@ function verify_node_ready() {
 function check_fastapi_pod_status() {
     debug_msg "Running check_fastapi_pod_status"
     echo -e "${GREEN}\n== Check FastAPI Pod Status ==${NC}"
+    echo -e "${YELLOW}  Note: Large 15.5GB image may take 3-5 minutes to download${NC}"
+
     POD_NAME=$(timeout 10s kubectl --kubeconfig="$KUBECONFIG_PATH" get pods -l app=fastapi-nano -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     debug_msg "POD_NAME: $POD_NAME"
     if [ -z "$POD_NAME" ]; then
@@ -426,33 +428,181 @@ function check_fastapi_pod_status() {
         print_result 1 "  No FastAPI pod found after deployment"
     else
         STATUS=""
-        MAX_RETRIES=18
+        # Increased timeout for large image downloads (36 * 10s = 6 minutes total wait time)
+        MAX_RETRIES=36
         RETRY_COUNT=0
+        
+        # Phase tracking with timing
+        PHASE="starting"
+        PHASE_START_TIME=$(date +%s)
+        LAST_ELAPSED_STR=""
+        echo -e -n "${YELLOW}  🚀 Starting pod... 00:00${NC}"
+        
         while [ "$STATUS" != "Running" ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             debug_msg "Checking pod status, attempt $((RETRY_COUNT+1))"
             STATUS=$(timeout 5s kubectl --kubeconfig="$KUBECONFIG_PATH" get pod "$POD_NAME" -o jsonpath='{.status.phase}' 2>/dev/null)
             debug_msg "Pod status: $STATUS"
+            
+            # Update elapsed time display every 30 seconds (every 3 iterations since we check every 10s)
+            if [ $((RETRY_COUNT % 3)) -eq 0 ]; then
+                CURRENT_TIME=$(date +%s)
+                ELAPSED=$((CURRENT_TIME - PHASE_START_TIME))
+                ELAPSED_MIN=$((ELAPSED / 60))
+                ELAPSED_SEC=$((ELAPSED % 60))
+                ELAPSED_STR=$(printf "%02d:%02d" $ELAPSED_MIN $ELAPSED_SEC)
+                
+                # Only print if timing has actually changed (not the same as last time)
+                if [ "$ELAPSED_STR" != "$LAST_ELAPSED_STR" ]; then
+                    # Print current phase with updated timing on same line
+                    case "$PHASE" in
+                        "starting")
+                            echo -e -n "\r${YELLOW}  🚀 Starting pod... ${ELAPSED_STR}${NC}"
+                            ;;
+                        "downloading")
+                            echo -e -n "\r${BLUE}  📥 Downloading image... ${ELAPSED_STR}${NC}"
+                            ;;
+                        "preparing")
+                            echo -e -n "\r${CYAN}  ⚙️ Preparing container... ${ELAPSED_STR}${NC}"
+                            ;;
+                    esac
+                    LAST_ELAPSED_STR="$ELAPSED_STR"
+                fi
+            fi
+            
+            if [ "$STATUS" = "Failed" ]; then
+                # Mark current phase as failed with final timing
+                CURRENT_TIME=$(date +%s)
+                ELAPSED=$((CURRENT_TIME - PHASE_START_TIME))
+                ELAPSED_MIN=$((ELAPSED / 60))
+                ELAPSED_SEC=$((ELAPSED % 60))
+                ELAPSED_STR=$(printf "%02d:%02d" $ELAPSED_MIN $ELAPSED_SEC)
+                
+                case "$PHASE" in
+                    "starting")
+                        echo -e "\r${RED}  🚀 Starting pod... ${ELAPSED_STR} ❌${NC}"
+                        ;;
+                    "downloading")
+                        echo -e "\r${RED}  📥 Downloading image... ${ELAPSED_STR} ❌${NC}"
+                        ;;
+                    "preparing")
+                        echo -e "\r${RED}  ⚙️ Preparing container... ${ELAPSED_STR} ❌${NC}"
+                        ;;
+                esac
+                print_result 1 "  FastAPI pod $POD_NAME has Failed (not retrying)"
+                timeout 10s kubectl --kubeconfig="$KUBECONFIG_PATH" describe pod "$POD_NAME"
+                return 1
+            fi
+            
             if [ "$STATUS" == "Pending" ]; then
                 REASON=$(timeout 5s kubectl --kubeconfig="$KUBECONFIG_PATH" get pod "$POD_NAME" -o jsonpath='{.status.containerStatuses[0].state.waiting.reason}' 2>/dev/null)
                 debug_msg "Pending reason: $REASON"
+                
                 if [ "$REASON" == "ImagePullBackOff" ] || [ "$REASON" == "ErrImagePull" ]; then
-                    echo -e "${RED}  Image Pull is failing, describing pod...${NC}"
-                    timeout 10s kubectl --kubeconfig="$KUBECONFIG_PATH" describe pod "$POD_NAME"
+                    # Mark current phase as failed with final timing
+                    CURRENT_TIME=$(date +%s)
+                    ELAPSED=$((CURRENT_TIME - PHASE_START_TIME))
+                    ELAPSED_MIN=$((ELAPSED / 60))
+                    ELAPSED_SEC=$((ELAPSED % 60))
+                    ELAPSED_STR=$(printf "%02d:%02d" $ELAPSED_MIN $ELAPSED_SEC)
+                    
+                    case "$PHASE" in
+                        "starting")
+                            echo -e "\r${RED}  🚀 Starting pod... ${ELAPSED_STR} ❌${NC}"
+                            ;;
+                        "downloading")
+                            echo -e "\r${RED}  📥 Downloading image... ${ELAPSED_STR} ❌${NC}"
+                            ;;
+                        "preparing")
+                            echo -e "\r${RED}  ⚙️ Preparing container... ${ELAPSED_STR} ❌${NC}"
+                            ;;
+                    esac
                     print_result 1 "  FastAPI pod $POD_NAME is stuck in image pull error."
-                    return
+                    timeout 10s kubectl --kubeconfig="$KUBECONFIG_PATH" describe pod "$POD_NAME"
+                    return 1
+                fi
+                
+                # Update phase indicators with multiple lines
+                if [ $RETRY_COUNT -lt 6 ] && [ "$PHASE" != "starting" ]; then
+                    PHASE="starting"
+                    PHASE_START_TIME=$(date +%s)
+                    LAST_ELAPSED_STR=""
+                    echo -e -n "${YELLOW}  🚀 Starting pod... 00:00${NC}"
+                elif [ $RETRY_COUNT -ge 6 ] && [ $RETRY_COUNT -lt 18 ] && [ "$PHASE" != "downloading" ]; then
+                    # Mark starting phase as completed
+                    CURRENT_TIME=$(date +%s)
+                    ELAPSED=$((CURRENT_TIME - PHASE_START_TIME))
+                    ELAPSED_MIN=$((ELAPSED / 60))
+                    ELAPSED_SEC=$((ELAPSED % 60))
+                    ELAPSED_STR=$(printf "%02d:%02d" $ELAPSED_MIN $ELAPSED_SEC)
+                    echo -e "\r${GREEN}  🚀 Starting pod... ${ELAPSED_STR} ✅${NC}"
+                    PHASE="downloading"
+                    PHASE_START_TIME=$(date +%s)
+                    LAST_ELAPSED_STR=""
+                    echo -e -n "${BLUE}  📥 Downloading image... 00:00${NC}"
+                elif [ $RETRY_COUNT -ge 18 ] && [ "$PHASE" != "preparing" ]; then
+                    # Mark downloading phase as completed
+                    CURRENT_TIME=$(date +%s)
+                    ELAPSED=$((CURRENT_TIME - PHASE_START_TIME))
+                    ELAPSED_MIN=$((ELAPSED / 60))
+                    ELAPSED_SEC=$((ELAPSED % 60))
+                    ELAPSED_STR=$(printf "%02d:%02d" $ELAPSED_MIN $ELAPSED_SEC)
+                    echo -e "\r${GREEN}  📥 Downloading image... ${ELAPSED_STR} ✅${NC}"
+                    PHASE="preparing"
+                    PHASE_START_TIME=$(date +%s)
+                    LAST_ELAPSED_STR=""
+                    echo -e -n "${CYAN}  ⚙️ Preparing container... 00:00${NC}"
                 fi
             fi
+            
             if [ "$STATUS" = "Running" ]; then
+                # Mark current phase as completed with final timing
+                CURRENT_TIME=$(date +%s)
+                ELAPSED=$((CURRENT_TIME - PHASE_START_TIME))
+                ELAPSED_MIN=$((ELAPSED / 60))
+                ELAPSED_SEC=$((ELAPSED % 60))
+                ELAPSED_STR=$(printf "%02d:%02d" $ELAPSED_MIN $ELAPSED_SEC)
+                
+                case "$PHASE" in
+                    "starting")
+                        echo -e "\r${GREEN}  🚀 Starting pod... ${ELAPSED_STR} ✅${NC}"
+                        ;;
+                    "downloading")
+                        echo -e "\r${GREEN}  📥 Downloading image... ${ELAPSED_STR} ✅${NC}"
+                        ;;
+                    "preparing")
+                        echo -e "\r${GREEN}  ⚙️ Preparing container... ${ELAPSED_STR} ✅${NC}"
+                        ;;
+                esac
+                echo -e "     Ready to serve"
                 print_result 0 "  FastAPI pod $POD_NAME is Running"
                 break
             fi
-            echo -e "  Waiting for pod $POD_NAME to run... ($STATUS) (Retry: $((RETRY_COUNT+1))/$MAX_RETRIES)"
-            sleep 3
+            
+            sleep 10
             RETRY_COUNT=$((RETRY_COUNT+1))
         done
+        
         if [ "$STATUS" != "Running" ]; then
+            # Mark current phase as failed with final timing
+            CURRENT_TIME=$(date +%s)
+            ELAPSED=$((CURRENT_TIME - PHASE_START_TIME))
+            ELAPSED_MIN=$((ELAPSED / 60))
+            ELAPSED_SEC=$((ELAPSED % 60))
+            ELAPSED_STR=$(printf "%02d:%02d" $ELAPSED_MIN $ELAPSED_SEC)
+            
+            case "$PHASE" in
+                "starting")
+                    echo -e "\r${RED}  🚀 Starting pod... ${ELAPSED_STR} ❌${NC}"
+                    ;;
+                "downloading")
+                    echo -e "\r${RED}  📥 Downloading image... ${ELAPSED_STR} ❌${NC}"
+                    ;;
+                "preparing")
+                    echo -e "\r${RED}  ⚙️ Preparing container... ${ELAPSED_STR} ❌${NC}"
+                    ;;
+            esac
             debug_msg "Pod not running after $MAX_RETRIES attempts"
-            print_result 1 "  FastAPI pod $POD_NAME is not Running (status: $STATUS) after $((MAX_RETRIES * 3)) seconds."
+            print_result 1 "  FastAPI pod $POD_NAME is not Running (status: $STATUS) after $((MAX_RETRIES * 10 / 60)) minutes."
             timeout 10s kubectl --kubeconfig="$KUBECONFIG_PATH" describe pod "$POD_NAME"
         fi
     fi
@@ -469,9 +619,6 @@ remove_dangling_docker_images
 echo -e "${GREEN}===============================================${NC}"
 debug_msg "Calling build_and_save_fastapi_image"
 build_and_save_fastapi_image
-echo -e "${GREEN}===============================================${NC}"
-debug_msg "Calling check_certificate_trust"
-check_certificate_trust
 echo -e "${GREEN}===============================================${NC}"
 debug_msg "Calling install_k3s_agent_with_token"
 install_k3s_agent_with_token

@@ -46,6 +46,8 @@ spec:
           value: "nano"
         - name: GPU_ENABLED
           value: "true"
+        - name: FORCE_GPU_CHECKS
+          value: "true"
         - name: NODE_NAME
           valueFrom:
             fieldRef:
@@ -55,6 +57,8 @@ spec:
           mountPath: /mnt/vmstore
         - name: nano-home
           mountPath: /home/nano
+        - name: nano-config
+          mountPath: /app/app/config
         livenessProbe:
           httpGet:
             path: /health
@@ -76,6 +80,10 @@ spec:
         nfs:
           server: 192.168.5.1
           path: /export/vmstore/nano_home
+      - name: nano-config
+        nfs:
+          server: 192.168.5.1
+          path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"

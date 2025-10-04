@@ -1,10 +1,14 @@
 {
-    "name": "Nano ML Container (CPU)",
+    "name": "ML Container v8 (Final)",
     "build": {
-        "dockerfile": "../dockerfile.nano.req",
+        "dockerfile": "../dockerfile.online.req.backup",
         "context": ".."
     },
     "runArgs": [
+        "--gpus=all",
+        "--runtime=nvidia",
+        "--device=/dev/video0",
+        "--device=/dev/snd",
         "--network=host",
         "-v",
         "/run/user/$(id -u)/pulse:/tmp/pulse",
@@ -12,7 +16,7 @@
         "PULSE_SERVER=unix:/tmp/pulse/native"
     ],
     "mounts": [
-        "source=${localEnv:HOME},target=${localEnv:HOME},type=bind",
+        "source=${localWorkspaceFolder},target=/workspace,type=bind",
         "source=/mnt/vmstore,target=/mnt/vmstore,type=bind"
     ],
     "customizations": {
@@ -23,17 +27,13 @@
             ]
         }
     },
-    "remoteUser": "nano",
+    "remoteUser": "root",
     "overrideCommand": true,
     "portsAttributes": {
-        "8000": {
-            "label": "FastAPI",
-            "onAutoForward": "openBrowser"
-        },
-        "8888": {
+        "8889": {
             "label": "Jupyter",
             "onAutoForward": "openBrowser"
         }
     },
-    "postStartCommand": "python3 /app/app/src/fastapi_app.py"
+    "postStartCommand": "./run-post-start.sh"
 }

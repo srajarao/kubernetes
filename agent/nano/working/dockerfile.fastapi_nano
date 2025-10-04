@@ -6,11 +6,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
      PYTHONUNBUFFERED=1 \
      VIRTUAL_ENV=/opt/venv \
      PATH="/opt/venv/bin:$PATH"
-
+ 
 USER root
 
+# Healthcheck wiring (download from Gist)  
+# RUN wget -O /usr/local/bin/healthcheck.py https://gist.githubusercontent.com/srajarao/f2aa0b784d0bf209fbcf260f1141da75/raw/7880e3176f66786b2358354a7b1944643887034d/healthcheck.py && \ 
+#     chmod +x /usr/local/bin/healthcheck.py && \ 
+#     ln -sf /usr/local/bin/healthcheck.py /usr/local/bin/healthcheck 	
+
 # Copy requirements file
-COPY requirements.nano.txt /app/requirements.nano.txt
+COPY requirements.online.req.txt /workspace/requirements.online.req.txt
+COPY src/backend/requirements.txt /workspace/requirements.txt
+COPY postgres.env                /workspace/postgres.env
 
 # OS + Python deps
 RUN --mount=type=cache,target=/var/cache/apt \
@@ -21,7 +28,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
             libopenblas0 libgomp1 postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
-# Install pip for Python 3.10
+# Install pip for Python 3.11
 RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
     python3.10 get-pip.py && \
     rm get-pip.py
@@ -38,6 +45,10 @@ RUN wget https://developer.download.nvidia.com/compute/cusparselt/0.8.0/local_in
 RUN python3.10 -m venv --system-site-packages $VIRTUAL_ENV
 RUN $VIRTUAL_ENV/bin/pip install --upgrade pip setuptools wheel
 
+
+# Copy requirements file
+COPY requirements.online.req.txt /workspace/requirements.online.req.txt
+
 # 1. Install PyTorch and TensorFlow from their specific NVIDIA URLs
 #    This is critical because these versions are not on PyPI.
 RUN $VIRTUAL_ENV/bin/pip install \
@@ -45,19 +56,23 @@ RUN $VIRTUAL_ENV/bin/pip install \
     https://developer.download.nvidia.com/compute/redist/jp/v61/tensorflow/tensorflow-2.16.1+nv24.08-cp310-cp310-linux_aarch64.whl
 
 # 2. Install all other packages from requirements.txt
-RUN $VIRTUAL_ENV/bin/pip install -r /app/requirements.nano.txt
+#    This command ignores torch and tensorflow which are already installed.
+RUN $VIRTUAL_ENV/bin/pip install -r /workspace/requirements.online.req.txt
 
-# Copy application code
-COPY app/src/ /app/app/src/
-COPY app/config/ /app/app/config/
-
-# Create necessary directories
-RUN mkdir -p /app/app/logs /app/app/data /mnt/vmstore
-
-# Expose ports
-EXPOSE 8888
+# Expose Jupyter port
+EXPOSE 8889
 EXPOSE 8000
 
+# --- FINAL COMMANDS ---
+# Copy the single startup script and make it executable
+# --- Final Setup ---
+#COPY src/fastapi_healthcheck.py /usr/local/bin/fastapi_healthcheck.py
+#COPY src/start-jupyter.sh /usr/local/bin/start-jupyter.sh
+#RUN chmod +x /usr/local/bin/fastapi_healthcheck.py /usr/local/bin/start-jupyter.sh
+ 
+ 
 # Set the default command for the container
-WORKDIR /app
-CMD ["python3", "/app/app/src/fastapi_app.py"]
+WORKDIR /workspace
+#COPY src/fastapi_app.py /workspace/fastapi_app.py
+#CMD ["python3", "/usr/local/bin/fastapi_healthcheck.py"] 
+CMD ["/bin/bash"]
