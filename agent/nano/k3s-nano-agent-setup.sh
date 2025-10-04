@@ -329,6 +329,9 @@ EOF
                 # Restart the service to load registries.yaml
                 sudo systemctl restart k3s-agent
                 print_result $? "  Restarted k3s-agent service to load registries.yaml"
+                # Give containerd time to fully initialize with new registry config
+                debug_msg "Waiting for containerd to initialize with registry config"
+                sleep 5
                 
                 # Ensure route to AGX subnet persists after k3s networking setup
                 echo -e "${GREEN}  Ensuring route to AGX subnet (192.168.10.0/24) via Tower...${NC}"
@@ -395,9 +398,16 @@ EOF
             debug_msg "Image not in containerd, attempting registry pull"
             # Try to pull from registry first
             debug_msg "Pulling from registry: ${TOWER_IP}:5000/fastapi_nano:latest"
-            sudo k3s ctr images pull ${TOWER_IP}:5000/fastapi_nano:latest >/dev/null 2>&1
-            PULL_STATUS=$?
-            debug_msg "Registry pull exit status: $PULL_STATUS"
+            # Test registry connectivity first
+            if curl -k --connect-timeout 5 ${TOWER_IP}:5000/v2/ >/dev/null 2>&1; then
+                debug_msg "Registry is accessible, attempting k3s ctr pull"
+                sudo k3s ctr images pull ${TOWER_IP}:5000/fastapi_nano:latest >/dev/null 2>&1
+                PULL_STATUS=$?
+                debug_msg "Registry pull exit status: $PULL_STATUS"
+            else
+                debug_msg "Registry not accessible, skipping pull attempt"
+                PULL_STATUS=1
+            fi
             if sudo k3s ctr images list 2>/dev/null | grep -q "${TOWER_IP}:5000/fastapi_nano"; then
                 debug_msg "Successfully pulled from registry"
                 print_result 0 "  Pulled fastapi_nano image from registry"
