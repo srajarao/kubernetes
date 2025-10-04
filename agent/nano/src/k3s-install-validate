@@ -7,16 +7,19 @@ YELLOW='\033[0;33m'
 NC='\033[0m'
 KUBECONFIG_PATH="${KUBECONFIG_PATH:-$HOME/k3s.yaml}"
 CROSS="${RED}❌${NC}"
+TICK="${GREEN}✅${NC}"
 DEBUG=${DEBUG:-0}
 KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
 CLEAR_SCREEN=1
-TOKEN_DIR="${TOKEN_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano/.token}"  # Nano: Read Token from server
+TOKEN_DIR="${TOKEN_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano/.token}" # Nano: Read Token from server
 PROJECT_DIR="${PROJECT_DIR:-/home/sanjay/containers/fastapi_nano}"              # Nano: Main project directory
 IMAGE_DIR="${IMAGE_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano}"        # Nano: Save build images for server
-TOWER_IP="${TOWER_IP:-192.168.5.1}"                                            # Tower server IP
-NANO_IP="${NANO_IP:-192.168.5.21}"                                            # Nano device IP
-AGX_IP="${AGX_IP:-192.168.5.22}"                                              # AGX device IP
-
+TOWER_IP="${TOWER_IP:-192.168.5.1}"                                             # Tower server IP
+NANO_IP="${NANO_IP:-192.168.5.21}"                                              # Nano Device IP
+AGX_IP="${AGX_IP:-192.168.5.22}"                                                # AGX device IP
+TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
+TOKEN_FILE="$TOKEN_DIR/node-token"
+K3S_TOKEN=""""
 
 # Optionally clear the screen if CLEAR_SCREEN is set to 1
 if [ "${CLEAR_SCREEN:-0}" -eq 1 ]; then
@@ -40,7 +43,6 @@ function print_result() {
         debug_msg "$2 failed"
     fi
 }
-
 
 function cleanup_k3s_agent_installation() {
     # FIRST: Clean up any remaining nano-related pods BEFORE uninstalling agent
@@ -88,10 +90,7 @@ function cleanup_k3s_agent_installation() {
 
 }
 
-
 function check_certificate_trust() {
-    echo -e "\n${GREEN}Certificate Trust Checks${NC}"
-    TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
     if [ -f "$TOKEN_CERT" ]; then
         print_result 0 "  Server CA cert found at $TOKEN_CERT"
         grep server ~/.kube/config >/dev/null 2>&1
@@ -101,14 +100,26 @@ function check_certificate_trust() {
     else
         print_result 1 "  Server CA cert not found at $TOKEN_CERT"
     fi
-
 }
 
-
-
+function check_node_token() {    
+    if [ -f "$TOKEN_FILE" ]; then
+        print_result 0 "  Node token file found at $TOKEN_FILE"
+        # Ensure token file is readable
+        if [ ! -r "$TOKEN_FILE" ]; then
+            sudo chmod 644 "$TOKEN_FILE" 
+            K3S_TOKEN=$(sudo cat "$TOKEN_FILE")
+            print_result 0 "  Tokefile permission set  and read $TOKEN_FILE"
+        else
+            K3S_TOKEN=$(cat "$TOKEN_FILE")
+            print_result 0 "  Node token file read $TOKEN_FILE"
+        fi
+    else
+        print_result 1 "  Node token file not found at 3 $TOKEN_FILE"
+    fi
+}
 
 #Main Script Execution Starts Here
-
 # Print out the important environment variables for verification
 echo -e "${GREEN}== Program Variables ==${NC}"
 echo "KUBECONFIG_PATH   : $KUBECONFIG_PATH"
@@ -118,12 +129,17 @@ echo "Image directory   : $IMAGE_DIR"
 echo "Tower IP          : $TOWER_IP"
 echo "Nano IP           : $NANO_IP"
 echo "AGX IP            : $AGX_IP"
+echo "Token Cert        : $TOKEN_CERT"
+echo "Token File        : $TOKEN_FILE"
+
+
 
 
 echo -e "${GREEN}== Cleanup k3s Agent Installation ==${NC}"
 cleanup_k3s_agent_installation
 
-echo -e "${GREEN}== Certificate Trust Checks ==${NC}"
-check_certificate_trust()
+echo -e "${GREEN}== Check Certificate trust ==${NC}"
+check_certificate_trust 
 
-
+echo -e "${GREEN}== Check Node Token ==${NC}"
+check_node_token
