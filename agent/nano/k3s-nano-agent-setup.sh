@@ -196,7 +196,12 @@ function build_and_save_fastapi_image() {
             print_result 0 "  fastapi_nano:latest image already available"
         fi
         # Tag and push to local registry only if we built/rebuild the image
-        if [ "$BUILT_IMAGE" = true ]; then
+        # OR if cached image is not in registry
+        if [ "$BUILT_IMAGE" = true ] || ! sudo k3s ctr images list 2>/dev/null | grep -q "${TOWER_IP}:5000/fastapi_nano"; then
+            if [ "$BUILT_IMAGE" = false ]; then
+                debug_msg "Cached image not in registry, pushing to ensure availability"
+                print_result 0 "  Pushing cached image to registry for k3s access"
+            fi
             debug_msg "Tagging image for registry"
             docker tag fastapi_nano:latest ${TOWER_IP}:5000/fastapi_nano:latest
             print_result $? "  Tagged image for local registry"
@@ -204,6 +209,9 @@ function build_and_save_fastapi_image() {
             docker push ${TOWER_IP}:5000/fastapi_nano:latest >/dev/null 2>&1
             PUSH_STATUS=$?
             print_result $PUSH_STATUS "  Pushed image to local registry ${TOWER_IP}:5000"
+        else
+            debug_msg "Image already available in registry, skipping push"
+            print_result 0 "  Image already available in registry (push not needed)"
         fi
         
         # Save to tar as backup only if we built/re-built the image or tar doesn't exist
@@ -374,17 +382,25 @@ EOF
             echo -e "${RED}ERROR: Kubeconfig not found. Agent may not have joined the cluster. Halting setup.${NC}"
             exit 2
         fi
-        # Import the FastAPI image into containerd ONLY if registry pull fails
-        # Check if the image is available from registry first
-        if sudo k3s ctr images list | grep -q "${TOWER_IP}:5000/fastapi_nano"; then
-            debug_msg "Image already available from registry, skipping tar import"
-            print_result 0 "  FastAPI image available from registry (tar import not needed)"
-        elif [ -f "$IMAGE_DIR/fastapi_nano.tar" ]; then
-            debug_msg "Registry image not found, importing from tar backup"
-            sudo k3s ctr images import "$IMAGE_DIR/fastapi_nano.tar" >/dev/null 2>&1
-            print_result $? "  Imported fastapi_nano image into containerd from backup tar"
+        # Import the FastAPI image into containerd - try registry pull first, then tar import
+        debug_msg "Ensuring image is available in containerd"
+        if sudo k3s ctr images list 2>/dev/null | grep -q "${TOWER_IP}:5000/fastapi_nano"; then
+            debug_msg "Image already available in containerd"
+            print_result 0 "  FastAPI image available in containerd"
         else
-            print_result 0 "  fastapi_nano.tar not found (registry method should work)"
+            debug_msg "Image not in containerd, attempting registry pull"
+            # Try to pull from registry first
+            sudo k3s ctr images pull ${TOWER_IP}:5000/fastapi_nano:latest >/dev/null 2>&1
+            if sudo k3s ctr images list 2>/dev/null | grep -q "${TOWER_IP}:5000/fastapi_nano"; then
+                debug_msg "Successfully pulled from registry"
+                print_result 0 "  Pulled fastapi_nano image from registry"
+            elif [ -f "$IMAGE_DIR/fastapi_nano.tar" ]; then
+                debug_msg "Registry pull failed, importing from tar backup"
+                sudo k3s ctr images import "$IMAGE_DIR/fastapi_nano.tar" >/dev/null 2>&1
+                print_result $? "  Imported fastapi_nano image into containerd from backup tar"
+            else
+                print_result 1 "  No image source available (registry or tar)"
+            fi
         fi
         # Note: Nano devices typically don't have NVIDIA GPUs
         echo -e "${GREEN}\n== Nano Device Notes ==${NC}"
