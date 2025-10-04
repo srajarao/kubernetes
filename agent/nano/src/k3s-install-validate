@@ -15,6 +15,7 @@ PROJECT_DIR="${PROJECT_DIR:-/home/sanjay/containers/fastapi_nano}"              
 IMAGE_DIR="${IMAGE_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano}"        # Nano: Save build images for server
 TOWER_IP="${TOWER_IP:-192.168.5.1}"                                            # Tower server IP
 NANO_IP="${NANO_IP:-192.168.5.21}"                                            # Nano device IP
+AGX_IP="${AGX_IP:-192.168.5.22}"                                              # AGX device IP
 
 
 # Optionally clear the screen if CLEAR_SCREEN is set to 1
@@ -92,12 +93,14 @@ function cleanup_k3s_agent_installation() {
 #Main Script Execution Starts Here
 
 # Print out the important environment variables for verification
+echo -e "${GREEN}== Program Variables ==${NC}"
 echo "KUBECONFIG_PATH   : $KUBECONFIG_PATH"
 echo "Token directory   : $TOKEN_DIR"
 echo "Project directory : $PROJECT_DIR"
 echo "Image directory   : $IMAGE_DIR"
 echo "Tower IP          : $TOWER_IP"
 echo "Nano IP           : $NANO_IP"
+echo "AGX IP            : $AGX_IP"
 
 debug_msg "Running cleanup_k3s_agent_installation"
 echo
