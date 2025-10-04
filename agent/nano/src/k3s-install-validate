@@ -80,9 +80,7 @@ function cleanup_k3s_agent_installation() {
     rm -f /home/sanjay/k3s.yaml >/dev/null 2>&1
     print_result $? "  Removed stale /home/sanjay/k3s.yaml"
 
-    # Skip kubectl cleanup since k3s uninstall removes all resources
-    debug_msg "Skipping kubectl cleanup - k3s uninstall removes all resources"
-    print_result 0 "  Skipped kubectl cleanup (handled by k3s uninstall)"
+
 }
 
 
