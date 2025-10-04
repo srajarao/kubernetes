@@ -92,12 +92,12 @@ function cleanup_k3s_agent_installation() {
 #Main Script Execution Starts Here
 
 # Print out the important environment variables for verification
-echo "KUBECONFIG_PATH set to $KUBECONFIG_PATH"
-echo "Token directory set to $TOKEN_DIR"
-echo "Project directory set to $PROJECT_DIR"
-echo "Image directory set to $IMAGE_DIR"
-echo "Tower IP set to $TOWER_IP"
-echo "Nano IP set to $NANO_IP"
+echo "KUBECONFIG_PATH   : $KUBECONFIG_PATH"
+echo "Token directory   : $TOKEN_DIR"
+echo "Project directory : $PROJECT_DIR"
+echo "Image directory   : $IMAGE_DIR"
+echo "Tower IP          : $TOWER_IP"
+echo "Nano IP           : $NANO_IP"
 
 debug_msg "Running cleanup_k3s_agent_installation"
 echo
