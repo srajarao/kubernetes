@@ -193,7 +193,7 @@ function build_and_save_fastapi_image() {
             fi
         else
             debug_msg "Image already available"
-            print_result 0 "  fastapi_nano:latest image already available"
+            # No need to print message here - already confirmed image availability above
         fi
         # Tag and push to local registry will happen in install phase after registry config
         debug_msg "Skipping registry push in build phase - will push after k3s registry config"
@@ -329,6 +329,9 @@ EOF
                 # Restart the service to load registries.yaml
                 sudo systemctl restart k3s-agent
                 print_result $? "  Restarted k3s-agent service to load registries.yaml"
+                # Also restart containerd to ensure registry config is loaded
+                debug_msg "Restarting k3s containerd service"
+                sudo systemctl restart k3s-agent 2>/dev/null || true
                 # Give containerd time to fully initialize with new registry config
                 debug_msg "Waiting for containerd to initialize with registry config"
                 sleep 5
