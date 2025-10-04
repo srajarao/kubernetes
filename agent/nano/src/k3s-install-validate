@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 # Variables
@@ -19,7 +20,8 @@ NANO_IP="${NANO_IP:-192.168.5.21}"                                              
 AGX_IP="${AGX_IP:-192.168.5.22}"                                                # AGX device IP
 TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
 TOKEN_FILE="$TOKEN_DIR/node-token"
-K3S_TOKEN=""""
+K3S_TOKEN=""
+REGISTRY_IP="${TOWER_IP}:5000"
 
 # Optionally clear the screen if CLEAR_SCREEN is set to 1
 if [ "${CLEAR_SCREEN:-0}" -eq 1 ]; then
@@ -43,6 +45,23 @@ function print_result() {
         debug_msg "$2 failed"
     fi
 }
+
+# Function to copy kubeconfig from token directory to target path
+copy_kubeconfig_from_token_dir() {
+    local src_kubeconfig="$TOKEN_DIR/k3s.yaml"
+    local dest_kubeconfig="$KUBECONFIG_PATH"
+    if [ -f "$src_kubeconfig" ]; then
+        mkdir -p "$(dirname \"$dest_kubeconfig\")"
+        cp "$src_kubeconfig" "$dest_kubeconfig"
+        chmod 600 "$dest_kubeconfig"
+        print_result 0 " Copied kubeconfig from $src_kubeconfig to $dest_kubeconfig"
+        return 0
+    else
+        print_result 1 " Kubeconfig not found at $src_kubeconfig"
+        return 1
+    fi
+}
+
 
 function cleanup_k3s_agent_installation() {
     # FIRST: Clean up any remaining nano-related pods BEFORE uninstalling agent
@@ -131,9 +150,12 @@ echo "Nano IP           : $NANO_IP"
 echo "AGX IP            : $AGX_IP"
 echo "Token Cert        : $TOKEN_CERT"
 echo "Token File        : $TOKEN_FILE"
+echo "Registry IP       : $REGISTRY_IP"
 
 
 
+echo -e "${GREEN}== Copy Kubeconfig from Token Dir ==${NC}"
+copy_kubeconfig_from_token_dir
 
 echo -e "${GREEN}== Cleanup k3s Agent Installation ==${NC}"
 cleanup_k3s_agent_installation
