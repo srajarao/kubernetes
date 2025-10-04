@@ -570,6 +570,23 @@ function apply_fastapi_deployment_yaml() {
         print_result 1 "  kubectl not accessible, skipping pod cleanup on node $NODE_NAME"
     else
         debug_msg "kubectl access verified, proceeding with pod cleanup"
+        
+        # Clean up failed/stuck pods first
+        debug_msg "Checking for failed/stuck fastapi-nano pods to clean up"
+        FAILED_PODS=$(kubectl --kubeconfig="$KUBECONFIG_PATH" get pods -l app=fastapi-nano --no-headers -o custom-columns=":metadata.name,:status.phase" 2>/dev/null | grep -E "(Failed|UnexpectedAdmissionError|CrashLoopBackOff|Pending)" | awk '{print $1}' || true)
+        if [ -n "$FAILED_PODS" ]; then
+            debug_msg "Found failed/stuck pods: $FAILED_PODS"
+            echo "$FAILED_PODS" | while read -r POD_NAME; do
+                if [ -n "$POD_NAME" ] && [ "$POD_NAME" != "" ]; then
+                    debug_msg "Deleting failed pod $POD_NAME"
+                    timeout 15s kubectl --kubeconfig="$KUBECONFIG_PATH" delete pod "$POD_NAME" --ignore-not-found=true --force --grace-period=0 >/dev/null 2>&1
+                fi
+            done
+            print_result 0 "  Cleaned up failed/stuck fastapi-nano pods"
+            sleep 3
+        fi
+        
+        # Then clean up pods on this specific node
         if kubectl --kubeconfig="$KUBECONFIG_PATH" get pods --all-namespaces --field-selector spec.nodeName=$NODE_NAME --no-headers -o custom-columns=":metadata.namespace,:metadata.name" 2>/dev/null | grep -q .; then
             debug_msg "Found pods running on node $NODE_NAME, cleaning them up before deployment"
             kubectl --kubeconfig="$KUBECONFIG_PATH" get pods --all-namespaces --field-selector spec.nodeName=$NODE_NAME --no-headers -o custom-columns=":metadata.namespace,:metadata.name" 2>/dev/null | while read -r NAMESPACE POD_NAME; do
@@ -589,6 +606,33 @@ function apply_fastapi_deployment_yaml() {
             debug_msg "No pods found running on node $NODE_NAME"
             print_result 0 "  No pods to clean up on node $NODE_NAME"
         fi
+    fi
+
+    # Wait for NVIDIA GPU device plugin to be ready before deploying GPU workloads
+    debug_msg "Checking NVIDIA GPU device plugin readiness"
+    echo -e "${YELLOW}  Waiting for NVIDIA GPU device plugin to be ready...${NC}"
+    PLUGIN_READY=false
+    for i in {1..30}; do  # Wait up to 5 minutes (30 * 10s)
+        if kubectl --kubeconfig="$KUBECONFIG_PATH" get pods -n kube-system -l app=nvidia-device-plugin-daemonset --no-headers 2>/dev/null | grep -q "Running"; then
+            debug_msg "NVIDIA device plugin pod is running"
+            # Additional check: verify GPU resources are available on nodes
+            if kubectl --kubeconfig="$KUBECONFIG_PATH" get nodes -o jsonpath='{.items[*].status.capacity.nvidia\.com/gpu}' 2>/dev/null | grep -q "[1-9]"; then
+                debug_msg "GPU resources detected on nodes"
+                PLUGIN_READY=true
+                print_result 0 "  NVIDIA GPU device plugin ready"
+                break
+            else
+                debug_msg "GPU plugin running but no GPU capacity detected yet"
+            fi
+        else
+            debug_msg "NVIDIA device plugin pod not running yet (attempt $i/30)"
+        fi
+        sleep 10
+    done
+
+    if [ "$PLUGIN_READY" = false ]; then
+        print_result 1 "  NVIDIA GPU device plugin not ready after 5 minutes - GPU workloads may fail"
+        echo -e "${YELLOW}  Warning: Proceeding with deployment but GPU allocation may fail${NC}"
     fi
 
     DEPLOYMENT_YAML="$CONFIG_DIR/start-fastapi-nano.yaml"
