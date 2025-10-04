@@ -77,8 +77,8 @@ function cleanup_k3s_agent_installation() {
 
     # Remove stale kubeconfig immediately after k3s uninstall
     debug_msg "Removing stale kubeconfig"
-    rm -f /home/sanjay/k3s.yaml >/dev/null 2>&1
-    print_result $? "  Removed stale /home/sanjay/k3s.yaml"
+    rm -f "$KUBECONFIG_PATH" >/dev/null 2>&1
+    print_result $? "  Removed stale $KUBECONFIG_PATH"
 
 
 }
