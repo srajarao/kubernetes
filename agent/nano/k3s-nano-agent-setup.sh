@@ -394,16 +394,30 @@ EOF
         else
             debug_msg "Image not in containerd, attempting registry pull"
             # Try to pull from registry first
+            debug_msg "Pulling from registry: ${TOWER_IP}:5000/fastapi_nano:latest"
             sudo k3s ctr images pull ${TOWER_IP}:5000/fastapi_nano:latest >/dev/null 2>&1
+            PULL_STATUS=$?
+            debug_msg "Registry pull exit status: $PULL_STATUS"
             if sudo k3s ctr images list 2>/dev/null | grep -q "${TOWER_IP}:5000/fastapi_nano"; then
                 debug_msg "Successfully pulled from registry"
                 print_result 0 "  Pulled fastapi_nano image from registry"
-            elif [ -f "$IMAGE_DIR/fastapi_nano.tar" ]; then
-                debug_msg "Registry pull failed, importing from tar backup"
-                sudo k3s ctr images import "$IMAGE_DIR/fastapi_nano.tar" >/dev/null 2>&1
-                print_result $? "  Imported fastapi_nano image into containerd from backup tar"
             else
-                print_result 1 "  No image source available (registry or tar)"
+                debug_msg "Registry pull failed, checking if image exists in registry"
+                # Check if Docker can see the image in registry
+                if docker pull ${TOWER_IP}:5000/fastapi_nano:latest >/dev/null 2>&1; then
+                    debug_msg "Image exists in registry but k3s pull failed, trying direct import"
+                    print_result 0 "  Image available in registry, importing via tar fallback"
+                else
+                    debug_msg "Image not found in registry"
+                    print_result 0 "  Image not available in registry, using tar import"
+                fi
+                if [ -f "$IMAGE_DIR/fastapi_nano.tar" ]; then
+                    debug_msg "Importing from tar backup"
+                    sudo k3s ctr images import "$IMAGE_DIR/fastapi_nano.tar" >/dev/null 2>&1
+                    print_result $? "  Imported fastapi_nano image into containerd from backup tar"
+                else
+                    print_result 1 "  No image source available (registry or tar)"
+                fi
             fi
         fi
         # Note: Nano devices typically don't have NVIDIA GPUs
