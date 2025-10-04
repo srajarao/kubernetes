@@ -558,6 +558,39 @@ EOF
 function apply_fastapi_deployment_yaml() {
     debug_msg "Running apply_fastapi_deployment_yaml"
     echo -e "${GREEN}\n== Apply FastAPI Deployment YAML ==${NC}"
+
+    # Clean up all pods on nano node before deployment to free GPU resources
+    debug_msg "Cleaning up all pods on nano node before deployment"
+    NODE_NAME=$(hostname)
+    debug_msg "Targeting pods on node: $NODE_NAME"
+
+    # First verify kubectl access
+    if ! kubectl --kubeconfig="$KUBECONFIG_PATH" cluster-info >/dev/null 2>&1; then
+        debug_msg "kubectl not accessible with current config, skipping pod cleanup"
+        print_result 1 "  kubectl not accessible, skipping pod cleanup on node $NODE_NAME"
+    else
+        debug_msg "kubectl access verified, proceeding with pod cleanup"
+        if kubectl --kubeconfig="$KUBECONFIG_PATH" get pods --all-namespaces --field-selector spec.nodeName=$NODE_NAME --no-headers -o custom-columns=":metadata.namespace,:metadata.name" 2>/dev/null | grep -q .; then
+            debug_msg "Found pods running on node $NODE_NAME, cleaning them up before deployment"
+            kubectl --kubeconfig="$KUBECONFIG_PATH" get pods --all-namespaces --field-selector spec.nodeName=$NODE_NAME --no-headers -o custom-columns=":metadata.namespace,:metadata.name" 2>/dev/null | while read -r NAMESPACE POD_NAME; do
+                if [ -n "$POD_NAME" ] && [ "$POD_NAME" != "" ] && [ "$POD_NAME" != "<none>" ]; then
+                    debug_msg "Deleting pod $NAMESPACE/$POD_NAME from node $NODE_NAME before deployment"
+                    if timeout 15s kubectl --kubeconfig="$KUBECONFIG_PATH" delete pod "$POD_NAME" -n "$NAMESPACE" --ignore-not-found=true --force --grace-period=0 >/dev/null 2>&1; then
+                        debug_msg "Successfully deleted pod $NAMESPACE/$POD_NAME"
+                    else
+                        debug_msg "Failed to delete pod $NAMESPACE/$POD_NAME"
+                    fi
+                fi
+            done
+            print_result 0 "  Cleaned up all pods on node $NODE_NAME before deployment"
+            # Give pods time to terminate and free GPU resources
+            sleep 5
+        else
+            debug_msg "No pods found running on node $NODE_NAME"
+            print_result 0 "  No pods to clean up on node $NODE_NAME"
+        fi
+    fi
+
     DEPLOYMENT_YAML="$CONFIG_DIR/start-fastapi-nano.yaml"
     debug_msg "DEPLOYMENT_YAML set to $DEPLOYMENT_YAML"
     if [ -f "$DEPLOYMENT_YAML" ]; then
@@ -573,28 +606,6 @@ function apply_fastapi_deployment_yaml() {
         else
             print_result 1 "  No deployment YAML found (skipping apply)"
         fi
-    fi
-}
-
-function verify_node_ready() {
-    debug_msg "Running verify_node_ready"
-    echo -e "${GREEN}\n== Verify Node Ready Status ==${NC}"
-    NODE_NAME=$(hostname)
-    debug_msg "NODE_NAME set to $NODE_NAME"
-    for i in {1..12}; do
-        debug_msg "Checking node status, attempt $i"
-        NODE_STATUS=$(timeout 10s kubectl --kubeconfig="$KUBECONFIG_PATH" get nodes --no-headers | grep "$NODE_NAME" | awk '{print $2}')
-        debug_msg "NODE_STATUS: $NODE_STATUS"
-        if [ "$NODE_STATUS" = "Ready" ]; then
-            print_result 0 "  Node $NODE_NAME is Ready in the cluster"
-            break
-        fi
-        sleep 5
-    done
-    if [ "$NODE_STATUS" != "Ready" ]; then
-        debug_msg "Node not ready after 12 attempts"
-        print_result 1 "  Node $NODE_NAME is not Ready (status: $NODE_STATUS)"
-        timeout 10s kubectl --kubeconfig="$KUBECONFIG_PATH" describe node "$NODE_NAME"
     fi
 }
 
@@ -812,9 +823,6 @@ install_k3s_agent_with_token
 echo -e "${GREEN}===============================================${NC}"
 debug_msg "Calling apply_fastapi_deployment_yaml"
 apply_fastapi_deployment_yaml
-echo -e "${GREEN}===============================================${NC}"
-debug_msg "Calling verify_node_ready"
-verify_node_ready
 echo -e "${GREEN}===============================================${NC}"
 debug_msg "Calling check_fastapi_pod_status"
 check_fastapi_pod_status
