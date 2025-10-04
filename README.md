@@ -1,8 +1,18 @@
 # Kubernetes Multi-Node Cluster Setup
 
-This repository contains the configuration and setup scripts for a multi-node Kubernetes cluster with specialized nodes for different AI/ML workloads.
+This repository contains the configuration and setup scripts for a multi-node Kubernetes cluster with specialized nodes for different AI/ML workloads.## Health Checks
 
-## Cluster Architecture
+Each node performs comprehensive health checks:
+- ✅ libstdc++ compatibility (ARM64)
+- ✅ cuSPARSELt GPU library (NVIDIA optimized)
+- ✅ PyTorch GPU acceleration (CUDA available: True, GPU: Orin)
+- ✅ TensorFlow GPU acceleration (GPU visible, CUDA built)
+- ✅ TensorRT inference engine (GPU optimized)
+- ✅ Jupyter Lab functionality (port 8888-8889)
+- ✅ FastAPI dependencies (configurable ports)
+- ✅ Database connectivity (PostgreSQL on Tower)
+- ✅ NFS mount validation (/mnt/vmstore)
+- ✅ Network connectivity (all cluster nodes)Architecture
 
 - **Tower** (Control Plane): AMD64 server acting as master node
 - **AGX** (Agent): NVIDIA Jetson AGX Orin for heavy AI workloads  
@@ -37,17 +47,17 @@ kubernetes/
 │   └── restore_backup.sh           # Configuration restore
 ├── agent/
 │   ├── nano/                    # Nano-specific configurations
-│   │   ├── dockerfile.nano.req  # Optimized Dockerfile for Jetson Nano
-│   │   ├── requirements.nano.txt # Python dependencies
+│   │   ├── dockerfile.nano.req  # GPU-enabled Dockerfile (JetPack r36.4.0 base)
+│   │   ├── requirements.nano.txt # Python deps: PyTorch, TensorFlow, TensorRT
 │   │   ├── config/             # Configuration files
-│   │   │   ├── nano-config.env
-│   │   │   ├── postgres.env
-│   │   │   └── start-fastapi-nano.yaml
+│   │   │   ├── postgres.env    # PostgreSQL connection (192.168.5.1:5432)
+│   │   │   ├── nano-config.env # Nano-specific config
+│   │   │   └── start-fastapi-nano.yaml # K8s deployment YAML with GPU support
 │   │   └── src/                # Source code and scripts
-│   │       ├── fastapi_app.py  # Main FastAPI application
-│   │       ├── fastapi_healthcheck.py
+│   │       ├── fastapi_app.py  # FastAPI with GPU-accelerated ML support
+│   │       ├── fastapi_healthcheck.py # GPU library health checks
 │   │       ├── k3s-nano-agent-setup.sh
-│   │       └── validate-nano-setup.sh
+│   │       └── validate-nano-setup.sh # Comprehensive validation
 │   └── agx/                    # AGX-specific configurations (similar structure)
 ├── server/                     # Tower server setup
 │   └── k8s-setup-validate.sh   # K3s server installation
@@ -170,9 +180,18 @@ See `network/` scripts for detailed network configuration.
 
 ## Access Points
 
-- **FastAPI Swagger UI**: `http://<node-ip>:30002/docs`
-- **Jupyter Lab**: `http://<node-ip>:30003/jupyter`
-- **Health Check**: `http://<node-ip>:30002/health`
+- **FastAPI Swagger UI**: `http://<node-ip>:<FASTAPI_PORT>/docs` (default: 8000, nano: 8001)
+- **Jupyter Lab**: `http://<node-ip>:8889/jupyter/lab` (nano, GPU-enabled environment)
+- **Health Check**: `http://<node-ip>:<FASTAPI_PORT>/health`
+- **System Info**: `http://<node-ip>:<FASTAPI_PORT>/info`
+- **Metrics**: `http://<node-ip>:<FASTAPI_PORT>/metrics`
+- **Database**: PostgreSQL at `192.168.5.1:5432` (Tower)
+- **System Info**: `http://<node-ip>:<FASTAPI_PORT>/info`
+- **Metrics**: `http://<node-ip>:<FASTAPI_PORT>/metrics`
+- **Database**: PostgreSQL at `192.168.5.1:5432` (Tower)
+- **System Info**: `http://<node-ip>:<FASTAPI_PORT>/info`
+- **Metrics**: `http://<node-ip>:<FASTAPI_PORT>/metrics`
+- **Database**: PostgreSQL at `192.168.5.1:5432` (Tower)
 
 ## Performance Optimizations
 
@@ -184,17 +203,29 @@ See `network/` scripts for detailed network configuration.
 ## Health Checks
 
 Each node performs comprehensive health checks:
-- ✅ libstdc++ compatibility
-- ✅ cuSPARSELt GPU library
-- ✅ PyTorch with CUDA support
-- ✅ TensorFlow GPU acceleration
-- ✅ TensorRT inference engine
-- ✅ Jupyter Lab functionality
-- ✅ FastAPI dependencies
-- ✅ Database connectivity
+- ✅ libstdc++ compatibility (ARM64)
+- ✅ cuSPARSELt GPU library (NVIDIA optimized)
+- ✅ PyTorch CPU inference (ARM64 wheels)
+- ✅ TensorFlow CPU (ARM64 optimized)
+- ✅ TensorRT inference engine (CPU fallback)
+- ✅ Jupyter Lab functionality (port 8888-8889)
+- ✅ FastAPI dependencies (configurable ports)
+- ✅ Database connectivity (PostgreSQL on Tower)
+- ✅ NFS mount validation (/mnt/vmstore)
+- ✅ Network connectivity (all cluster nodes)
 
 ## Recent Updates
 
+## Recent Updates
+
+- **October 2025**: Complete GPU-enabled ML container setup for Jetson Nano
+  - NVIDIA JetPack r36.4.0 base image with full GPU support
+  - PyTorch, TensorFlow, TensorRT with GPU acceleration enabled
+  - FORCE_GPU_CHECKS environment variable for container GPU access
+  - Configurable FastAPI ports to resolve conflicts (FASTAPI_PORT env var)
+  - PostgreSQL connectivity to Tower database (192.168.5.1:5432)
+  - Comprehensive health checks for all GPU libraries
+  - Pod structure alignment with Kubernetes expectations
 - Fixed path resolution issues in setup scripts
 - Added comprehensive timestamps for performance monitoring
 - Implemented optimized Docker image handling
@@ -213,13 +244,38 @@ When making changes:
 ## Troubleshooting
 
 ### Common Issues
-- Pod restart loops: Check `/health` and `/ready` endpoints
-- GPU resource conflicts: Verify nvidia.com/gpu allocation
-- Image pull failures: Check registry connectivity to 192.168.5.1:5000
-- Performance issues: Review timestamps in setup script output
+- **Port Conflicts**: Use `FASTAPI_PORT` environment variable (e.g., `FASTAPI_PORT=8001`)
+- **Database Connection**: Verify `postgres.env` file at `/app/app/config/postgres.env`
+- **Pod restart loops**: Check `/health` and `/ready` endpoints
+- **GPU resource conflicts**: Verify nvidia.com/gpu allocation
+- **Image pull failures**: Check registry connectivity to 192.168.5.1:5000
+- **Performance issues**: Review timestamps in setup script output
+- **ML Library Issues**: Check ARM64 compatibility and CPU-only configuration
 
-### Logs
+### Container-Specific Issues
 ```bash
-kubectl logs <pod-name>
-kubectl describe pod <pod-name>
+# Test container locally
+docker run --rm -it --runtime=nvidia --network=host \
+  -e FASTAPI_PORT=8001 \
+  -v /home/sanjay:/mnt/vmstore \
+  fastapi_nano
+
+# Check health inside container
+python app/src/fastapi_healthcheck.py
+
+# Test database connection
+python -c "
+import psycopg2
+import os
+from dotenv import load_dotenv
+load_dotenv('/app/app/config/postgres.env')
+conn = psycopg2.connect(
+    host=os.getenv('DB_HOST'),
+    port=os.getenv('DB_PORT'),
+    dbname=os.getenv('DB_NAME'),
+    user=os.getenv('DB_USER'),
+    password=os.getenv('DB_PASSWORD')
+)
+print('Database connection successful')
+"
 ```
