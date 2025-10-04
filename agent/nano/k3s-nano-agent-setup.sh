@@ -195,24 +195,8 @@ function build_and_save_fastapi_image() {
             debug_msg "Image already available"
             print_result 0 "  fastapi_nano:latest image already available"
         fi
-        # Tag and push to local registry only if we built/rebuild the image
-        # OR if cached image is not in registry
-        if [ "$BUILT_IMAGE" = true ] || ! sudo k3s ctr images list 2>/dev/null | grep -q "${TOWER_IP}:5000/fastapi_nano"; then
-            if [ "$BUILT_IMAGE" = false ]; then
-                debug_msg "Cached image not in registry, pushing to ensure availability"
-                print_result 0 "  Pushing cached image to registry for k3s access"
-            fi
-            debug_msg "Tagging image for registry"
-            docker tag fastapi_nano:latest ${TOWER_IP}:5000/fastapi_nano:latest
-            print_result $? "  Tagged image for local registry"
-            debug_msg "Pushing image to registry"
-            docker push ${TOWER_IP}:5000/fastapi_nano:latest >/dev/null 2>&1
-            PUSH_STATUS=$?
-            print_result $PUSH_STATUS "  Pushed image to local registry ${TOWER_IP}:5000"
-        else
-            debug_msg "Image already available in registry, skipping push"
-            print_result 0 "  Image already available in registry (push not needed)"
-        fi
+        # Tag and push to local registry will happen in install phase after registry config
+        debug_msg "Skipping registry push in build phase - will push after k3s registry config"
         
         # Save to tar as backup only if we built/re-built the image or tar doesn't exist
         if [ "$BUILT_IMAGE" = true ] || [ ! -f "$TAR_FILE" ]; then
@@ -231,9 +215,7 @@ function build_and_save_fastapi_image() {
             fi
         else
             debug_msg "Using existing tar backup, no save needed"
-            if [ -f "$TAR_FILE" ]; then
-                print_result 0 "  Using existing tar backup (no save needed)"
-            fi
+            # No message needed for existing tar backup
         fi
     else
         debug_msg "Dockerfile not found"
@@ -384,6 +366,28 @@ EOF
         fi
         # Import the FastAPI image into containerd - try registry pull first, then tar import
         debug_msg "Ensuring image is available in containerd"
+
+        # First, ensure the image is pushed to registry (now that registry config is set up)
+        if ! sudo k3s ctr images list 2>/dev/null | grep -q "${TOWER_IP}:5000/fastapi_nano"; then
+            debug_msg "Image not in registry, pushing from local Docker"
+            # Tag and push to registry now that insecure registry is configured
+            docker tag fastapi_nano:latest ${TOWER_IP}:5000/fastapi_nano:latest 2>/dev/null
+            if [ $? -eq 0 ]; then
+                docker push ${TOWER_IP}:5000/fastapi_nano:latest >/dev/null 2>&1
+                if [ $? -eq 0 ]; then
+                    debug_msg "Successfully pushed to registry"
+                    print_result 0 "  Pushed fastapi_nano image to registry"
+                else
+                    debug_msg "Failed to push to registry"
+                    print_result 1 "  Failed to push image to registry"
+                fi
+            else
+                debug_msg "Failed to tag image for registry"
+                print_result 1 "  Failed to tag image for registry"
+            fi
+        fi
+
+        # Now try to pull from registry or import from tar
         if sudo k3s ctr images list 2>/dev/null | grep -q "${TOWER_IP}:5000/fastapi_nano"; then
             debug_msg "Image already available in containerd"
             print_result 0 "  FastAPI image available in containerd"
