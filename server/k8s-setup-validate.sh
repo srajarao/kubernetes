@@ -1,5 +1,4 @@
 
-
 #!/bin/bash
 clear
 
@@ -27,9 +26,14 @@ TOWER_IP="${TOWER_IP:-192.168.5.1}"                                             
 NANO_IP="${NANO_IP:-192.168.5.21}"                                                 # Nano Device IP
 AGX_IP="${AGX_IP:-192.168.5.22}"                                                   # AGX device IP
 REGISTRY_IP="${TOWER_IP}:5000"
+<<<<<<< HEAD
 NANO_PATH="/export/vmstore/nano_home/containers/kubernetes/agent/nano/app"
 AGX_PATH="/export/vmstore/agx_home/containers/kubernetes/agent/agx/app"
 
+=======
+NANO_PATH="/export/vmstore/nano_home/containers/kubernetes/agent/nano"
+AGX_PATH="/export/vmstore/agx_home/containers/kubernetes/agent/agx/"
+>>>>>>> 1310daa4d0590d0386ca0c617b38ce0bb0ef84b2
 
 function print_result() {
     if [ "$1" -eq 0 ]; then
@@ -93,6 +97,59 @@ function check_docker_dns() {
     grep -q '"dns":' /etc/docker/daemon.json
     print_result $? "  Docker DNS config (/etc/docker/daemon.json)"
 }
+function setup_local_registry() {
+    echo -e "\n${GREEN}Setup Local Registry with HTTPS${NC}"
+
+    # Create certificates directory
+    sudo mkdir -p /etc/docker/certs.d/192.168.5.1:5000
+
+    # Generate self-signed certificate for registry
+    if [ ! -f /etc/docker/certs.d/192.168.5.1:5000/ca.crt ]; then
+        echo -e "${YELLOW}  Generating self-signed certificate for registry...${NC}"
+        sudo openssl req -newkey rsa:4096 -nodes -sha256 \
+            -keyout /etc/docker/certs.d/192.168.5.1:5000/registry.key \
+            -x509 -days 365 \
+            -out /etc/docker/certs.d/192.168.5.1:5000/ca.crt \
+            -subj "/C=US/ST=State/L=City/O=Organization/CN=192.168.5.1" \
+            -addext "subjectAltName=IP:192.168.5.1" >/dev/null 2>&1
+        sudo cp /etc/docker/certs.d/192.168.5.1:5000/ca.crt /etc/docker/certs.d/192.168.5.1:5000/registry.crt
+        print_result $? "  Generated self-signed certificate for registry"
+    fi
+
+    # Check if registry is running
+    docker ps | grep -q 'registry:2'
+    if [ $? -eq 0 ]; then
+        print_result 0 "  Local Docker registry running"
+    else
+        # Start registry with HTTPS
+        docker run -d \
+            -p 5000:5000 \
+            --restart=always \
+            --name registry \
+            -v /etc/docker/certs.d/192.168.5.1:5000:/certs \
+            -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
+            -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt \
+            -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key \
+            registry:2 >/dev/null 2>&1
+        print_result $? "  Local Docker registry started with HTTPS"
+    fi
+    grep -q '"dns":' /etc/docker/daemon.json && grep -q '"insecure-registries":' /etc/docker/daemon.json && grep -q 'localhost:5000' /etc/docker/daemon.json && grep -q '192.168.5.1:5000' /etc/docker/daemon.json
+    if [ $? -eq 0 ]; then
+        print_result 0 "  Docker daemon.json DNS and insecure-registries present"
+    else
+        print_result 1 "  Docker daemon.json missing DNS or insecure-registries (manual merge required)"
+    fi
+    sudo systemctl restart docker >/dev/null 2>&1
+    print_result $? "  Docker daemon restarted"
+    docker tag postgres:latest localhost:5000/postgres:latest >/dev/null 2>&1
+    print_result $? "  Tagged postgres for local registry"
+    docker push localhost:5000/postgres:latest >/dev/null 2>&1
+    print_result $? "  Pushed postgres to local registry"
+    docker tag pgadmin:latest localhost:5000/pgadmin:latest >/dev/null 2>&1
+    print_result $? "  Tagged pgadmin for local registry"
+    docker push localhost:5000/pgadmin:latest >/dev/null 2>&1
+    print_result $? "  Pushed pgadmin to local registry"
+}
 
 function create_registries_yaml(){
     # Create registries.yaml for insecure communication with local registry
@@ -100,9 +157,14 @@ function create_registries_yaml(){
     sudo mkdir -p /etc/rancher/k3s
     sudo tee $REGISTRIES_YAML >/dev/null <<EOF
 mirrors:
-    "${REGISTRY_IP}":
-        endpoint:
-            - "http://${REGISTRY_IP}"
+  "192.168.5.1:5000":
+    endpoint:
+      - "http://192.168.5.1:5000"
+
+configs:
+  "192.168.5.1:5000":
+    tls:
+      insecure_skip_verify: true
 EOF
         print_result $? "  Created $REGISTRIES_YAML for insecure registry communication"
 }
@@ -155,10 +217,9 @@ function check_k3s() {
         NANO_CERT=${NANO_PATH}/server-ca.crt
         AGX_CERT=${AGX_PATH}/server-ca.crt
         sudo cp "$CA_SRC" "$NANO_CERT" 2>/dev/null
-        print_result $? "  Copied CA cert to nano: $NANO_CERT"
         sudo cp "$CA_SRC" "$AGX_CERT" 2>/dev/null
-        print_result $? "  Copied CA cert to agx: $AGX_CERT"
         sudo chmod 644 "$NANO_CERT" "$AGX_CERT"
+        print_result $? "  Copied CA cert to agent token directories"
     else
         print_result 1 "  /var/lib/rancher/k3s/server/tls/server-ca.crt was not found"
     fi
@@ -169,13 +230,13 @@ function check_k3s() {
         NANO_REGISTRY=${NANO_PATH}/config/registries.yaml
         AGX_REGISTRY=${AGX_PATH}/config/registries.yaml
         sudo cp "$CA_SRC" "$NANO_REGISTRY" 2>/dev/null
-        print_result $? "  Copied registries.yaml to nano: $NANO_REGISTRY"
         sudo cp "$CA_SRC" "$AGX_REGISTRY" 2>/dev/null
-        print_result $? "  Copied registries.yaml to agx: $AGX_REGISTRY"
         sudo chmod 644 "$NANO_REGISTRY" "$AGX_REGISTRY"
+        print_result $? "  Copied registries.yaml to agent directories"
     else
         print_result 1 "  /etc/rancher/k3s/registries.yaml not found"
     fi
+
 
     if sudo test -f /var/lib/rancher/k3s/server/node-token; then
         # Ensure node-token is present for both agents (if needed, adjust path as required)
@@ -183,13 +244,16 @@ function check_k3s() {
         NANO_TOKEN=${NANO_PATH}/config/node-token
         AGX_TOKEN=${AGX_PATH}/node-token
         sudo cp "$TOKEN_SRC" "$NANO_TOKEN" 2>/dev/null
-        print_result $? "  Copied node-token to nano: $NANO_TOKEN"
         sudo cp "$TOKEN_SRC" "$AGX_TOKEN" 2>/dev/null
-        print_result $? "  Copied node-token to agx: $AGX_TOKEN"
         sudo chmod 644 "$NANO_TOKEN" "$AGX_TOKEN"
+        print_result $? "  Copied node-token to agent directories"
     else
         print_result 1 "  /var/lib/rancher/k3s/server/node-token not found"
     fi
+
+
+
+
 
     # Check k3s API server port
     sudo ss -tulnp | grep 6443 >/dev/null 2>&1
@@ -202,126 +266,59 @@ function check_k3s() {
     print_result $? "  kubectl get nodes"
 }
 
-function setup_local_registry() {
-    echo -e "\n${GREEN}Setup Local Registry (HTTP)${NC}"
+function check_kubeconfig() {
+    echo -e "\n${GREEN}Kubeconfig & Trust${NC}"
+    NANO_SERVER_IP="192.168.5.1"
+    AGX_SERVER_IP="192.168.10.1"
+    CA_PATH="/var/lib/rancher/k3s/server/tls/server-ca.crt"
 
-    # Check if registry is running
-    docker ps | grep -q 'registry:2'
-    if [ $? -eq 0 ]; then
-        print_result 0 "  Local Docker registry running"
+    # Check for both nano and AGX server entries
+    if (grep -q "server: https://$NANO_SERVER_IP:6443" ~/.kube/config || grep -q "server: https://$AGX_SERVER_IP:6443" ~/.kube/config) \
+        && grep -q "certificate-authority: $CA_PATH" ~/.kube/config; then
+        print_result 0 "  kubeconfig server & CA"
     else
-        # Start registry with HTTP (no TLS)
-        docker run -d \
-            -p 5000:5000 \
-            --restart=always \
-            --name registry \
-            registry:2 >/dev/null 2>&1
-        print_result $? "  Local Docker registry started (HTTP)"
-    fi
-    grep -q '"dns":' /etc/docker/daemon.json && grep -q '"insecure-registries":' /etc/docker/daemon.json && grep -q 'localhost:5000' /etc/docker/daemon.json && grep -q '192.168.5.1:5000' /etc/docker/daemon.json
-    if [ $? -eq 0 ]; then
-        print_result 0 "  Docker daemon.json DNS and insecure-registries present"
-    else
-        print_result 1 "  Docker daemon.json missing DNS or insecure-registries (manual merge required)"
-    fi
-    sudo systemctl restart docker >/dev/null 2>&1
-    print_result $? "  Docker daemon restarted"
-    docker tag postgres:latest localhost:5000/postgres:latest >/dev/null 2>&1
-    print_result $? "  Tagged postgres for local registry"
-    docker push localhost:5000/postgres:latest >/dev/null 2>&1
-    print_result $? "  Pushed postgres to local registry"
-    docker tag pgadmin:latest localhost:5000/pgadmin:latest >/dev/null 2>&1
-    print_result $? "  Tagged pgadmin for local registry"
-    docker push localhost:5000/pgadmin:latest >/dev/null 2>&1
-    print_result $? "  Pushed pgadmin to local registry"
-}
-
-# Verify the local Docker registry running on HTTP
-function verify_local_registry_http() {
-    echo -e "\n${GREEN}Verifying Local Registry (HTTP)${NC}"
-    # Check if registry container is running
-    docker ps | grep -q 'registry:2'
-    print_result $? "  Registry container running (HTTP)"
-
-    # Test HTTP connectivity
-    if curl -s http://192.168.5.1:5000/v2/ | grep -q '{}' ; then
-        print_result 0 "  Registry HTTP connectivity confirmed"
-    else
-        print_result 1 "  Registry HTTP connectivity failed"
+        print_result 1 "  kubeconfig server & CA"
+        # Auto-fix for nano
+        sed -i "s#server: https://127.0.0.1:6443#server: https://$NANO_SERVER_IP:6443#g" ~/.kube/config
+        sed -i "s|certificate-authority:.*|certificate-authority: $CA_PATH|" ~/.kube/config
+        # Also auto-fix for AGX if needed
+        sed -i "s#server: https://$NANO_SERVER_IP:6443#server: https://$AGX_SERVER_IP:6443#g" ~/.kube/config
+        # Re-check
+        if (grep -q "server: https://$NANO_SERVER_IP:6443" ~/.kube/config || grep -q "server: https://$AGX_SERVER_IP:6443" ~/.kube/config) \
+            && grep -q "certificate-authority: $CA_PATH" ~/.kube/config; then
+            print_result 0 "  kubeconfig server & CA auto-fixed"
+        else
+            print_result 1 "  kubeconfig server & CA auto-fix failed"
+        fi
     fi
 }
 
-
-
-# Create a local Docker registry with HTTPS (self-signed certs)
-function setup_local_registry_https() {
-    echo -e "\n${GREEN}Setup Local Registry with HTTPS${NC}"
-
-    REGISTRY_DIR="/etc/docker/certs.d/192.168.5.1:5000"
-    REGISTRY_IP="192.168.5.1"
-
-    # Create certificates directory
-    sudo mkdir -p "$REGISTRY_DIR"
-
-    # Generate self-signed certificate for registry if not present
-    if [ ! -f "$REGISTRY_DIR/ca.crt" ]; then
-        echo -e "${YELLOW}  Generating self-signed certificate for registry...${NC}"
-        sudo openssl req -newkey rsa:4096 -nodes -sha256 \
-            -keyout "$REGISTRY_DIR/registry.key" \
-            -x509 -days 365 \
-            -out "$REGISTRY_DIR/ca.crt" \
-            -subj "/C=US/ST=State/L=City/O=Organization/CN=$REGISTRY_IP" \
-            -addext "subjectAltName=IP:$REGISTRY_IP" >/dev/null 2>&1
-        sudo cp "$REGISTRY_DIR/ca.crt" "$REGISTRY_DIR/registry.crt"
-        print_result $? "  Generated self-signed certificate for registry"
-    fi
-
-    # Stop and remove any existing registry container
-    docker stop registry >/dev/null 2>&1
-    docker rm registry >/dev/null 2>&1
-
-    # Start registry with HTTPS
-    docker run -d \
-        -p 5000:5000 \
-        --restart=always \
-        --name registry \
-        -v "$REGISTRY_DIR":/certs \
-        -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
-        -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt \
-        -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key \
-        registry:2 >/dev/null 2>&1
-    print_result $? "  Local Docker registry started with HTTPS"
-
-    # Check Docker daemon config for DNS and insecure-registries
-    grep -q '"dns":' /etc/docker/daemon.json && grep -q '"insecure-registries":' /etc/docker/daemon.json && grep -q 'localhost:5000' /etc/docker/daemon.json && grep -q '192.168.5.1:5000' /etc/docker/daemon.json
-    if [ $? -eq 0 ]; then
-        print_result 0 "  Docker daemon.json DNS and insecure-registries present"
-    else
-        print_result 1 "  Docker daemon.json missing DNS or insecure-registries (manual merge required)"
-    fi
+function build_images() {
+    echo -e "\n${GREEN}Build & Save Images${NC}"
     sudo systemctl restart docker >/dev/null 2>&1
     print_result $? "  Docker daemon restarted"
-
-    # Tag and push images to the HTTPS registry
-    docker tag postgres:latest 192.168.5.1:5000/postgres:latest >/dev/null 2>&1
-    print_result $? "  Tagged postgres for HTTPS registry"
-    docker push 192.168.5.1:5000/postgres:latest >/dev/null 2>&1
-    print_result $? "  Pushed postgres to HTTPS registry"
-    docker tag pgadmin:latest 192.168.5.1:5000/pgadmin:latest >/dev/null 2>&1
-    print_result $? "  Tagged pgadmin for HTTPS registry"
-    docker push 192.168.5.1:5000/pgadmin:latest >/dev/null 2>&1
-    print_result $? "  Pushed pgadmin to HTTPS registry"
-
-    # Test HTTPS connectivity
-    sleep 2
-    if curl -k https://192.168.5.1:5000/v2/ >/dev/null 2>&1; then
-        print_result 0 "  Registry HTTPS connectivity confirmed"
-    else
-        print_result 1 "  Registry HTTPS connectivity failed"
-    fi
+    
+    # Build PostgreSQL image from new location
+    cd /home/sanjay/containers/kubernetes/server/postgres
+    DOCKER_BUILDKIT=1 docker build -f dockerfile.postgres -t postgres:latest . >/dev/null 2>&1
+    print_result $? "  Built postgres:latest image"
+    docker save -o /export/vmstore/k3sRegistry/postgres.tar postgres:latest >/dev/null 2>&1
+    print_result $? "  Saved postgres image to tar"
+    
+    # Build pgAdmin image from new location
+    cd /home/sanjay/containers/kubernetes/server/pgadmin
+    DOCKER_BUILDKIT=1 docker build -f dockerfile.pgadmin -t pgadmin:latest . >/dev/null 2>&1
+    print_result $? "  Built pgadmin:latest image"
+    docker save -o /export/vmstore/k3sRegistry/pgadmin.tar pgadmin:latest >/dev/null 2>&1
+    print_result $? "  Saved pgadmin image to tar"
 }
 
 function uninstall_k3s_cleanup() {
+    echo -e "\n${GREEN}Uninstall k3s & Clean Up${NC}"
+    # Run all uninstall steps silently
+    if [ -x "/usr/local/bin/k3s-uninstall.sh" ]; then
+        sudo /usr/local/bin/k3s-uninstall.sh >/dev/null 2>&1
+    fi
     sudo rm -rf /etc/rancher/k3s /var/lib/rancher/k3s /var/lib/kubelet /run/k3s /run/flannel /var/lib/cni /usr/local/bin/k3s /usr/local/bin/k3s-killall.sh /usr/local/bin/k3s-uninstall.sh /usr/local/bin/crictl /usr/local/bin/ctr /etc/systemd/system/k3s.service /etc/systemd/system/k3s.service.env >/dev/null 2>&1
     sudo ip link delete cni0 2>/dev/null
     sudo ip link delete flannel.1 2>/dev/null
@@ -450,20 +447,31 @@ function check_individual_pod_status() {
     fi
 }
 
+
+
+
 function setup_agent_config_files() {
     debug_msg "Running setup_agent_config_files"
     echo -e "\n${GREEN}Setting up Agent Configuration Files${NC}"
 
+<<<<<<< HEAD
     AGENT_BASE_DIR=$NANO_PATH
 
     # --- Nano agent config ---
     NANO_CONFIG_DIR="$AGENT_BASE_DIR/config"
+=======
+    AGENT_BASE_DIR="/home/sanjay/containers/kubernetes/agent"
+
+    # --- Nano agent config ---
+    NANO_CONFIG_DIR="$AGENT_BASE_DIR/nano/app/config"
+>>>>>>> 1310daa4d0590d0386ca0c617b38ce0bb0ef84b2
     mkdir -p "$NANO_CONFIG_DIR" 2>/dev/null
     print_result $? "  Created nano agent config directory: $NANO_CONFIG_DIR"
 
-    # nano-config.env (always overwrite)
+    # nano-config.env
     NANO_CONFIG_ENV="$NANO_CONFIG_DIR/nano-config.env"
-    cat > "$NANO_CONFIG_ENV" << 'EOF'
+    if [ ! -f "$NANO_CONFIG_ENV" ]; then
+        cat > "$NANO_CONFIG_ENV" << 'EOF'
 # Jetson Nano Configuration
 # This file is auto-generated by server setup script
 
@@ -483,7 +491,7 @@ LOG_DIR="/home/sanjay/containers/kubernetes/agent/nano/app/logs"
 DATA_DIR="/home/sanjay/containers/kubernetes/agent/nano/app/data"
 TOKEN_DIR="/mnt/vmstore/nano_home/containers/kubernetes/agent/nano/app"
 PROJECT_DIR="/home/sanjay/containers/kubernetes/agent/nano"
-IMAGE_DIR="/mnt/vmstore/tower_home/containers/kubernetes/server"
+IMAGE_DIR="/home/sanjay/containers"
 
 # Docker settings
 REGISTRY_URL="192.168.5.1:5000"
@@ -494,11 +502,15 @@ K3S_URL="https://192.168.5.1:6443"
 K3S_TOKEN_FILE="/home/sanjay/k3s-agent-token"
 KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
 EOF
-    print_result $? "  Overwrote $NANO_CONFIG_ENV"
+        print_result $? "  Created nano-config.env"
+    else
+        print_result 0 "  nano-config.env already exists"
+    fi
 
-    # nano postgres.env (always overwrite)
+    # nano postgres.env
     NANO_POSTGRES_ENV="$NANO_CONFIG_DIR/postgres.env"
-    cat > "$NANO_POSTGRES_ENV" << 'EOF'
+    if [ ! -f "$NANO_POSTGRES_ENV" ]; then
+        cat > "$NANO_POSTGRES_ENV" << 'EOF'
 # PostgreSQL Configuration for Nano Agent
 POSTGRES_HOST=192.168.5.1
 POSTGRES_PORT=5432
@@ -506,6 +518,7 @@ POSTGRES_DB=postgres
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=mysecretpassword
 EOF
+<<<<<<< HEAD
     print_result $? "  Overwrote $NANO_POSTGRES_ENV"
     # --- AGX agent config ---
     AGX_CONFIG_DIR=$AGX_PATH/config 
@@ -513,6 +526,26 @@ EOF
     print_result $? "  Created agx agent config directory: $AGX_CONFIG_DIR"
     AGX_CONFIG_ENV="$AGX_CONFIG_DIR/agx-config.env"
     cat > "$AGX_CONFIG_ENV" << 'EOF'
+=======
+        print_result $? "  Created postgres.env for nano"
+    else
+        print_result 0 "  postgres.env already exists for nano"
+    fi
+
+
+
+
+
+    # --- AGX agent config ---
+    AGX_CONFIG_DIR="$AGENT_BASE_DIR/agx/app/config"
+    if [ -d "$AGENT_BASE_DIR/agx" ]; then
+        mkdir -p "$AGX_CONFIG_DIR" 2>/dev/null
+        print_result $? "  Created agx agent config directory: $AGX_CONFIG_DIR"
+
+        AGX_CONFIG_ENV="$AGX_CONFIG_DIR/agx-config.env"
+        if [ ! -f "$AGX_CONFIG_ENV" ]; then
+            cat > "$AGX_CONFIG_ENV" << 'EOF'
+>>>>>>> 1310daa4d0590d0386ca0c617b38ce0bb0ef84b2
 # NVIDIA AGX Xavier Configuration
 # This file is auto-generated by server setup script
 
@@ -532,7 +565,7 @@ LOG_DIR="/home/sanjay/containers/kubernetes/agent/agx/app/logs"
 DATA_DIR="/home/sanjay/containers/kubernetes/agent/agx/app/data"
 TOKEN_DIR="/mnt/vmstore/agx_home/containers/kubernetes/agent/agx/app"
 PROJECT_DIR="/home/sanjay/containers/kubernetes/agent/agx"
-IMAGE_DIR="/mnt/vmstore/tower_home/containers/kubernetes/server
+IMAGE_DIR="/home/sanjay/containers"
 
 # Docker settings
 REGISTRY_URL="192.168.5.1:5000"
@@ -543,10 +576,14 @@ K3S_URL="https://192.168.5.1:6443"
 K3S_TOKEN_FILE="/home/sanjay/k3s-agent-token"
 KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
 EOF
-    print_result $? "  Overwrote $AGX_CONFIG_ENV"
+            print_result $? "  Created agx-config.env"
+        else
+            print_result 0 "  agx-config.env already exists"
+        fi
 
-    AGX_POSTGRES_ENV="$AGX_CONFIG_DIR/postgres.env"
-    cat > "$AGX_POSTGRES_ENV" << 'EOF'
+        AGX_POSTGRES_ENV="$AGX_CONFIG_DIR/postgres.env"
+        if [ ! -f "$AGX_POSTGRES_ENV" ]; then
+            cat > "$AGX_POSTGRES_ENV" << 'EOF'
 # PostgreSQL Configuration for AGX Agent
 POSTGRES_HOST=192.168.5.1
 POSTGRES_PORT=5432
@@ -554,13 +591,15 @@ POSTGRES_DB=postgres
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=mysecretpassword
 EOF
-    print_result $? "  Overwrote $AGX_POSTGRES_ENV"
+            print_result $? "  Created postgres.env for agx"
+        else
+            print_result 0 "  postgres.env already exists for agx"
+        fi
+    fi
 
-    # Set proper permissions (use sudo for directories outside user home)
-    sudo chmod -R 755 "$NANO_CONFIG_DIR" 2>/dev/null
-    print_result $? "  Set proper permissions on nano agent config directory: $NANO_CONFIG_DIR"
-    sudo chmod -R 755 "$AGX_CONFIG_DIR" 2>/dev/null
-    print_result $? "  Set proper permissions on agx agent config directory: $AGX_CONFIG_DIR"
+    # Set proper permissions
+    chmod -R 755 "$AGENT_BASE_DIR" 2>/dev/null
+    print_result $? "  Set proper permissions on agent config directories"
 }
 
 function restart_registry_https() {
@@ -617,7 +656,6 @@ check_docker_dns
 build_images
 setup_local_registry
 check_k3s
-verify_local_registry_http
 check_certificate_trust
 check_pods_services
 check_individual_pod_status

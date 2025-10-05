@@ -16,6 +16,26 @@ CROSS="${RED}❌${NC}"
 
 echo -e "${GREEN}Starting nano agent setup...${NC}\n"
 
+# Source configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_DIR="$SCRIPT_DIR/app/config"
+if [ -f "$CONFIG_DIR/nano-config.env" ]; then
+    source "$CONFIG_DIR/nano-config.env"
+    echo -e "${GREEN}Configuration loaded from nano-config.env${NC}"
+    echo -e "  Tower IP: ${TOWER_IP}"
+    echo -e "  Nano IP: ${NANO_IP}"
+    echo -e "  Token Directory: ${TOKEN_DIR}"
+    echo -e "  Project Directory: ${PROJECT_DIR}"
+    echo -e "  Image Directory: ${IMAGE_DIR}"
+fi
+
+# Directories - will be overridden by nano-config.env if present
+TOKEN_DIR="${TOKEN_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano/.token}"  # Nano: Read Token from server
+PROJECT_DIR="${PROJECT_DIR:-/home/sanjay/containers/fastapi_nano}"              # Nano: Main project directory
+IMAGE_DIR="${IMAGE_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano}"        # Nano: Save build images for server
+TOWER_IP="${TOWER_IP:-192.168.5.1}"                                            # Tower server IP
+NANO_IP="${NANO_IP:-192.168.5.21}"  
+AGX_IP="${AGX_IP:-192.168.5.22}"                                                # Nano device IP
 
 # Debug flag - can be overridden by environment variable
 DEBUG=${DEBUG:-0}
@@ -42,7 +62,7 @@ function cleanup_k3s_agent_installation() {
     echo -e "${GREEN}\n== Cleanup k3s Agent Installation ==${NC}"
 
     # Define the kubeconfig path for reliable kubectl access during cleanup
-
+    KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
     debug_msg "KUBECONFIG_PATH set to $KUBECONFIG_PATH"
 
     # FIRST: Clean up any remaining nano-related pods BEFORE uninstalling agent
@@ -230,7 +250,7 @@ function build_and_save_fastapi_image() {
 function check_certificate_trust() {
     debug_msg "Running check_certificate_trust"
     echo -e "\n${GREEN}Certificate Trust Checks${NC}"
-    TOKEN_CERT="$TOKEN_DIR/config/server-ca.crt"
+    TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
     debug_msg "TOKEN_CERT: $TOKEN_CERT"
     if [ -f "$TOKEN_CERT" ]; then
         debug_msg "Server CA cert found"
@@ -252,7 +272,7 @@ function check_certificate_trust() {
 function install_k3s_agent_with_token() {
     debug_msg "Running install_k3s_agent_with_token"
     echo -e "${GREEN}\n== Install k3s Agent with Token ==${NC}"
-    TOKEN_FILE="$TOKEN_DIR/config/node-token"
+    TOKEN_FILE="$TOKEN_DIR/node-token"
     if [ -f "$TOKEN_FILE" ]; then
         # Ensure token file is readable
         if [ ! -r "$TOKEN_FILE" ]; then
@@ -263,8 +283,10 @@ function install_k3s_agent_with_token() {
         else
             K3S_TOKEN=$(sudo cat "$TOKEN_FILE")
         fi
+        
         # Use server CA cert for agent trust
-        TOKEN_CERT="$TOKEN_DIR/config/server-ca.crt"
+        TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
+        
         # Configuration variables
         REGISTRY_IP="${TOWER_IP}:5000"
 
@@ -281,7 +303,6 @@ mirrors:
             - "http://$REGISTRY_IP"
         insecure: true
 EOF
-        
         print_result $? "  Created /etc/rancher/k3s/registries.yaml for HTTP registry access"
 
         # Copy CA certificate from server for registry trust
@@ -416,13 +437,13 @@ EOF
             fi
         fi
         # Always copy latest kubeconfig to a known path for this script
-        if [ -f "$TOKEN_DIR/config/k3s.yaml" ]; then
+        if [ -f "$TOKEN_DIR/k3s.yaml" ]; then
             mkdir -p "$(dirname "$KUBECONFIG_PATH")"
             cp "$TOKEN_DIR/k3s.yaml" "$KUBECONFIG_PATH"
             chmod 600 "$KUBECONFIG_PATH"
             print_result $? "  Updated kubeconfig at $KUBECONFIG_PATH"
         else
-            print_result 1 "  $TOKEN_DIR/config/k3s.yaml not found after install"
+            print_result 1 "  $TOKEN_DIR/k3s.yaml not found after install"
             echo -e "${RED}ERROR: Kubeconfig not found. Agent may not have joined the cluster. Halting setup.${NC}"
             exit 2
         fi
