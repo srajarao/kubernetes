@@ -444,9 +444,6 @@ function check_individual_pod_status() {
     fi
 }
 
-
-
-
 function setup_agent_config_files() {
     debug_msg "Running setup_agent_config_files"
     echo -e "\n${GREEN}Setting up Agent Configuration Files${NC}"
@@ -480,7 +477,7 @@ LOG_DIR="/home/sanjay/containers/kubernetes/agent/nano/app/logs"
 DATA_DIR="/home/sanjay/containers/kubernetes/agent/nano/app/data"
 TOKEN_DIR="/mnt/vmstore/nano_home/containers/kubernetes/agent/nano/.token"
 PROJECT_DIR="/home/sanjay/containers/kubernetes/agent/nano"
-IMAGE_DIR="/home/sanjay/containers"
+IMAGE_DIR="/mnt/vmstore/tower_home/containers/kubernetes/server"
 
 # Docker settings
 REGISTRY_URL="192.168.5.1:5000"
@@ -530,7 +527,7 @@ LOG_DIR="/home/sanjay/containers/kubernetes/agent/agx/app/logs"
 DATA_DIR="/home/sanjay/containers/kubernetes/agent/agx/app/data"
 TOKEN_DIR="/mnt/vmstore/agx_home/containers/kubernetes/agent/agx/.token"
 PROJECT_DIR="/home/sanjay/containers/kubernetes/agent/agx"
-IMAGE_DIR="/home/sanjay/containers"
+IMAGE_DIR="/mnt/vmstore/tower_home/containers/kubernetes/server
 
 # Docker settings
 REGISTRY_URL="192.168.5.1:5000"
