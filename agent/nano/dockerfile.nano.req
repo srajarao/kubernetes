@@ -1,0 +1,63 @@
+# syntax=docker/dockerfile:1.7
+FROM nvcr.io/nvidia/l4t-jetpack:r36.4.0
+
+ENV DEBIAN_FRONTEND=noninteractive \
+     PIP_NO_CACHE_DIR=1 \
+     PYTHONUNBUFFERED=1 \
+     VIRTUAL_ENV=/opt/venv \
+     PATH="/opt/venv/bin:$PATH"
+
+USER root
+
+# Copy requirements file
+COPY requirements.nano.txt /app/requirements.nano.txt
+
+# OS + Python deps
+RUN --mount=type=cache,target=/var/cache/apt \
+        apt-get update && \
+        apt-get install -y --no-install-recommends \
+            python3.10 python3.10-venv  \
+            ca-certificates curl wget git build-essential \
+            libopenblas0 libgomp1 postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install pip for Python 3.10
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+    python3.10 get-pip.py && \
+    rm get-pip.py
+
+# --- Install cuSPARSELt (Online) ---
+RUN wget https://developer.download.nvidia.com/compute/cusparselt/0.8.0/local_installers/cusparselt-local-tegra-repo-ubuntu2204-0.8.0_0.8.0-1_arm64.deb -O /tmp/cusparselt.deb && \
+    dpkg -i /tmp/cusparselt.deb && \
+    cp /var/cusparselt-local-tegra-repo-ubuntu2204-0.8.0/cusparselt-*-keyring.gpg /usr/share/keyrings/ && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends cusparselt && \
+    rm -f /tmp/cusparselt.deb && ldconfig
+
+# --- Venv Setup ---
+RUN python3.10 -m venv --system-site-packages $VIRTUAL_ENV
+RUN $VIRTUAL_ENV/bin/pip install --upgrade pip setuptools wheel
+
+# 1. Install PyTorch and TensorFlow from their specific NVIDIA URLs
+#    This is critical because these versions are not on PyPI.
+RUN $VIRTUAL_ENV/bin/pip install \
+    https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl \
+    https://developer.download.nvidia.com/compute/redist/jp/v61/tensorflow/tensorflow-2.16.1+nv24.08-cp310-cp310-linux_aarch64.whl
+
+# 2. Install all other packages from requirements.txt
+RUN $VIRTUAL_ENV/bin/pip install -r /app/requirements.nano.txt
+
+# Copy application code
+COPY app/src/ /app/app/src/
+COPY app/config/ /app/app/config/
+
+# Create necessary directories
+RUN mkdir -p /app/app/logs /app/app/data /mnt/vmstore
+
+# Expose ports
+EXPOSE 8888
+EXPOSE 8000
+
+# Set the default command for the container
+WORKDIR /app
+CMD ["python3", "/app/app/src/fastapi_app.py"]
