@@ -146,9 +146,14 @@ function create_registries_yaml(){
     sudo mkdir -p /etc/rancher/k3s
     sudo tee $REGISTRIES_YAML >/dev/null <<EOF
 mirrors:
-    "${REGISTRY_IP}":
-        endpoint:
-            - "http://${REGISTRY_IP}"
+  "192.168.5.1:5000":
+    endpoint:
+      - "http://192.168.5.1:5000"
+
+configs:
+  "192.168.5.1:5000":
+    tls:
+      insecure_skip_verify: true
 EOF
         print_result $? "  Created $REGISTRIES_YAML for insecure registry communication"
 }

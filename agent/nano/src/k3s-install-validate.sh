@@ -10,18 +10,8 @@ KUBECONFIG_PATH="${KUBECONFIG_PATH:-$HOME/k3s.yaml}"
 CROSS="${RED}❌${NC}"
 TICK="${GREEN}✅${NC}"
 DEBUG=${DEBUG:-0}
-KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
 CLEAR_SCREEN=1
-TOKEN_DIR="${TOKEN_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano/.token}" # Nano: Read Token from server
-PROJECT_DIR="${PROJECT_DIR:-/home/sanjay/containers/fastapi_nano}"              # Nano: Main project directory
-IMAGE_DIR="${IMAGE_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano}"        # Nano: Save build images for server
-TOWER_IP="${TOWER_IP:-192.168.5.1}"                                             # Tower server IP
-NANO_IP="${NANO_IP:-192.168.5.21}"                                              # Nano Device IP
-AGX_IP="${AGX_IP:-192.168.5.22}"                                                # AGX device IP
-TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
-TOKEN_FILE="$TOKEN_DIR/node-token"
-K3S_TOKEN=""
-REGISTRY_IP="${TOWER_IP}:5000"
+
 
 
 # Optionally clear the screen if CLEAR_SCREEN is set to 1
@@ -48,16 +38,16 @@ function print_result() {
 
 # Function to copy kubeconfig from token directory to target path
 copy_kubeconfig_from_token_dir() {
-    local src_kubeconfig="$TOKEN_DIR/k3s.yaml"
+    local src_kubeconfig="$TOKEN_DIR/config/k3s.yaml"
     local dest_kubeconfig="$KUBECONFIG_PATH"
     if [ -f "$src_kubeconfig" ]; then
-    mkdir -p "$(dirname "$dest_kubeconfig")"
+        mkdir -p "$(dirname "$dest_kubeconfig")"
         cp "$src_kubeconfig" "$dest_kubeconfig"
         chmod 600 "$dest_kubeconfig"
-        print_result 0 " Copied kubeconfig from $src_kubeconfig to $dest_kubeconfig"
+        print_result 0 "Copied kubeconfig from $src_kubeconfig to $dest_kubeconfig"
         return 0
     else
-        print_result 1 " Kubeconfig not found at $src_kubeconfig"
+        print_result 1 "Kubeconfig not found at $src_kubeconfig"
         return 1
     fi
 }
@@ -123,6 +113,7 @@ function check_certificate_trust() {
 
 function check_node_token() {    
     if [ -f "$TOKEN_FILE" ]; then
+        print_result 0 "$TOKEN_FILE"
         print_result 0 "  Node token file found at $TOKEN_FILE"
         # Ensure token file is readable
         if [ ! -r "$TOKEN_FILE" ]; then
@@ -289,9 +280,18 @@ function get_file_mtime() {
 function install_k3s_agent_with_token() {
     debug_msg "Running install_k3s_agent_with_token"
     echo -e "${GREEN}\n== Install k3s Agent with Token ==${NC}"
+    print_result 0 "Token_file : $TOKEN_FILE"
+    print_result 0 "Token_cert : $TOKEN_CERT"
+    print_result 0 "K3S_TOKEN : $K3S_TOKEN"
+    print_result 0 "K3S_URL : $K3S_URL"
+
+
+
     
-    TOKEN_FILE="$TOKEN_DIR/node-token"
+  
     if [ -f "$TOKEN_FILE" ]; then
+        
+     
         # Ensure token file is readable
         if [ ! -r "$TOKEN_FILE" ]; then
             sudo chmod 644 "$TOKEN_FILE"
@@ -301,9 +301,14 @@ function install_k3s_agent_with_token() {
         else
             K3S_TOKEN=$(sudo cat "$TOKEN_FILE")
         fi
+      print_result 0 "1Token_file : $TOKEN_FILE"
+    print_result 0 "1Token_cert : $TOKEN_CERT"
+    print_result 0 "1K3S_TOKEN : $K3S_TOKEN"
+    print_result 0 "1K3S_URL : $K3S_URL"
+
 
         # Use server CA cert for agent trust
-        TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
+        TOKEN_CERT="$TOKEN_DIR/config/server-ca.crt"
 
         # Configuration variables
         REGISTRY_IP="${TOWER_IP}:5000"
@@ -314,57 +319,64 @@ function install_k3s_agent_with_token() {
         sudo mkdir -p /etc/rancher/k3s/
         print_result $? "  Created /etc/rancher/k3s/ directory"
         # Write registries.yaml to force HTTP for the local registry
-        sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
-mirrors:
-    "$REGISTRY_IP":
-        endpoint:
-            - "http://$REGISTRY_IP"
-        insecure: true
-EOF
-        print_result $? "  Created /etc/rancher/k3s/registries.yaml for HTTP registry access"
+        sudo cp /mnt/vmstore/nano_home/containers/kubernetes/agent/nano/registries.yaml /etc/rancher/k3s/registries.yaml 
+        sudo chmod 644 /etc/rancher/k3s/registries.yaml
+        print_result 0 "  Created /etc/rancher/k3s/registries.yaml for HTTP registry access"
 
         # Copy CA certificate from server for registry trust
-        echo -e "${GREEN}  Copying registry CA certificate from server...${NC}"
-        sudo mkdir -p /etc/docker/certs.d/$REGISTRY_IP
-        if sudo scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$TOWER_IP:/etc/docker/certs.d/$REGISTRY_IP/ca.crt /etc/docker/certs.d/$REGISTRY_IP/ca.crt >/dev/null 2>&1; then
-            print_result 0 "  Copied registry CA certificate from server"
-        else
-            echo -e "${YELLOW}  Could not copy CA cert from server, generating local copy...${NC}"
-            # Fallback: generate the same certificate locally
-            sudo openssl req -newkey rsa:4096 -nodes -sha256 \
-                -keyout /tmp/registry.key \
-                -x509 -days 365 \
-                -out /etc/docker/certs.d/$REGISTRY_IP/ca.crt \
-                -subj "/C=US/ST=State/L=City/O=Organization/CN=$TOWER_IP" \
-                -addext "subjectAltName=IP:$TOWER_IP" >/dev/null 2>&1
-            sudo rm -f /tmp/registry.key
-            print_result $? "  Generated local registry CA certificate"
-        fi
+        #echo -e "${GREEN}  Copying registry CA certificate from server...${NC}"
+        #sudo mkdir -p /etc/docker/certs.d/$REGISTRY_IP
+        #if sudo scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$TOWER_IP:/etc/docker/certs.d/$REGISTRY_IP/ca.crt /etc/docker/certs.d/$REGISTRY_IP/ca.crt >/dev/null 2>&1; then
+        #    print_result 0 "  Copied registry CA certificate from server"
+        #else
+        #    echo -e "${YELLOW}  Could not copy CA cert from server, generating local copy...${NC}"
+        #    # Fallback: generate the same certificate locally
+        #    sudo openssl req -newkey rsa:4096 -nodes -sha256 \
+        #        -keyout /tmp/registry.key \
+        #        -x509 -days 365 \
+        #        -out /etc/docker/certs.d/$REGISTRY_IP/ca.crt \
+        #        -subj "/C=US/ST=State/L=City/O=Organization/CN=$TOWER_IP" \
+        #        -addext "subjectAltName=IP:$TOWER_IP" >/dev/null 2>&1
+        #    sudo rm -f /tmp/registry.key
+        #    print_result $? "  Generated local registry CA certificate"
+        #fi
         
         # Configure Docker daemon for insecure registry (keep this for local docker commands)
-        echo -e "${GREEN}\n== Configure Insecure Registry (Docker Daemon) ==${NC}"
-        echo -e "${GREEN}  Configuring Docker daemon for insecure registry...${NC}"
-        if ! command -v jq >/dev/null 2>&1; then
-            if [ "$DEBUG" -eq 1 ]; then
-                echo -e "${YELLOW}  jq not found, installing...${NC}"
-            fi
-            sudo apt-get update && sudo apt-get install -y jq >/dev/null 2>&1
-            print_result $? "  Installed jq"
-        fi
-        if [ -f /etc/docker/daemon.json ] && command -v jq >/dev/null 2>&1; then
-            sudo jq 'if .["insecure-registries"] then .["insecure-registries"] += ["'${TOWER_IP}':5000"] | .["insecure-registries"] |= unique else . + {"insecure-registries": ["'${TOWER_IP}':5000"]} end' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp > /dev/null
-            sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
-        else
-            echo -e "${YELLOW}  jq not available or daemon.json missing, overwriting daemon.json...${NC}"
-            echo '{"insecure-registries": ["'${TOWER_IP}':5000"]}' | sudo tee /etc/docker/daemon.json > /dev/null
-        fi
+        #echo -e "${GREEN}\n== Configure Insecure Registry (Docker Daemon) ==${NC}"
+        #echo -e "${GREEN}  Configuring Docker daemon for insecure registry...${NC}"
+        #if ! command -v jq >/dev/null 2>&1; then
+        #    if [ "$DEBUG" -eq 1 ]; then
+        #        echo -e "${YELLOW}  jq not found, installing...${NC}"
+        #    fi
+        #    sudo apt-get update && sudo apt-get install -y jq >/dev/null 2>&1
+        #    print_result $? "  Installed jq"
+        #fi
+        #if [ -f /etc/docker/daemon.json ] && command -v jq >/dev/null 2>&1; then
+        #    sudo jq 'if .["insecure-registries"] then .["insecure-registries"] += ["'${TOWER_IP}':5000"] | .["insecure-registries"] |= unique else . + {"insecure-registries": ["'${TOWER_IP}':5000"]} end' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp > /dev/null
+        #    sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
+        #else
+        #    echo -e "${YELLOW}  jq not available or daemon.json missing, overwriting daemon.json...${NC}"
+        #    echo '{"insecure-registries": ["'${TOWER_IP}':5000"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+        #fi
+        #print_result $? "  Updated /etc/docker/daemon.json for insecure registry"
+        #if [ "$DEBUG" -eq 1 ]; then
+        #    echo -e "${GREEN}  Current /etc/docker/daemon.json:${NC}"
+        #    sudo cat /etc/docker/daemon.json
+        #fi
+        
+        echo "{\"insecure-registries\": [\"$TOWER_IP:5000\"]}" | sudo tee /etc/docker/daemon.json >/dev/null 2>&1
         print_result $? "  Updated /etc/docker/daemon.json for insecure registry"
-        if [ "$DEBUG" -eq 1 ]; then
-            echo -e "${GREEN}  Current /etc/docker/daemon.json:${NC}"
-            sudo cat /etc/docker/daemon.json
-        fi
+               
+        
         sudo systemctl restart docker
         print_result $? "  Restarted Docker service"
+        
+        
+            print_result 0 "2Token_file : $TOKEN_FILE"
+    print_result 0 "2Token_cert : $TOKEN_CERT"
+    print_result 0 "2K3S_TOKEN : $K3S_TOKEN"
+    print_result 0 "2K3S_URL : $K3S_URL"
+
         
         # Install k3s agent
         if [ -f "$TOKEN_CERT" ]; then
@@ -437,32 +449,38 @@ EOF
             fi
             
             # Ensure route to AGX subnet persists after k3s networking setup
-            echo -e "${GREEN}  Ensuring route to AGX subnet (192.168.10.0/24) via Tower...${NC}"
-            if ! ip route show | grep -q "192.168.10.0/24 via $TOWER_IP"; then
-                sudo ip route add 192.168.10.0/24 via $TOWER_IP dev $NANO_IFACE metric 100
-                print_result $? "  Route to AGX subnet added"
-            else
-                echo -e "${GREEN}  Route to AGX subnet already exists${NC}"
-                print_result 0 "  Route to AGX subnet verified"
-            fi
-            
+            #echo -e "${GREEN}  Ensuring route to AGX subnet (192.168.10.0/24) via Tower...${NC}"
+            #if ! ip route show | grep -q "192.168.10.0/24 via $TOWER_IP"; then
+            #    sudo ip route add 192.168.10.0/24 via $TOWER_IP dev $NANO_IFACE metric 100
+            #    print_result $? "  Route to AGX subnet added"
+            #else
+            #    echo -e "${GREEN}  Route to AGX subnet already exists${NC}"
+            #    print_result 0 "  Route to AGX subnet verified"
+            #fi
+           
             # Add iptables rule to allow traffic to AGX subnet (if not already allowed)
-            if ! sudo iptables -C FORWARD -s $NANO_IP -d 192.168.10.0/24 -j ACCEPT 2>/dev/null; then
-                sudo iptables -I FORWARD -s $NANO_IP -d 192.168.10.0/24 -j ACCEPT
-                print_result $? "  Added iptables rule for AGX traffic"
-            else
-                print_result 0 "  iptables rule for AGX traffic already exists"
-            fi
+            #if ! sudo iptables -C FORWARD -s $NANO_IP -d 192.168.10.0/24 -j ACCEPT 2>/dev/null; then
+            #    sudo iptables -I FORWARD -s $NANO_IP -d 192.168.10.0/24 -j ACCEPT
+            #    print_result $? "  Added iptables rule for AGX traffic"
+            #else
+            #    print_result 0 "  iptables rule for AGX traffic already exists"
+            #fi
         fi
 
+
+            print_result 0 "3Token_file : $TOKEN_FILE"
+    print_result 0 "3Token_cert : $TOKEN_CERT"
+    print_result 0 "3K3S_TOKEN : $K3S_TOKEN"
+    print_result 0 "3K3S_URL : $K3S_URL"
+
         # Always copy latest kubeconfig to a known path for this script
-        if [ -f "$TOKEN_DIR/k3s.yaml" ]; then
+        if [ -f "$TOKEN_DIR/config/k3s.yaml" ]; then
             mkdir -p "$(dirname "$KUBECONFIG_PATH")"
-            cp "$TOKEN_DIR/k3s.yaml" "$KUBECONFIG_PATH"
+            cp "$TOKEN_DIR/config/k3s.yaml" "$KUBECONFIG_PATH"
             chmod 600 "$KUBECONFIG_PATH"
             print_result $? "  Updated kubeconfig at $KUBECONFIG_PATH"
         else
-            print_result 1 "  $TOKEN_DIR/k3s.yaml not found after install"
+            print_result 1 "  $TOKEN_DIR/config/k3s.yaml not found after install"
             echo -e "${RED}ERROR: Kubeconfig not found. Agent may not have joined the cluster. Halting setup.${NC}"
             exit 2
         fi
@@ -576,25 +594,19 @@ EOF
 }
 
 #Main Script Execution Starts Here
-# Print out the important environment variables for verification
-echo -e "${GREEN}== Program Variables ==${NC}"
-echo "KUBECONFIG_PATH   : $KUBECONFIG_PATH"
-echo "Token directory   : $TOKEN_DIR"
-echo "Project directory : $PROJECT_DIR"
-echo "Image directory   : $IMAGE_DIR"
-echo "Tower IP          : $TOWER_IP"
-echo "Nano IP           : $NANO_IP"
-echo "AGX IP            : $AGX_IP"
-echo "Token Cert        : $TOKEN_CERT"
-echo "Token File        : $TOKEN_FILE"
-echo "Registry IP       : $REGISTRY_IP"
+# Print out the important environment variables for verification.
+
+echo -e "${GREEN}== Load nano-config.env ==${NC}"
+load_agent_config /mnt/vmstore/nano_home/containers/kubernetes/agent/nano/app/config/nano-config.env
+TOKEN_CERT="$TOKEN_DIR/config/server-ca.crt"
+TOKEN_FILE="$TOKEN_DIR/config/node-token"
+
+REGISTRY_IP="${TOWER_IP}:5000"
+src_kubeconfig="$TOKEN_DIR/config/k3s.yaml"
 
 
 echo -e "${GREEN}== Cleanup k3s Agent Installation ==${NC}"
 cleanup_k3s_agent_installation
-
-echo -e "${GREEN}== Load nano-config.env ==${NC}"
-load_agent_config /mnt/vmstore/nano_home/containers/kubernetes/agent/nano/app/config/nano-config.env
 
 echo -e "${GREEN}== Load postgres.env ==${NC}"
 load_agent_config /mnt/vmstore/nano_home/containers/kubernetes/agent/nano/app/config/postgres.env
@@ -611,5 +623,5 @@ check_node_token
 echo -e "${GREEN}== build_and_save_fastapi_image ==${NC}"
 build_and_save_fastapi_image
 
-#echo -e "${GREEN}== Install k3s Agent with Token ==${NC}"
-#install_k3s_agent_with_token
+echo -e "${GREEN}== Install k3s Agent with Token ==${NC}"
+install_k3s_agent_with_token
