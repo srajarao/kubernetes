@@ -1,3 +1,4 @@
+#!/bin/bash
 
 #!/bin/bash
 
@@ -23,11 +24,11 @@ TOKEN_FILE="$TOKEN_DIR/node-token"
 K3S_TOKEN=""
 REGISTRY_IP="${TOWER_IP}:5000"
 
+
 # Optionally clear the screen if CLEAR_SCREEN is set to 1
 if [ "${CLEAR_SCREEN:-0}" -eq 1 ]; then
     clear
 fi
-
 
 function debug_msg() {
     if [ "$DEBUG" -eq 1 ]; then
@@ -154,6 +155,12 @@ echo "Registry IP       : $REGISTRY_IP"
 
 
 
+echo -e "${GREEN}== Load nano-config.env ==${NC}"
+load_agent_config /mnt/vmstore/nano_home/containers/kubernetes/agent/nano/nano-config.env
+
+echo -e "${GREEN}== Load prostgress.env ==${NC}"
+load_agent_config /mnt/vmstore/nano_home/containers/kubernetes/server/postgress.env
+
 echo -e "${GREEN}== Copy Kubeconfig from Token Dir ==${NC}"
 copy_kubeconfig_from_token_dir
 
@@ -165,3 +172,43 @@ check_certificate_trust
 
 echo -e "${GREEN}== Check Node Token ==${NC}"
 check_node_token
+
+
+
+# Function to read a config file and export variables
+function load_agent_config() {
+    local config_file="$1"
+    if [ ! -f "$config_file" ]; then
+        echo "Config file not found: $config_file" >&2
+        return 1
+    fi
+    # Copy config file to standard config directory
+    local config_dir="/home/sanjay/containers/kubernetes/agent/nano/app/config"
+    mkdir -p "$config_dir"
+    local config_basename
+    config_basename=$(basename "$config_file")
+    local dest_config="$config_dir/$config_basename"
+    cp "$config_file" "$dest_config"
+    echo "Copied $config_file to $dest_config"
+    set -a
+    # shellcheck disable=SC1090
+    source "$dest_config"
+    set +a
+    echo "Loaded config from $dest_config"
+    # Print all variables defined in the config file with their current values
+    echo "\n== Loaded Environment Variables =="
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "$line" ]] && continue
+        # Only process lines with key=value
+        if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+            var_name="${BASH_REMATCH[1]}"
+            # Print variable and its value (if set)
+            printf "%s=\"%s\"\n" "$var_name" "${!var_name}"
+        fi
+    done < "$dest_config"
+    echo "==============================="
+}
+
+
