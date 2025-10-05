@@ -27,8 +27,9 @@ TOWER_IP="${TOWER_IP:-192.168.5.1}"                                             
 NANO_IP="${NANO_IP:-192.168.5.21}"                                                 # Nano Device IP
 AGX_IP="${AGX_IP:-192.168.5.22}"                                                   # AGX device IP
 REGISTRY_IP="${TOWER_IP}:5000"
-NANO_PATH="/export/vmstore/nano_home/containers/kubernetes/agent/nano"
-AGX_PATH="/export/vmstore/agx_home/containers/kubernetes/agent/agx"
+NANO_PATH="/export/vmstore/nano_home/containers/kubernetes/agent/nano/app"
+AGX_PATH="/export/vmstore/agx_home/containers/kubernetes/agent/agx/app"
+
 
 function print_result() {
     if [ "$1" -eq 0 ]; then
@@ -74,7 +75,12 @@ function check_certificate_trust() {
     print_result $? "  kubectl get svc"
 
     # Copy server-ca.crt to nano agent token directory
-    AGENT_TOKEN_DIR="/export/vmstore/nano_home/containers/fastapi_nano/.token"
+    AGENT_TOKEN_DIR=$NANO_PATH"/config"
+    sudo mkdir -p "$AGENT_TOKEN_DIR"
+    sudo cp /var/lib/rancher/k3s/server/tls/server-ca.crt "$AGENT_TOKEN_DIR/server-ca.crt" 2>/dev/null
+    print_result $? "  Copied server-ca.crt to $AGENT_TOKEN_DIR/server-ca.crt"
+
+    AGENT_TOKEN_DIR=$AGX_PATH"/config"
     sudo mkdir -p "$AGENT_TOKEN_DIR"
     sudo cp /var/lib/rancher/k3s/server/tls/server-ca.crt "$AGENT_TOKEN_DIR/server-ca.crt" 2>/dev/null
     print_result $? "  Copied server-ca.crt to $AGENT_TOKEN_DIR/server-ca.crt"
@@ -125,7 +131,7 @@ function check_k3s() {
         print_result $? "  Copied and updated server kubeconfig to ~/.kube/config with server $TOWER_IP"
 
         # 2. Nano agent kubeconfig
-        NANO_KUBECONFIG=${NANO_PATH}/.token/k3s.yaml
+        NANO_KUBECONFIG=${NANO_PATH}/config/k3s.yaml
         mkdir -p "$(dirname "$NANO_KUBECONFIG")"
         cp /home/sanjay/.kube/config "$NANO_KUBECONFIG"
         sed -i "s#server: https://$TOWER_IP:6443#server: https://$NANO_IP:6443#g" "$NANO_KUBECONFIG"
@@ -133,7 +139,7 @@ function check_k3s() {
         print_result $? "  Copied and updated kubeconfig for nano at $NANO_KUBECONFIG with server $NANO_IP"
 
         # 3. AGX agent kubeconfig
-        AGX_KUBECONFIG=${AGX_PATH}/.token/k3s.yaml
+        AGX_KUBECONFIG=${AGX_PATH}/config/k3s.yaml
         mkdir -p "$(dirname "$AGX_KUBECONFIG")"
         cp /home/sanjay/.kube/config "$AGX_KUBECONFIG"
         sed -i "s#server: https://$TOWER_IP:6443#server: https://$AGX_IP:6443#g" "$AGX_KUBECONFIG"
@@ -160,8 +166,8 @@ function check_k3s() {
     if sudo test -f /etc/rancher/k3s/registries.yaml; then
         # Ensure registries.yaml is present for both agents (if needed, adjust path as required)
         CA_SRC=/etc/rancher/k3s/registries.yaml
-        NANO_REGISTRY=${NANO_PATH}/registries.yaml
-        AGX_REGISTRY=${AGX_PATH}/registries.yaml
+        NANO_REGISTRY=${NANO_PATH}/config/registries.yaml
+        AGX_REGISTRY=${AGX_PATH}/config/registries.yaml
         sudo cp "$CA_SRC" "$NANO_REGISTRY" 2>/dev/null
         print_result $? "  Copied registries.yaml to nano: $NANO_REGISTRY"
         sudo cp "$CA_SRC" "$AGX_REGISTRY" 2>/dev/null
@@ -174,7 +180,7 @@ function check_k3s() {
     if sudo test -f /var/lib/rancher/k3s/server/node-token; then
         # Ensure node-token is present for both agents (if needed, adjust path as required)
         TOKEN_SRC=/var/lib/rancher/k3s/server/node-token
-        NANO_TOKEN=${NANO_PATH}/node-token
+        NANO_TOKEN=${NANO_PATH}/config/node-token
         AGX_TOKEN=${AGX_PATH}/node-token
         sudo cp "$TOKEN_SRC" "$NANO_TOKEN" 2>/dev/null
         print_result $? "  Copied node-token to nano: $NANO_TOKEN"
@@ -448,10 +454,10 @@ function setup_agent_config_files() {
     debug_msg "Running setup_agent_config_files"
     echo -e "\n${GREEN}Setting up Agent Configuration Files${NC}"
 
-    AGENT_BASE_DIR="/export/vmstore/nano_home/containers/kubernetes/agent/nano"
+    AGENT_BASE_DIR=$NANO_PATH
 
     # --- Nano agent config ---
-    NANO_CONFIG_DIR="$AGENT_BASE_DIR/app/config"
+    NANO_CONFIG_DIR="$AGENT_BASE_DIR/config"
     mkdir -p "$NANO_CONFIG_DIR" 2>/dev/null
     print_result $? "  Created nano agent config directory: $NANO_CONFIG_DIR"
 
@@ -475,7 +481,7 @@ SCRIPT_DIR="/home/sanjay/containers/kubernetes/agent/nano/app/src"
 CONFIG_DIR="/home/sanjay/containers/kubernetes/agent/nano/app/config"
 LOG_DIR="/home/sanjay/containers/kubernetes/agent/nano/app/logs"
 DATA_DIR="/home/sanjay/containers/kubernetes/agent/nano/app/data"
-TOKEN_DIR="/mnt/vmstore/nano_home/containers/kubernetes/agent/nano/.token"
+TOKEN_DIR="/mnt/vmstore/nano_home/containers/kubernetes/agent/nano/app"
 PROJECT_DIR="/home/sanjay/containers/kubernetes/agent/nano"
 IMAGE_DIR="/mnt/vmstore/tower_home/containers/kubernetes/server"
 
@@ -502,10 +508,9 @@ POSTGRES_PASSWORD=mysecretpassword
 EOF
     print_result $? "  Overwrote $NANO_POSTGRES_ENV"
     # --- AGX agent config ---
-    AGX_CONFIG_DIR="/export/vmstore/agx_home/containers/kubernetes/agent/agx/app/config"
+    AGX_CONFIG_DIR=$AGX_PATH/config 
     mkdir -p "$AGX_CONFIG_DIR" 2>/dev/null
     print_result $? "  Created agx agent config directory: $AGX_CONFIG_DIR"
-
     AGX_CONFIG_ENV="$AGX_CONFIG_DIR/agx-config.env"
     cat > "$AGX_CONFIG_ENV" << 'EOF'
 # NVIDIA AGX Xavier Configuration
@@ -525,7 +530,7 @@ SCRIPT_DIR="/home/sanjay/containers/kubernetes/agent/agx/app/src"
 CONFIG_DIR="/home/sanjay/containers/kubernetes/agent/agx/app/config"
 LOG_DIR="/home/sanjay/containers/kubernetes/agent/agx/app/logs"
 DATA_DIR="/home/sanjay/containers/kubernetes/agent/agx/app/data"
-TOKEN_DIR="/mnt/vmstore/agx_home/containers/kubernetes/agent/agx/.token"
+TOKEN_DIR="/mnt/vmstore/agx_home/containers/kubernetes/agent/agx/app"
 PROJECT_DIR="/home/sanjay/containers/kubernetes/agent/agx"
 IMAGE_DIR="/mnt/vmstore/tower_home/containers/kubernetes/server
 
