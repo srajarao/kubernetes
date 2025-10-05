@@ -177,7 +177,7 @@ function check_k3s() {
         print_result $? "  Copied and updated server kubeconfig to ~/.kube/config with server $TOWER_IP"
 
         # 2. Nano agent kubeconfig
-        NANO_KUBECONFIG=${NANO_PATH}/.config/k3s.yaml
+        NANO_KUBECONFIG=${NANO_PATH}/.token/k3s.yaml
         mkdir -p "$(dirname "$NANO_KUBECONFIG")"
         cp /home/sanjay/.kube/config "$NANO_KUBECONFIG"
         sed -i "s#server: https://$TOWER_IP:6443#server: https://$NANO_IP:6443#g" "$NANO_KUBECONFIG"
@@ -185,7 +185,7 @@ function check_k3s() {
         print_result $? "  Copied and updated kubeconfig for nano at $NANO_KUBECONFIG with server $NANO_IP"
 
         # 3. AGX agent kubeconfig
-        AGX_KUBECONFIG=${AGX_PATH}/.config/k3s.yaml
+        AGX_KUBECONFIG=${AGX_PATH}/.token/k3s.yaml
         mkdir -p "$(dirname "$AGX_KUBECONFIG")"
         cp /home/sanjay/.kube/config "$AGX_KUBECONFIG"
         sed -i "s#server: https://$TOWER_IP:6443#server: https://$AGX_IP:6443#g" "$AGX_KUBECONFIG"

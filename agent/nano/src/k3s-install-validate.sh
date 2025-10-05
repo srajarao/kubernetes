@@ -155,23 +155,6 @@ echo "Registry IP       : $REGISTRY_IP"
 
 
 
-echo -e "${GREEN}== Load nano-config.env ==${NC}"
-load_agent_config /mnt/vmstore/nano_home/containers/kubernetes/agent/nano/nano-config.env
-
-echo -e "${GREEN}== Load prostgress.env ==${NC}"
-load_agent_config /mnt/vmstore/nano_home/containers/kubernetes/server/postgress.env
-
-echo -e "${GREEN}== Copy Kubeconfig from Token Dir ==${NC}"
-copy_kubeconfig_from_token_dir
-
-echo -e "${GREEN}== Cleanup k3s Agent Installation ==${NC}"
-cleanup_k3s_agent_installation
-
-echo -e "${GREEN}== Check Certificate trust ==${NC}"
-check_certificate_trust 
-
-echo -e "${GREEN}== Check Node Token ==${NC}"
-check_node_token
 
 
 
@@ -189,14 +172,15 @@ function load_agent_config() {
     config_basename=$(basename "$config_file")
     local dest_config="$config_dir/$config_basename"
     cp "$config_file" "$dest_config"
-    echo "Copied $config_file to $dest_config"
+    
+
     set -a
     # shellcheck disable=SC1090
     source "$dest_config"
     set +a
-    echo "Loaded config from $dest_config"
+
     # Print all variables defined in the config file with their current values
-    echo "\n== Loaded Environment Variables =="
+
     while IFS= read -r line; do
         # Skip comments and empty lines
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
@@ -212,3 +196,21 @@ function load_agent_config() {
 }
 
 
+
+echo -e "${GREEN}== Load nano-config.env ==${NC}"
+load_agent_config /mnt/vmstore/nano_home/containers/kubernetes/agent/nano/app/config/nano-config.env
+
+echo -e "${GREEN}== Load postgres.env ==${NC}"
+load_agent_config /mnt/vmstore/nano_home/containers/kubernetes/agent/nano/app/config/postgres.env
+
+echo -e "${GREEN}== Copy Kubeconfig from Token Dir ==${NC}"
+copy_kubeconfig_from_token_dir
+
+echo -e "${GREEN}== Cleanup k3s Agent Installation ==${NC}"
+cleanup_k3s_agent_installation
+
+echo -e "${GREEN}== Check Certificate trust ==${NC}"
+check_certificate_trust 
+
+echo -e "${GREEN}== Check Node Token ==${NC}"
+check_node_token

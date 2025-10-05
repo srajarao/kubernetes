@@ -34,7 +34,8 @@ TOKEN_DIR="${TOKEN_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano/.token}" 
 PROJECT_DIR="${PROJECT_DIR:-/home/sanjay/containers/fastapi_nano}"              # Nano: Main project directory
 IMAGE_DIR="${IMAGE_DIR:-/mnt/vmstore/nano_home/containers/fastapi_nano}"        # Nano: Save build images for server
 TOWER_IP="${TOWER_IP:-192.168.5.1}"                                            # Tower server IP
-NANO_IP="${NANO_IP:-192.168.5.21}"                                            # Nano device IP
+NANO_IP="${NANO_IP:-192.168.5.21}"  
+AGX_IP="${AGX_IP:-192.168.5.22}"                                                # Nano device IP
 
 # Debug flag - can be overridden by environment variable
 DEBUG=${DEBUG:-0}
@@ -282,8 +283,10 @@ function install_k3s_agent_with_token() {
         else
             K3S_TOKEN=$(sudo cat "$TOKEN_FILE")
         fi
+        
         # Use server CA cert for agent trust
         TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
+        
         # Configuration variables
         REGISTRY_IP="${TOWER_IP}:5000"
 
