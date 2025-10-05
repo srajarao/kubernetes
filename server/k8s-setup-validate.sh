@@ -12,11 +12,22 @@ clear
 # Usage:
 #   ./k8s-setup-validate.sh    # Full server setup on tower
 
+# Variables
 GREEN='\033[0;32m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
-TICK="${GREEN}✅${NC}"
+YELLOW='\033[0;33m'
+NC='\033[0m'
 CROSS="${RED}❌${NC}"
+TICK="${GREEN}✅${NC}"
+DEBUG=${DEBUG:-0}
+KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
+CLEAR_SCREEN=1
+TOWER_IP="${TOWER_IP:-192.168.5.1}"                                                # Tower server IP
+NANO_IP="${NANO_IP:-192.168.5.21}"                                                 # Nano Device IP
+AGX_IP="${AGX_IP:-192.168.5.22}"                                                   # AGX device IP
+REGISTRY_IP="${TOWER_IP}:5000"
+NANO_PATH="/export/vmstore/nano_home/containers/kubernetes/agent/nano"
+AGX_PATH="/export/vmstore/agx_home/containers/kubernetes/agent/agx/"
 
 function print_result() {
     if [ "$1" -eq 0 ]; then
@@ -69,7 +80,6 @@ function check_certificate_trust() {
 
 
 }
-
 
 function check_docker_dns() {
     echo -e "\n${GREEN}Docker DNS Configuration${NC}"
@@ -130,41 +140,88 @@ function setup_local_registry() {
     print_result $? "  Pushed pgadmin to local registry"
 }
 
+function create_registries_yaml(){
+    # Create registries.yaml for insecure communication with local registry
+    REGISTRIES_YAML=/etc/rancher/k3s/registries.yaml
+    sudo mkdir -p /etc/rancher/k3s
+    sudo tee $REGISTRIES_YAML >/dev/null <<EOF
+mirrors:
+    "${REGISTRY_IP}":
+        endpoint:
+            - "http://${REGISTRY_IP}"
+EOF
+        print_result $? "  Created $REGISTRIES_YAML for insecure registry communication"
+}
+
 function check_k3s() {
     echo -e "\n${GREEN}K3s Service${NC}"
 
-    # Define both nano and AGX accessible IPs
-    NANO_SERVER_IP="192.168.5.1"
-    AGX_SERVER_IP="192.168.10.1"   # <-- Set this to the AGX-accessible IP of the k3s server
+    # Create registries.yaml for insecure communication with local registry
+    create_registries_yaml            
 
     # Install k3s with both TLS SANs and external IP for AGX if not installed
     if ! command -v k3s >/dev/null 2>&1; then
         curl -sfL https://get.k3s.io | \
-        INSTALL_K3S_EXEC="--tls-san $NANO_SERVER_IP --tls-san $AGX_SERVER_IP --node-external-ip $AGX_SERVER_IP" sh - >/dev/null 2>&1
-        print_result $? "  k3s installed with TLS SANs for nano and AGX, and external IP for AGX"
+        INSTALL_K3S_EXEC="--tls-san $NANO_IP --tls-san $AGX_IP " sh - >/dev/null 2>&1
+        print_result $? "  k3s installed with TLS SANs for nano and AGX"
     fi
 
-    # Kubeconfig Setup
+    # Kubeconfig and cert setup for server, nano, and AGX
     if [ -f /etc/rancher/k3s/k3s.yaml ]; then
+        # 1. Move and update server kubeconfig
+        sudo mkdir -p /home/sanjay/.kube
         sudo cp /etc/rancher/k3s/k3s.yaml /home/sanjay/.kube/config
-        print_result $? "  Copied k3s cluster config to ~/.kube/config"
         sudo chown sanjay:sanjay /home/sanjay/.kube/config
         sudo chmod 600 /home/sanjay/.kube/config
-        # Set server address for nano (default)
-        sed -i "s#server: https://127.0.0.1:6443#server: https://$NANO_SERVER_IP:6443#g" /home/sanjay/.kube/config
-        print_result $? "  Update API server address to $NANO_SERVER_IP:6443 in kubeconfig"
-        export KUBECONFIG=$HOME/.kube/config
-        source ~/.bashrc
-        # Copy for nano agent
-        cp /home/sanjay/.kube/config /export/vmstore/nano_home/containers/fastapi_nano/.token/k3s.yaml
-        sudo chmod 777 /export/vmstore/nano_home/containers/fastapi_nano/.token -R
-        # Also create a kubeconfig for AGX with AGX IP as server
-        sed "s#server: https://$NANO_SERVER_IP:6443#server: https://$AGX_SERVER_IP:6443#g" /home/sanjay/.kube/config > /export/vmstore/agx_home/containers/fastapi/.token/k3s.yaml
-        sudo chmod 777 /export/vmstore/agx_home/containers/fastapi/.token -R
-        print_result 0 "  Copied and updated kubeconfig for AGX with server $AGX_SERVER_IP"
+        sed -i "s#server: https://127.0.0.1:6443#server: https://$TOWER_IP:6443#g" /home/sanjay/.kube/config
+        print_result $? "  Copied and updated server kubeconfig to ~/.kube/config with server $TOWER_IP"
+
+        # 2. Nano agent kubeconfig
+        NANO_KUBECONFIG=${NANO_PATH}/.config/k3s.yaml
+        mkdir -p "$(dirname "$NANO_KUBECONFIG")"
+        cp /home/sanjay/.kube/config "$NANO_KUBECONFIG"
+        sed -i "s#server: https://$TOWER_IP:6443#server: https://$NANO_IP:6443#g" "$NANO_KUBECONFIG"
+        sudo chmod 600 "$NANO_KUBECONFIG"
+        print_result $? "  Copied and updated kubeconfig for nano at $NANO_KUBECONFIG with server $NANO_IP"
+
+        # 3. AGX agent kubeconfig
+        AGX_KUBECONFIG=${AGX_PATH}/.config/k3s.yaml
+        mkdir -p "$(dirname "$AGX_KUBECONFIG")"
+        cp /home/sanjay/.kube/config "$AGX_KUBECONFIG"
+        sed -i "s#server: https://$TOWER_IP:6443#server: https://$AGX_IP:6443#g" "$AGX_KUBECONFIG"
+        sudo chmod 600 "$AGX_KUBECONFIG"
+        print_result $? "  Copied and updated kubeconfig for AGX at $AGX_KUBECONFIG with server $AGX_IP"
     else
         print_result 1 "  /etc/rancher/k3s/k3s.yaml not found"
     fi
+
+    if sudo test -f /var/lib/rancher/k3s/server/tls/server-ca.crt; then
+        # Ensure CA cert is present for both agents (if needed, adjust path as required)
+        CA_SRC=/var/lib/rancher/k3s/server/tls/server-ca.crt
+        NANO_CERT=${NANO_PATH}/server-ca.crt
+        AGX_CERT=${AGX_PATH}/server-ca.crt
+        sudo cp "$CA_SRC" "$NANO_CERT" 2>/dev/null
+        sudo cp "$CA_SRC" "$AGX_CERT" 2>/dev/null
+        sudo chmod 644 "$NANO_CERT" "$AGX_CERT"
+        print_result $? "  Copied CA cert to agent token directories"
+    else
+        print_result 1 "  /var/lib/rancher/k3s/server/tls/server-ca.crt was not found"
+    fi
+
+    if sudo test -f /etc/rancher/k3s/registries.yaml; then
+        # Ensure registries.yaml is present for both agents (if needed, adjust path as required)
+        CA_SRC=/etc/rancher/k3s/registries.yaml
+        NANO_REGISTRY=${NANO_PATH}/registries.yaml
+        AGX_REGISTRY=${AGX_PATH}/registries.yaml
+        sudo cp "$CA_SRC" "$NANO_REGISTRY" 2>/dev/null
+        sudo cp "$CA_SRC" "$AGX_REGISTRY" 2>/dev/null
+        sudo chmod 644 "$NANO_REGISTRY" "$AGX_REGISTRY"
+        print_result $? "  Copied registries.yaml to agent directories"
+    else
+        print_result 1 "  /etc/rancher/k3s/registries.yaml not found"
+    fi
+
+
 
     # Check k3s API server port
     sudo ss -tulnp | grep 6443 >/dev/null 2>&1
@@ -204,9 +261,6 @@ function check_kubeconfig() {
     fi
 }
 
-
-
-
 function build_images() {
     echo -e "\n${GREEN}Build & Save Images${NC}"
     sudo systemctl restart docker >/dev/null 2>&1
@@ -226,7 +280,6 @@ function build_images() {
     docker save -o /export/vmstore/k3sRegistry/pgadmin.tar pgadmin:latest >/dev/null 2>&1
     print_result $? "  Saved pgadmin image to tar"
 }
-
 
 function uninstall_k3s_cleanup() {
     echo -e "\n${GREEN}Uninstall k3s & Clean Up${NC}"
@@ -254,7 +307,6 @@ function uninstall_k3s_cleanup() {
     print_result 0 "  Removed all dangling Docker images"
     print_result 0 "  Uninstall & cleanup completed"
 }
-
 
 # 1. DNS config
 function check_dns() {
@@ -345,9 +397,6 @@ function list_all_deployments_status() {
     kubectl get deployments -n default -o wide
 }
 
-
-
-
 function check_individual_pod_status() {
     echo -e "\n${GREEN}Individual Pod Status (default namespace)${NC}"
     PODS=$(kubectl get pods --no-headers -n default | awk '{print $1}')
@@ -435,19 +484,6 @@ function export_token() {
 
 
 
-# Tower Server Setup (no debug mode needed - use dedicated agent script)
-# The tower runs the k3s server/control plane and hosts the main services
-echo -e "\n${GREEN}Running TOWER SERVER setup - installing k3s server and core services${NC}"
-uninstall_k3s_cleanup
-check_dns
-check_docker_dns
-build_images
-setup_local_registry
-check_k3s
-check_certificate_trust
-check_pods_services
-check_individual_pod_status
-list_all_deployments_status
 function setup_agent_config_files() {
     debug_msg "Running setup_agent_config_files"
     echo -e "\n${GREEN}Setting up Agent Configuration Files${NC}"
@@ -623,9 +659,24 @@ function restart_registry_https() {
     fi
 }
 
+# Tower Server Setup (no debug mode needed - use dedicated agent script)
+# The tower runs the k3s server/control plane and hosts the main services
+echo -e "\n${GREEN}Running TOWER SERVER setup - installing k3s server and core services${NC}"
+uninstall_k3s_cleanup
+check_dns
+check_docker_dns
+build_images
+setup_local_registry
+
+check_k3s
+check_certificate_trust
+check_pods_services
+check_individual_pod_status
+list_all_deployments_status
 check_postgres_connectivity
 export_token
 setup_agent_config_files
+
 
 echo -e "\n${GREEN}Tower Server Setup Complete!${NC}"
 echo -e "Agents can now join using: /home/sanjay/containers/kubernetes/agent/k3s-agent-setup.sh"
