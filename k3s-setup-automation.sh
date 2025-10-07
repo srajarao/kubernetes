@@ -106,9 +106,8 @@ STEP=$((2 + 3))
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   echo "{a} [agx] [192.168.010.011] 02/29. Setting up AGX network configuration..."
   if ! ping -c 1 -W 1 $AGX_IP > /dev/null 2>&1; then
-    echo -e "${RED}ERROR: AGX ($AGX_IP) is not reachable. Ensure the device is connected and configured for initial access.${NC}"
-    exit 1
-  fi
+    echo -e "${YELLOW}WARNING: AGX ($AGX_IP) is not reachable. Skipping network setup. Ensure the device is connected.${NC}"
+  else
   if [ "$DEBUG" = "1" ]; then
     scp /home/sanjay/containers/kubernetes/bridgenfs/2-setup_agx_network.sh sanjay@$AGX_IP:~
     ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "bash 2-setup_agx_network.sh"
@@ -128,9 +127,8 @@ STEP=$((3 + 3))
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   echo "{a} [nano ] [192.168.005.021] 03/29. Setting up Nano network configuration..."
   if ! ping -c 1 -W 1 $NANO_IP > /dev/null 2>&1; then
-    echo -e "${RED}ERROR: Nano ($NANO_IP) is not reachable. Ensure the device is connected and configured for initial access.${NC}"
-    exit 1
-  fi
+    echo -e "${YELLOW}WARNING: Nano ($NANO_IP) is not reachable. Skipping network setup. Ensure the device is connected.${NC}"
+  else
   if [ "$DEBUG" = "1" ]; then
     scp /home/sanjay/containers/kubernetes/bridgenfs/3-setup_nano_network.sh sanjay@$NANO_IP:~
     ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "bash 3-setup_nano_network.sh"
