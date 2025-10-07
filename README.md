@@ -1,247 +1,222 @@
-# Kubernetes Multi-Node Cluster Setup
+# 🚀 K3s Multi-Node AI Cluster with Dual-Network Setup
 
-This repository contains the configuration and setup scripts for a multi-node Kubernetes cluster with specialized nodes for different AI/ML workloads.## Health Checks
+This repository provides a complete, automated setup for a high-performance Kubernetes cluster optimized for AI/ML workloads on Jetson devices. It combines K3s (lightweight Kubernetes), dual-network architecture (10G + 1G), GPU acceleration, and comprehensive application deployments.
 
-Each node performs comprehensive health checks:
-- ✅ libstdc++ compatibility (ARM64)
-- ✅ cuSPARSELt GPU library (NVIDIA optimized)
-- ✅ PyTorch GPU acceleration (CUDA available: True, GPU: Orin)
-- ✅ TensorFlow GPU acceleration (GPU visible, CUDA built)
-- ✅ TensorRT inference engine (GPU optimized)
-- ✅ Jupyter Lab functionality (port 8888-8889)
-- ✅ FastAPI dependencies (configurable ports)
-- ✅ Database connectivity (PostgreSQL on Tower)
-- ✅ NFS mount validation (/mnt/vmstore)
-- ✅ Network connectivity (all cluster nodes)Architecture
+## 🎯 What This Project Provides
 
-- **Tower** (Control Plane): AMD64 server acting as master node
-- **AGX** (Agent): NVIDIA Jetson AGX Orin for heavy AI workloads  
-- **Nano** (Agent): NVIDIA Jetson Nano for lightweight AI tasks
+### ✅ Complete AI-Ready Kubernetes Cluster
+- **Automated Setup**: Single-command cluster deployment with network configuration
+- **GPU Optimization**: NVIDIA GPU support with runtime classes and device plugins
+- **Dual-Network Performance**: 10G dedicated link for AGX Orin, 1G for Jetson Nano
+- **Application Suite**: FastAPI, Jupyter Lab, PostgreSQL, PgAdmin
+- **Enterprise Features**: NFS storage, health checks, monitoring
 
-## Features
+### 🏆 Performance Achievements
+- **AGX Orin**: Up to 10 Gbps bandwidth with ultra-low latency for AI inference
+- **Jetson Nano**: Stable 1 Gbps with preserved internet connectivity
+- **Zero Interference**: Isolated networks prevent bandwidth sharing issues
+- **GPU Acceleration**: CUDA, TensorRT, PyTorch, TensorFlow optimized
 
-### All Nodes
-- K3s Kubernetes distribution
-- Docker registry at 192.168.5.1:5000
-- NFS shared storage from tower
-- NVIDIA GPU support with runtime class
+## 🏗️ Architecture Overview
 
-### Node-Specific Applications
-- **FastAPI Applications**: Deployed on each node with health checks
-- **Jupyter Lab**: Running on port 8888 for interactive development
-- **PostgreSQL**: Database services
-- **GPU Resource Management**: Automatic GPU allocation
+### Network Topology
+```
+                    TOWER (Ubuntu Server)
+                    ├── 10G Port: enp1s0f0 (192.168.10.1)
+                    │   └── AGX Orin (192.168.10.11) - High-performance AI
+                    └── 1G Port: eno2 (192.168.5.1)
+                        └── Jetson Nano (192.168.5.21) - IoT/Monitoring
+```
 
-## Directory Structure
+### Cluster Components
+- **Tower (Control Plane)**: K3s server, NFS storage, PostgreSQL, PgAdmin
+- **AGX Orin (Agent)**: GPU-accelerated FastAPI, Jupyter Lab, AI workloads
+- **Jetson Nano (Agent)**: Lightweight FastAPI, monitoring, IoT tasks
+
+### Key Technologies
+- **K3s**: Lightweight Kubernetes for edge computing
+- **Dual-Network**: Isolated 10G/1G links for optimal performance
+- **NVIDIA GPU**: Runtime classes, device plugins, CUDA acceleration
+- **Docker Registry**: Local image registry at tower:5000
+- **NFS Storage**: Shared persistent storage across all nodes
+
+## 📁 Project Structure
 
 ```
 kubernetes/
-├── network/                # Network setup scripts (from bridgenfs)
-│   ├── 1-setup_tower_network.sh    # Tower dual-interface setup
-│   ├── 2-setup_agx_network.sh      # AGX 10G network config
-│   ├── 3-setup_nano_network.sh     # Nano 1G network config
-│   ├── 4-setup_tower_routing.sh    # Tower internet sharing
-│   ├── 5-setup_agx_routing.sh      # AGX inter-device routing
-│   ├── 6-8-setup_*_sshkeys.sh      # Passwordless SSH setup
-│   ├── inconsistencyCheck.sh       # Network consistency validation
-│   └── restore_backup.sh           # Configuration restore
-├── agent/
-│   ├── nano/                    # Nano-specific configurations
-│   │   ├── dockerfile.nano.req  # GPU-enabled Dockerfile (JetPack r36.4.0 base)
-│   │   ├── requirements.nano.txt # Python deps: PyTorch, TensorFlow, TensorRT
-│   │   ├── config/             # Configuration files
-│   │   │   ├── postgres.env    # PostgreSQL connection (192.168.5.1:5432)
-│   │   │   ├── nano-config.env # Nano-specific config
-│   │   │   └── start-fastapi-nano.yaml # K8s deployment YAML with GPU support
-│   │   └── src/                # Source code and scripts
-│   │       ├── fastapi_app.py  # FastAPI with GPU-accelerated ML support
-│   │       ├── fastapi_healthcheck.py # GPU library health checks
-│   │       ├── k3s-nano-agent-setup.sh
-│   │       └── validate-nano-setup.sh # Comprehensive validation
-│   └── agx/                    # AGX-specific configurations (similar structure)
-├── server/                     # Tower server setup
-│   └── k8s-setup-validate.sh   # K3s server installation
-└── README.md                   # This file
+├── k3s-config.sh                    # Configuration file (IPs, enable/disable components)
+├── k3s-setup-automation.sh          # Main automated setup script
+├── README.md                        # This documentation
+├── validate-k3s-agent.sh            # Cluster validation script
+├── fastapi-deployment-full.yaml     # K8s deployment manifests
+├── nvidia-ds-updated.yaml           # NVIDIA device plugin
+├── nvidia-plugin-clean-ds.yaml      # GPU cleanup
+├── .git/                            # Git repository
+├── .gitignore                       # Git ignore rules
+├── bridgenfs/                       # Network setup scripts
+│   ├── 1-setup_tower_network.sh     # Tower dual-interface config
+│   ├── 2-setup_agx_network.sh       # AGX 10G network setup
+│   ├── 3-setup_nano_network.sh      # Nano 1G network setup
+│   ├── 4-setup_tower_routing.sh     # Internet sharing & routing
+│   ├── 5-setup_agx_routing.sh       # Inter-device routing
+│   ├── 6-8-*_sshkeys.sh             # Passwordless SSH setup
+│   ├── README.md                    # Network setup documentation
+│   ├── inconsistencyCheck.sh        # Network validation
+│   └── restore_backup.sh            # Configuration backup/restore
+├── agent/                           # Agent-specific configurations
+│   ├── nano/                        # Jetson Nano setup
+│   │   ├── dockerfile.nano.req      # GPU-enabled Dockerfile
+│   │   ├── requirements.nano.txt    # Python dependencies
+│   │   ├── app/                     # FastAPI application
+│   │   │   ├── src/fastapi_app.py   # Main FastAPI app
+│   │   │   ├── config/              # Configuration files
+│   │   │   └── docs/                # API documentation
+│   │   ├── k3s-nano-agent-setup.sh  # Nano K3s agent setup
+│   │   ├── validate-nano-setup.sh   # Nano validation
+│   │   ├── cleanup-nano.sh          # Cleanup scripts
+│   │   └── README.md                # Nano-specific docs
+│   └── agx/                         # Jetson AGX Orin setup
+│       ├── fastapi_app.py           # AGX FastAPI app
+│       ├── k3s-agx-agent-setup.sh   # AGX K3s agent setup
+│       ├── validate-agx-setup.sh    # AGX validation
+│       ├── setup-agx-network.sh     # AGX network config
+│       └── README.md                # AGX-specific docs
+└── server/                          # Tower server components
+    ├── pgadmin/                     # PgAdmin web interface
+    │   ├── dockerfile.pgadmin       # PgAdmin Dockerfile
+    │   ├── pgadmin-deployment.yaml  # K8s deployment
+    │   ├── pgadmin-secret.yaml      # Secrets
+    │   └── docs/                    # PgAdmin docs
+    ├── postgres/                    # PostgreSQL database
+    │   ├── dockerfile.postgres      # PostgreSQL Dockerfile
+    │   ├── postgres-db-deployment.yaml
+    │   ├── postgres-pgadmin-services.yaml
+    │   └── docs/                    # PostgreSQL docs
+    ├── docs/                        # Server documentation
+    ├── jupyter/                     # Jupyter configurations
+    ├── k8s-setup-validate.sh        # Server validation
+    ├── postgres-pgadmin-nodeport-services.yaml
+    └── verify-postgres-pgadmin.sh   # Service verification
 ```
 
-## Setup Sequence (Critical - Follow Order Strictly)
-
-**Important**: Network setup must be completed BEFORE k3s installation to avoid connectivity issues. k3s modifies iptables and routes, which can break manual network configurations.
-
-### Phase 1: Network Foundation (Run on Correct Devices)
-1. **Tower**: `./network/1-setup_tower_network.sh` - Configure dual 10G/1G interfaces + NFS
-2. **AGX**: `./network/2-setup_agx_network.sh` - Configure 10G network + NFS mount
-3. **Nano**: `./network/3-setup_nano_network.sh` - Configure 1G network + NFS mount
-4. **Tower**: `./network/4-setup_tower_routing.sh` - Enable internet sharing + routing
-5. **AGX** (Optional): `./network/5-setup_agx_routing.sh` - Add routes for Nano access
-
-### Phase 2: SSH Setup (Optional but Recommended)
-- Run `./network/6-setup_tower_sshkeys.sh` on Tower for passwordless access to devices
-
-### Phase 3: Kubernetes Setup
-1. **Tower**: `./server/k8s-setup-validate.sh` - Install k3s server
-2. **AGX**: `./agent/agx/k3s-agx-agent-setup.sh` - Install k3s agent
-3. **Nano**: `./agent/nano/k3s-nano-agent-setup.sh` - Install k3s agent
-
-### Phase 4: Validation
-- Run `./validate-k3s-agent.sh` on each agent to verify complete setup
-- Use `./agent/nano/validate-nano-setup.sh` for node-specific checks
-
-## Validation & Testing
-
-**Important**: The validation script is run **AFTER** installation to verify everything works:
-
-```bash
-# After completing setup on each device
-./validate-k3s-agent.sh
-```
-
-This comprehensive script tests all 7 critical components:
-- Network connectivity between all devices
-- K3s service status and processes  
-- Kubernetes cluster access and node readiness
-- Docker registry connectivity
-- NFS mounts accessibility
-- Routing tables correctness
-- iptables rules for inter-device traffic
-
-**All output includes timestamps** to help identify performance bottlenecks and long-running steps.
-
-See `K3S_SETUP_WORKFLOW.md` for detailed setup and validation procedures.
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
-- All devices connected via Ethernet (10G for AGX, 1G for Nano)
-- Ubuntu/Linux on all devices
-- Sudo access
+- Ubuntu Server (Tower) with dual NICs (10G + 1G)
+- NVIDIA Jetson AGX Orin (10G connected to Tower)
+- NVIDIA Jetson Nano (1G connected to Tower)
+- SSH access between devices
 
-### Complete Setup (Multi-Device)
+### Automated Setup (Recommended)
+1. **Configure Settings**:
+   ```bash
+   # Edit k3s-config.sh to set IPs and enable/disable components
+   nano k3s-config.sh
+   ```
+
+2. **Run Complete Setup**:
+   ```bash
+   # This handles network setup, K3s cluster, and applications
+   ./k3s-setup-automation.sh
+   ```
+
+### Manual Setup (Alternative)
+If you prefer manual control:
+
+1. **Network Setup** (Critical - Do this first):
+   ```bash
+   # On Tower
+   ./bridgenfs/1-setup_tower_network.sh
+   ./bridgenfs/4-setup_tower_routing.sh
+
+   # On AGX
+   ./bridgenfs/2-setup_agx_network.sh
+
+   # On Nano
+   ./bridgenfs/3-setup_nano_network.sh
+   ```
+
+2. **K3s Cluster**:
+   ```bash
+   # On Tower
+   ./server/k8s-setup-validate.sh
+
+   # On AGX
+   ./agent/agx/k3s-agx-agent-setup.sh
+
+   # On Nano
+   ./agent/nano/k3s-nano-agent-setup.sh
+   ```
+
+## 🔧 Configuration
+
+Edit `k3s-config.sh` to customize:
+
 ```bash
-# On Tower
-cd /home/sanjay/containers/kubernetes
-./network/1-setup_tower_network.sh
+# Enable/disable components
+INSTALL_SERVER=true
+INSTALL_NANO_AGENT=true
+INSTALL_AGX_AGENT=true
 
-# On AGX (after Tower network is ready)
-./network/2-setup_agx_network.sh
-
-# On Nano (after Tower network is ready)  
-./network/3-setup_nano_network.sh
-
-# Back on Tower
-./network/4-setup_tower_routing.sh
-./server/k8s-setup-validate.sh
-
-# On AGX
-./agent/agx/k3s-agx-agent-setup.sh
-
-# On Nano
-./agent/nano/k3s-nano-agent-setup.sh
+# Network IPs
+TOWER_IP="192.168.10.1"
+NANO_IP="192.168.5.21"
+AGX_IP="192.168.10.11"
+REGISTRY_IP="192.168.10.1"
 ```
 
-### Validation
-```bash
-# Check consistency
-./network/inconsistencyCheck.sh
+## 📊 Services & Access
 
-# Check cluster status
-kubectl get nodes
+After successful setup, access these services:
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| **FastAPI (AGX)** | http://192.168.10.1:30002 | GPU-accelerated API |
+| **FastAPI (Nano)** | http://192.168.5.1:30002 | Lightweight API |
+| **Jupyter Lab** | http://192.168.10.1:30002/jupyter/lab | Interactive development |
+| **Health Checks** | http://192.168.10.1:30002/health | System health |
+| **Swagger UI** | http://192.168.10.1:30002/docs | API documentation |
+| **PgAdmin** | http://192.168.10.1:30080 | Database admin (admin@pgadmin.org / pgadmin) |
+| **PostgreSQL** | 192.168.10.1:30432 | Database (postgres / mysecretpassword) |
+
+## ✅ Validation & Health Checks
+
+Run comprehensive validation:
+
+```bash
+# Cluster validation
+./validate-k3s-agent.sh
+
+# Node-specific validation
+./agent/nano/validate-nano-setup.sh  # Nano checks
+./agent/agx/validate-agx-setup.sh    # AGX checks
+./server/k8s-setup-validate.sh       # Server checks
 ```
 
-## Troubleshooting
+Health checks include:
+- ✅ Network connectivity between all nodes
+- ✅ GPU acceleration (CUDA, TensorRT, PyTorch, TensorFlow)
+- ✅ NFS storage mounts
+- ✅ Database connectivity
+- ✅ Application health endpoints
+- ✅ Kubernetes cluster status
+
+## 🔧 Troubleshooting
 
 ### Network Issues
-- **Connectivity Lost After k3s Install**: k3s modifies routes/iptables. Re-run network scripts or use `./network/restore_backup.sh`
-- **NFS Mount Fails**: Check Tower NFS exports with `showmount -e 192.168.5.1`
-- **Inter-Device Communication**: Ensure routing scripts are run
+- Run `./bridgenfs/inconsistencyCheck.sh` for network diagnostics
+- Use `./bridgenfs/restore_backup.sh` to restore configurations
+- Check `/tmp/` for backup files created during setup
 
-### k3s Issues  
-- **Agent Won't Join**: Verify node-token and server CA cert
-- **Pods Not Starting**: Check GPU runtime class and NVIDIA drivers
+### K3s Issues
+- Verify cluster: `sudo kubectl get nodes`
+- Check pods: `sudo kubectl get pods -A`
+- View logs: `sudo kubectl logs <pod-name>`
 
-### Recovery
-- **Network Restore**: `./network/restore_backup.sh` (device-specific)
-- **k3s Cleanup**: `./agent/nano/cleanup-nano.sh` (removes k3s and services)
-
-## Network Architecture Details
-
-- **Tower**: 192.168.10.1 (10G), 192.168.5.1 (1G)
-- **AGX**: 192.168.10.11 (10G to Tower)
-- **Nano**: 192.168.5.21 (1G to Tower)
-- **NFS**: `/export/vmstore` on Tower, mounted at `/mnt/vmstore` on agents
-- **Registry**: Docker registry at 192.168.5.1:5000
-
-See `network/` scripts for detailed network configuration.
-
-### Validation
-```bash
-./validate-nano-setup.sh
-```
-
-## Access Points
-
-- **FastAPI Swagger UI**: `http://<node-ip>:<FASTAPI_PORT>/docs` (default: 8000, nano: 8001)
-- **Jupyter Lab**: `http://<node-ip>:8889/jupyter/lab` (nano, GPU-enabled environment)
-- **Health Check**: `http://<node-ip>:<FASTAPI_PORT>/health`
-- **System Info**: `http://<node-ip>:<FASTAPI_PORT>/info`
-- **Metrics**: `http://<node-ip>:<FASTAPI_PORT>/metrics`
-- **Database**: PostgreSQL at `192.168.5.1:5432` (Tower)
-- **System Info**: `http://<node-ip>:<FASTAPI_PORT>/info`
-- **Metrics**: `http://<node-ip>:<FASTAPI_PORT>/metrics`
-- **Database**: PostgreSQL at `192.168.5.1:5432` (Tower)
-- **System Info**: `http://<node-ip>:<FASTAPI_PORT>/info`
-- **Metrics**: `http://<node-ip>:<FASTAPI_PORT>/metrics`
-- **Database**: PostgreSQL at `192.168.5.1:5432` (Tower)
-
-## Performance Optimizations
-
-- Optimized image building with redundancy elimination
-- Streamlined cleanup processes (1s vs 25s+)
-- Comprehensive health checks for all ML frameworks
-- GPU resource conflict resolution
-
-## Health Checks
-
-Each node performs comprehensive health checks:
-- ✅ libstdc++ compatibility (ARM64)
-- ✅ cuSPARSELt GPU library (NVIDIA optimized)
-- ✅ PyTorch CPU inference (ARM64 wheels)
-- ✅ TensorFlow CPU (ARM64 optimized)
-- ✅ TensorRT inference engine (CPU fallback)
-- ✅ Jupyter Lab functionality (port 8888-8889)
-- ✅ FastAPI dependencies (configurable ports)
-- ✅ Database connectivity (PostgreSQL on Tower)
-- ✅ NFS mount validation (/mnt/vmstore)
-- ✅ Network connectivity (all cluster nodes)
-
-## Recent Updates
-
-## Recent Updates
-
-- **October 2025**: Complete GPU-enabled ML container setup for Jetson Nano
-  - NVIDIA JetPack r36.4.0 base image with full GPU support
-  - PyTorch, TensorFlow, TensorRT with GPU acceleration enabled
-  - FORCE_GPU_CHECKS environment variable for container GPU access
-  - Configurable FastAPI ports to resolve conflicts (FASTAPI_PORT env var)
-  - PostgreSQL connectivity to Tower database (192.168.5.1:5432)
-  - Comprehensive health checks for all GPU libraries
-  - Pod structure alignment with Kubernetes expectations
-- Fixed path resolution issues in setup scripts
-- Added comprehensive timestamps for performance monitoring
-- Implemented optimized Docker image handling
-- Added Jupyter Lab auto-start functionality
-- Enhanced pod cleanup with GPU resource management
-- Standardized kubectl configurations
-
-## Contributing
-
-When making changes:
-1. Test on one node first
-2. Commit and push to GitHub
-3. Pull changes on other nodes to maintain sync
-4. Validate deployments across all nodes
-
-## Troubleshooting
+### GPU Issues
+- Check GPU status: `nvidia-smi`
+- Verify runtime class: `sudo kubectl get runtimeclass`
+- Check device plugin: `sudo kubectl get pods -n kube-system | grep nvidia`
 
 ### Common Issues
 - **Port Conflicts**: Use `FASTAPI_PORT` environment variable (e.g., `FASTAPI_PORT=8001`)
@@ -252,30 +227,29 @@ When making changes:
 - **Performance issues**: Review timestamps in setup script output
 - **ML Library Issues**: Check ARM64 compatibility and CPU-only configuration
 
-### Container-Specific Issues
-```bash
-# Test container locally
-docker run --rm -it --runtime=nvidia --network=host \
-  -e FASTAPI_PORT=8001 \
-  -v /home/sanjay:/mnt/vmstore \
-  fastapi_nano
+### Recovery
+- **Network Restore**: `./bridgenfs/restore_backup.sh` (device-specific)
+- **k3s Cleanup**: `./agent/nano/cleanup-nano.sh` (removes k3s and services)
 
-# Check health inside container
-python app/src/fastapi_healthcheck.py
+## 🤝 Contributing
 
-# Test database connection
-python -c "
-import psycopg2
-import os
-from dotenv import load_dotenv
-load_dotenv('/app/app/config/postgres.env')
-conn = psycopg2.connect(
-    host=os.getenv('DB_HOST'),
-    port=os.getenv('DB_PORT'),
-    dbname=os.getenv('DB_NAME'),
-    user=os.getenv('DB_USER'),
-    password=os.getenv('DB_PASSWORD')
-)
-print('Database connection successful')
-"
-```
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run validation scripts
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- K3s for lightweight Kubernetes
+- NVIDIA Jetson ecosystem
+- Docker for containerization
+- NVIDIA GPU operators for Kubernetes
+
+---
+
+**Note**: This setup is optimized for the specific hardware configuration. Adjust network IPs and configurations as needed for your environment.

@@ -59,3 +59,6 @@ coverage/
 # Personal notes
 NOTES.md
 TODO.md
+
+# PgAdmin data (runtime data, should not be committed)
+server/pgadmin/data/
