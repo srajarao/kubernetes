@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# --- Configuration Variables (REPLACE THE INTERFACE NAME) ---
-NANO_IFACE="eno1" # e.g., eth0, enp1s0
+# --- Configuration Variables (AUTO-DETECTED INTERFACE NAME) ---
+NANO_IFACE=$(ip link show | grep -E '^[0-9]+: en' | head -1 | cut -d: -f2 | tr -d ' ') # Auto-detect primary ethernet interface
 NANO_IP="192.168.5.21"
 TOWER_IP="192.168.5.1"
 NETMASK="/24"
@@ -13,6 +13,15 @@ echo "#####################################################"
 echo "# Configuring Jetson Nano for 1G Link...            #"
 echo "# WITH INTERNET CONNECTIVITY PRESERVED               #"
 echo "#####################################################"
+
+# Validate interface detection
+if [ -z "$NANO_IFACE" ]; then
+    echo "❌ ERROR: Could not auto-detect ethernet interface"
+    echo "Available interfaces:"
+    ip link show | grep -E '^[0-9]+:'
+    exit 1
+fi
+echo "🔍 Auto-detected ethernet interface: $NANO_IFACE"
 
 # Create backup directory
 mkdir -p "$BACKUP_DIR"
@@ -64,14 +73,6 @@ network:
     $NANO_IFACE:
       dhcp4: false
       addresses: [$NANO_IP$NETMASK]
-      # Use Tower as gateway for dedicated network connectivity
-      # but DON'T set as default route to preserve internet via WiFi
-      routes:
-        - to: 192.168.10.0/24
-          via: $TOWER_IP
-          metric: 100
-    # Preserve existing WiFi configuration for internet access
-    # (This assumes WiFi interface exists and is configured via other netplan files)
 EOF
 
 sudo chmod 600 $NETPLAN_FILE
@@ -94,14 +95,14 @@ fi
 
 # --- STEP 4: Verify Connectivity ---
 echo "2. Testing connectivity to Tower ($TOWER_IP)..."
-ping -c 3 $TOWER_IP
+ping -c 3 -W 2 $TOWER_IP
 
 if [ $? -eq 0 ]; then
-    echo "   ...Ping successful. Basic connectivity confirmed."
+    echo "   ✅ Ping successful. Basic connectivity confirmed."
     
     # Test internet connectivity
     echo "   Testing internet connectivity..."
-    if ping -c 2 8.8.8.8 > /dev/null 2>&1; then
+    if ping -c 2 -W 2 8.8.8.8 > /dev/null 2>&1; then
         echo "   ✅ Internet connectivity preserved!"
     else
         echo "   ⚠️  Internet connectivity may be affected. Check WiFi configuration."
@@ -139,18 +140,12 @@ if [ $? -eq 0 ]; then
         echo "      - Current mounts: $(mount | grep nfs || echo 'No NFS mounts found')"
     fi
 
-    # --- STEP 4: Test AGX Communication (if routing is enabled) ---
-    echo "4. Testing communication with AGX (192.168.10.11)..."
-    if ping -c 2 192.168.10.11 > /dev/null 2>&1; then
-        echo "   ✅ AGX communication working! Inter-device routing is functional."
-    else
-        echo "   ⚠️  AGX communication not available."
-        echo "      This is normal if routing scripts haven't been run yet."
-        echo "      To enable AGX communication, run: ./setup_agx_routing.sh on AGX"
-    fi
-
 else
     echo "   ❌ Ping FAILED. Check cable and Tower (192.168.5.1) configuration."
+    echo "   🔍 Debug info:"
+    echo "      - Nano IP: $NANO_IP on $NANO_IFACE"
+    echo "      - Tower IP: $TOWER_IP"
+    echo "      - Interface status: $(ip link show $NANO_IFACE | grep -o 'state [A-Z]*')"
 fi
 
 echo ""
@@ -160,7 +155,7 @@ echo "==================================================="
 echo "✅ Dedicated 1G link: $NANO_IP → $TOWER_IP"
 echo "✅ Internet access: Preserved via existing connection"
 echo "✅ NFS mount: Available at $MOUNT_POINT"
-echo "🔗 AGX communication: Available if routing is configured"
+echo "🔗 Interface used: $NANO_IFACE"
 echo ""
 echo "💾 BACKUP INFORMATION:"
 echo "   Backup location: $BACKUP_DIR"

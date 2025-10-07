@@ -90,7 +90,7 @@ wait_for_gpu_capacity() {
 }
 
 # Network Setup Steps
-echo "{s} [tower] [192.168.010.001] 01/29. Setting up Tower network configuration..."
+echo -n "{s} [tower] [192.168.010.001] 01/29. Setting up Tower network configuration..."
 if [ "$DEBUG" = "1" ]; then
   bash /home/sanjay/containers/kubernetes/bridgenfs/1-setup_tower_network.sh
 else
@@ -102,48 +102,80 @@ else
   fi
 fi
 
+# Wait for network configuration to take effect
+echo "Waiting for network interfaces to come up and IPs to be assigned..."
+sleep 5
+# Verify interfaces have the correct IPs
+echo "Verifying Tower network configuration..."
+if ip addr show enp1s0f0 | grep -q "192.168.10.1"; then
+  echo "  ✅ enp1s0f0 has IP 192.168.10.1"
+else
+  echo "  ❌ enp1s0f0 missing IP 192.168.10.1"
+fi
+if ip addr show eno2 | grep -q "192.168.5.1"; then
+  echo "  ✅ eno2 has IP 192.168.5.1"
+else
+  echo "  ❌ eno2 missing IP 192.168.5.1"
+fi
+sleep 10
+
 STEP=$((2 + 3))
+# Start iperf3 server on Tower for network testing
+echo -n "{s} [tower] [192.168.010.001] 02/29. Starting iperf3 server for network testing... "
+iperf3 -s -B 192.168.10.1 -D
+if [ $? -eq 0 ]; then
+  echo -e "\033[32m✅\033[0m"
+else
+  echo -e "\033[31m❌\033[0m"
+fi
+
 if [ "$INSTALL_AGX_AGENT" = true ]; then
-  echo "{a} [agx] [192.168.010.011] 02/29. Setting up AGX network configuration..."
-  if ! ping -c 1 -W 1 $AGX_IP > /dev/null 2>&1; then
-    echo -e "${YELLOW}WARNING: AGX ($AGX_IP) is not reachable. Skipping network setup. Ensure the device is connected.${NC}"
-  else
-  if [ "$DEBUG" = "1" ]; then
-    scp /home/sanjay/containers/kubernetes/bridgenfs/2-setup_agx_network.sh sanjay@$AGX_IP:~
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "bash 2-setup_agx_network.sh"
-  else
-    if scp /home/sanjay/containers/kubernetes/bridgenfs/2-setup_agx_network.sh sanjay@$AGX_IP:~ > /dev/null 2>&1 && ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "bash 2-setup_agx_network.sh" > /dev/null 2>&1; then
+  echo -n "{a} [agx] [192.168.010.011] 03/29. Setting up AGX network configuration..."
+  if ping -c 1 -W 1 $AGX_IP > /dev/null 2>&1; then
+    if [ "$DEBUG" = "1" ]; then
+      scp /home/sanjay/containers/kubernetes/bridgenfs/2-setup_agx_network.sh sanjay@$AGX_IP:~
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "bash 2-setup_agx_network.sh"
       echo -e "\033[32m✅\033[0m"
     else
-      echo -e "\033[31m❌\033[0m"
-      exit 1
+      if scp /home/sanjay/containers/kubernetes/bridgenfs/2-setup_agx_network.sh sanjay@$AGX_IP:~ > /dev/null 2>&1 && ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "bash 2-setup_agx_network.sh" > /dev/null 2>&1; then
+        echo -e "\033[32m✅\033[0m"
+      else
+        echo -e "\033[31m❌\033[0m"
+        exit 1
+      fi
     fi
+  else
+    echo -e "\033[31m❌\033[0m"
+    exit 1
   fi
 else
-  echo "{a} [agx] [192.168.010.011] 02/29. AGX network setup skipped (not enabled)"
+  echo "{a} [agx] [192.168.010.011] 03/29. AGX network setup skipped (not enabled)"
 fi
 
-STEP=$((3 + 3))
+
+STEP=$((4 + 3))
 if [ "$INSTALL_NANO_AGENT" = true ]; then
-  echo "{a} [nano ] [192.168.005.021] 03/29. Setting up Nano network configuration..."
-  if ! ping -c 1 -W 1 $NANO_IP > /dev/null 2>&1; then
-    echo -e "${YELLOW}WARNING: Nano ($NANO_IP) is not reachable. Skipping network setup. Ensure the device is connected.${NC}"
-  else
-  if [ "$DEBUG" = "1" ]; then
-    scp /home/sanjay/containers/kubernetes/bridgenfs/3-setup_nano_network.sh sanjay@$NANO_IP:~
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "bash 3-setup_nano_network.sh"
-  else
-    if scp /home/sanjay/containers/kubernetes/bridgenfs/3-setup_nano_network.sh sanjay@$NANO_IP:~ > /dev/null 2>&1 && ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "bash 3-setup_nano_network.sh" > /dev/null 2>&1; then
+  echo -n "{a} [nano ] [192.168.005.021] 04/29. Setting up Nano network configuration..."
+  if ping -c 1 -W 1 $NANO_IP > /dev/null 2>&1; then
+    if [ "$DEBUG" = "1" ]; then
+      scp /home/sanjay/containers/kubernetes/bridgenfs/3-setup_nano_network.sh sanjay@$NANO_IP:~
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "bash 3-setup_nano_network.sh"
       echo -e "\033[32m✅\033[0m"
     else
-      echo -e "\033[31m❌\033[0m"
-      exit 1
+      if scp /home/sanjay/containers/kubernetes/bridgenfs/3-setup_nano_network.sh sanjay@$NANO_IP:~ > /dev/null 2>&1 && ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "bash 3-setup_nano_network.sh" > /dev/null 2>&1; then
+        echo -e "\033[32m✅\033[0m"
+      else
+        echo -e "\033[31m❌\033[0m"
+        exit 1
+      fi
     fi
+  else
+    echo -e "\033[31m❌\033[0m"
+    exit 1
   fi
 else
-  echo "{a} [nano ] [192.168.005.021] 03/29. Nano network setup skipped (not enabled)"
+  echo "{a} [nano ] [192.168.005.021] 04/29. Nano network setup skipped (not enabled)"
 fi
-
 STEP=$((4 + 3))
 
 # Uninstall Server
@@ -157,7 +189,7 @@ else
   if sudo /usr/local/bin/k3s-uninstall.sh > /dev/null 2>&1; then
     echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[32m✅\033[0m"  # Print checkmark anyway, as uninstall may not exist
+  echo -en " ✅\033[0m\n"  # Print checkmark anyway, as uninstall may not exist
   fi
 fi
 STEP=$((5 + 3))
@@ -199,12 +231,12 @@ STEP=$((4 + 3))
 if [ "$DEBUG" = "1" ]; then
   echo "Reinstalling Agent..."
   sleep 5
-  ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "export K3S_TOKEN=\"$TOKEN\"; sudo curl -sfL https://get.k3s.io | K3S_URL=https://192.168.5.20:6443 K3S_TOKEN=\$K3S_TOKEN sh -"
+  ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "export K3S_TOKEN=\"$TOKEN\"; sudo curl -sfL https://get.k3s.io | K3S_URL=https://192.168.5.1:6443 K3S_TOKEN=\$K3S_TOKEN sh -"
   wait_for_agent
 else
   echo -n "{a} [nano ] [192.168.005.021] 07/29. Reinstalling K3s agent on nano... "
   sleep 5
-  if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "export K3S_TOKEN=\"$TOKEN\"; sudo curl -sfL https://get.k3s.io | K3S_URL=https://192.168.5.20:6443 K3S_TOKEN=\$K3S_TOKEN sh -" > /dev/null 2>&1; then
+  if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "export K3S_TOKEN=\"$TOKEN\"; sudo curl -sfL https://get.k3s.io | K3S_URL=https://192.168.5.1:6443 K3S_TOKEN=\$K3S_TOKEN sh -" > /dev/null 2>&1; then
     wait_for_agent
     echo -e "\033[32m✅\033[0m"
   else
@@ -227,7 +259,7 @@ else
   if ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
     echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[32m✅\033[0m"  # Print checkmark anyway
+  echo -en " ✅\033[0m\n"  # Print checkmark anyway
   fi
 fi
 STEP=$((6 + 3))
@@ -243,7 +275,7 @@ else
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "export K3S_TOKEN=\"$TOKEN\"; sudo curl -sfL https://get.k3s.io | K3S_URL=https://$TOWER_IP:6443 K3S_TOKEN=\$K3S_TOKEN sh -" > /dev/null 2>&1; then
     wait_for_agent
-    echo -e "\033[32m✅\033[0m"
+  echo -en " ✅\033[0m\n"
   else
     echo -e "\033[31m❌\033[0m"
     exit 1
@@ -299,7 +331,7 @@ else
   echo -n "{s} [tower] [192.168.010.001] 07/29. Creating registry configuration directory... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
-    echo -e "\033[32m✅\033[0m"
+  echo -en " ✅\033[0m\n"
   else
     echo -e "\033[31m❌\033[0m"
     exit 1
@@ -316,7 +348,7 @@ else
   echo -n "{s} [tower] [192.168.010.001] 08/29. Adding insecure registry configuration... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "echo 'configs: \"$REGISTRY_IP:$REGISTRY_PORT\": insecure_skip_verify: true' | sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" > /dev/null 2>&1; then
-    echo -e "\033[32m✅\033[0m"
+  echo -en " ✅\033[0m\n"
   else
     echo -e "\033[31m❌\033[0m"
     exit 1
@@ -344,7 +376,7 @@ configs:
     http: true
 EOF" > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo -e "\033[32m✅\033[0m"
+  echo -en " ✅\033[0m\n"
   else
     echo -e "\033[31m❌\033[0m"
     exit 1
@@ -369,7 +401,7 @@ else
   capabilities = [\"pull\", \"resolve\", \"push\"]
 EOF" > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo -e "\033[32m✅\033[0m"
+  echo -en " ✅\033[0m\n"
   else
     echo -e "\033[31m❌\033[0m"
     exit 1
@@ -388,7 +420,7 @@ else
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo systemctl restart k3s-agent" > /dev/null 2>&1; then
     wait_for_agent
-    echo -e "\033[32m✅\033[0m"
+  echo -en " ✅\033[0m\n"
   else
     echo -e "\033[31m❌\033[0m"
     exit 1
@@ -407,7 +439,7 @@ else
   sleep 5
   if sudo systemctl restart k3s > /dev/null 2>&1; then
     wait_for_server
-    echo -e "\033[32m✅\033[0m"
+  echo -en " ✅\033[0m\n"
   else
     echo -e "\033[31m❌\033[0m"
     exit 1
@@ -423,7 +455,7 @@ else
   echo -n "{s} [tower] [192.168.010.001] 13/29. Applying taint to server node... "
   sleep 5
   if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml taint node nano CriticalAddonsOnly=true:NoExecute --overwrite > /dev/null 2>&1; then
-    echo -e "\033[32m✅\033[0m"
+  echo -en " ✅\033[0m\n"
   else
     echo -e "\033[31m❌\033[0m"
     exit 1
@@ -443,7 +475,7 @@ else
   echo -n "{s} [tower] [192.168.010.001] 12/26. Verifying node status... "
   sleep 5
   if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes > /dev/null 2>&1; then
-    echo -e "\033[32m✅\033[0m"
+  echo -en " ✅\033[0m\n"
   else
     echo -e "\033[31m❌\033[0m"
     exit 1
@@ -852,11 +884,11 @@ if [ "$DEBUG" = "1" ]; then
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node nano | grep -A 5 Capacity
   curl http://$NANO_IP:30002/health
   curl http://$TOWER_IP:30080
-else
-  STEP=$((25 + 3))
-  fi
-
 POD_NAME=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-nano -o jsonpath='{.items[0].metadata.name}')
 sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml exec $POD_NAME -- nvidia-smi 2>/dev/null
+
+
+
+
 
 

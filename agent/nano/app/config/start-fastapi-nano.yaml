@@ -26,7 +26,7 @@ spec:
         kubernetes.io/hostname: nano
       containers:
       - name: fastapi-nano
-        image: 192.168.5.1:5000/fastapi_nano:latest
+        image: 192.168.10.1:5000/fastapi_nano:latest
         ports:
         - containerPort: 8000
           name: http

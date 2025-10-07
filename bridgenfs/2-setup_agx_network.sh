@@ -131,8 +131,10 @@ if [ $? -eq 0 ]; then
     if command -v iperf3 &> /dev/null; then
         echo "4. Running iperf3 speed test (Tower must be running 'iperf3 -s -B $TOWER_IP')..."
         iperf3 -c $TOWER_IP -P 8 -t 10
+        echo "   ✅ iperf3 speed test completed successfully"
     else
         echo "4. iperf3 not found. Install with 'sudo apt install iperf3' to test 10G speed."
+        exit 1
     fi
 
 else

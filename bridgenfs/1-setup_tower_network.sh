@@ -32,9 +32,10 @@ if [ -f "$NETPLAN_FILE" ]; then
 fi
 
 # --- STEP 1: Flush Conflicting IP Addresses ---
-echo "1. Flushing existing IPs from 10G (enp1s0f0) and 1G (eno2) ports..."
+echo "1. Flushing existing IPs from 10G (enp1s0f0), 1G (eno2), and enp3s0 ports..."
 sudo ip addr flush dev enp1s0f0
 sudo ip addr flush dev eno2
+sudo ip addr flush dev enp3s0
 echo "   ...IPs flushed."
 
 # --- STEP 2: Create and Apply Netplan Configuration ---
@@ -55,6 +56,10 @@ network:
     eno2:
       dhcp4: false
       addresses: [192.168.5.1/24]
+      
+    # 3. Disable enp3s0 to prevent conflicts
+    enp3s0:
+      dhcp4: false
 EOF
 
 # Secure file permissions (Fixes the WARNING)
