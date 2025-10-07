@@ -725,8 +725,10 @@ else
     echo -e "\033[31m❌\033[0m"
   fi
   echo ""
-  echo "📍 FastAPI app with GPU support: http://192.168.5.21:30002"
-  echo "📍 Jupyter Lab: http://192.168.5.21:30002/jupyter/lab"
+  echo "📍 FastAPI app with GPU support: http://192.168.5.1:30002"
+  echo "📍 Jupyter Lab: http://192.168.5.1:30002/jupyter/lab"
+  echo "📍 Health: http://192.168.5.1:30002/health"
+  echo "📍 Swagger UI: http://192.168.5.1:30002/docs"
   echo "📍 PgAdmin: http://192.168.5.1:30080 (email: pgadmin@pgadmin.org, password: pgadmin)"
   echo "📍 PostgreSQL: 192.168.5.1:30432 (username: postgres, password: mysecretpassword)"
   echo ""
