@@ -69,16 +69,10 @@ wait_for_gpu_capacity() {
 }
 
 # Uninstall Server
-if [ "$DEBUG" = "1" ]; then
-  echo "Starting K3s Setup and FastAPI Deployment..."
-else
-  echo "Starting K3s Setup and FastAPI Deployment in silent mode..."
-fi
-
-# Function to wait for GPU capacity
 wait_for_gpu_capacity() {
   local timeout=120
   local count=0
+  echo -e "\033[32m================================================================================\033[0m"
   echo "Waiting for GPU..."
   while ! sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get node nano -o jsonpath='{.status.capacity.nvidia\.com/gpu}' | grep -q '1'; do
     if [ $count -ge $timeout ]; then
@@ -89,6 +83,7 @@ wait_for_gpu_capacity() {
     count=$((count + 5))
   done
   echo "GPU ready"
+  echo -e "\033[32m================================================================================\033[0m"
 }
 
 # Uninstall Server
@@ -97,21 +92,24 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   sudo /usr/local/bin/k3s-uninstall.sh
 else
-  echo -n "1/20. Uninstalling K3s server... "
+  echo -n "{s} [tower] [192.168.005.001] 01/26. Uninstalling K3s server... "
   sleep 5
   if sudo /usr/local/bin/k3s-uninstall.sh > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[32m✔\033[0m"  # Print checkmark anyway, as uninstall may not exist
+    echo -e "\033[32m✅\033[0m"  # Print checkmark anyway, as uninstall may not exist
   fi
 fi
 STEP=2
 
 # Install Server
-echo -n "2/20. Installing K3s server... "
+echo "{s} [tower] [192.168.005.001] 02/26. Installing K3s server... "
+echo -e "\033[32m$(printf '%.0s=' {1..80})\033[0m"
 sleep 5
 sudo curl -sfL https://get.k3s.io | sh -s - server
-echo -e "\033[32m✔\033[0m"
+echo -e "\033[32m$(printf '%.0s=' {1..80})\033[0m"
+echo -n "{s} [tower] [192.168.005.001] 02/26. Installing K3s server... "
+echo -e "\033[32m✅\033[0m"
 STEP=3
 
 # Get Token
@@ -127,13 +125,12 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo /usr/local/bin/k3s-agent-uninstall.sh"
 else
-  echo -n "3/20. Uninstalling K3s agent on nano... "
+  echo -n "{a} [nano ] [192.168.005.021] 03/26. Uninstalling K3s agent on nano... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
-    exit 1
+    echo -e "\033[32m✅\033[0m"  # Print checkmark anyway, as uninstall may not exist
   fi
 fi
 STEP=4
@@ -145,13 +142,13 @@ if [ "$DEBUG" = "1" ]; then
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "export K3S_TOKEN=\"$TOKEN\"; sudo curl -sfL https://get.k3s.io | K3S_URL=https://192.168.5.20:6443 K3S_TOKEN=\$K3S_TOKEN sh -"
   wait_for_agent
 else
-  echo -n "4/20. Reinstalling K3s agent on nano... "
+  echo -n "{a} [nano ] [192.168.005.021] 04/26. Reinstalling K3s agent on nano... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "export K3S_TOKEN=\"$TOKEN\"; sudo curl -sfL https://get.k3s.io | K3S_URL=https://192.168.5.20:6443 K3S_TOKEN=\$K3S_TOKEN sh -" > /dev/null 2>&1; then
     wait_for_agent
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
@@ -163,12 +160,12 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo mkdir -p /etc/rancher/k3s/"
 else
-  echo -n "5/20. Creating registry configuration directory... "
+  echo -n "{s} [tower] [192.168.005.001] 05/26. Creating registry configuration directory... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
@@ -180,12 +177,12 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "echo 'configs: \"192.168.5.1:5000\": insecure_skip_verify: true' | sudo tee /etc/rancher/k3s/registries.yaml > /dev/null"
 else
-  echo -n "6/20. Adding insecure registry configuration... "
+  echo -n "{s} [tower] [192.168.005.001] 06/26. Adding insecure registry configuration... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "echo 'configs: \"192.168.5.1:5000\": insecure_skip_verify: true' | sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
@@ -202,7 +199,7 @@ configs:
     http: true
 EOF"
 else
-  echo -n "7/20. Fixing registry YAML syntax... "
+  echo -n "{s} [tower] [192.168.005.001] 07/26. Fixing registry YAML syntax... "
   sleep 5
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 configs:
@@ -211,9 +208,9 @@ configs:
     http: true
 EOF" > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
@@ -229,16 +226,16 @@ if [ "$DEBUG" = "1" ]; then
   capabilities = [\"pull\", \"resolve\", \"push\"]
 EOF"
 else
-  echo -n "8/20. Configuring containerd for registry... "
+  echo -n "{s} [tower] [192.168.005.001] 08/26. Configuring containerd for registry... "
   sleep 5
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/192.168.5.1:5000" > /dev/null 2>&1 && ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/192.168.5.1:5000/hosts.toml > /dev/null <<EOF
 [host.\"http://192.168.5.1:5000\"]
   capabilities = [\"pull\", \"resolve\", \"push\"]
 EOF" > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
@@ -251,13 +248,13 @@ if [ "$DEBUG" = "1" ]; then
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo systemctl restart k3s-agent"
   wait_for_agent
 else
-  echo -n "9/20. Restarting K3s agent after registry config... "
+  echo -n "{a} [nano ] [192.168.005.021] 09/26. Restarting K3s agent after registry config... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo systemctl restart k3s-agent" > /dev/null 2>&1; then
     wait_for_agent
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
@@ -270,13 +267,13 @@ if [ "$DEBUG" = "1" ]; then
   sudo systemctl restart k3s
   wait_for_server
 else
-  echo -n "10/20. Restarting K3s server... "
+  echo -n "{s} [tower] [192.168.005.001] 10/26. Restarting K3s server... "
   sleep 5
   if sudo systemctl restart k3s > /dev/null 2>&1; then
     wait_for_server
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
@@ -287,21 +284,34 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml taint node nano CriticalAddonsOnly=true:NoExecute --overwrite
 else
-  echo -n "11/20. Applying taint to server node... "
+  echo -n "{s} [tower] [192.168.005.001] 11/26. Applying taint to server node... "
   sleep 5
   if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml taint node nano CriticalAddonsOnly=true:NoExecute --overwrite > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
-STEP=12
 
 # Verify Node Status
-if [ "$DEBUG" = "1" ]; then echo "Verifying Node Status..."; fi
-sleep 5
-sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes
+if [ "$DEBUG" = "1" ]; then
+  echo "{s} [tower] [192.168.005.001] 12/26. Verifying Node Status..."
+  sleep 5
+  echo -e "\033[32m================================================================================\033[0m"
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes
+  echo -e "\033[32m================================================================================\033[0m"
+else
+  echo -n "{s} [tower] [192.168.005.001] 12/26. Verifying node status... "
+  sleep 5
+  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes > /dev/null 2>&1; then
+    echo -e "\033[32m✅\033[0m"
+  else
+    echo -e "\033[31m❌\033[0m"
+    exit 1
+  fi
+fi
+STEP=13
 
 # Install NVIDIA RuntimeClass
 if [ "$DEBUG" = "1" ]; then
@@ -314,7 +324,7 @@ metadata:
 handler: nvidia
 ' | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f -
 else
-  echo -n "12/20. Installing NVIDIA runtime class... "
+  echo -n "{s} [tower] [192.168.005.001] 13/26. Installing NVIDIA runtime class... "
   sleep 5
   echo 'apiVersion: node.k8s.io/v1
 kind: RuntimeClass
@@ -323,32 +333,33 @@ metadata:
 handler: nvidia
 ' | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
-    exit 1
-  fi
-fi
-STEP=13
-
-# Install NVIDIA Device Plugin
-if [ "$DEBUG" = "1" ]; then
-  echo "Installing NVIDIA Device Plugin..."
-  sleep 5
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f nvidia-ds-updated.yaml
-  wait_for_gpu_capacity
-else
-  echo -n "13/20. Installing NVIDIA device plugin... "
-  sleep 5
-  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f nvidia-ds-updated.yaml > /dev/null 2>&1; then
-    wait_for_gpu_capacity
-    echo -e "\033[32m✔\033[0m"
-  else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
 STEP=14
+
+# Install NVIDIA Device Plugin
+if [ "$DEBUG" = "1" ]; then
+  echo "Installing NVIDIA Device Plugin..."
+  echo ""
+  sleep 5
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f nvidia-ds-updated.yaml
+  wait_for_gpu_capacity
+else
+  sleep 5
+  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f nvidia-ds-updated.yaml > /dev/null 2>&1; then
+    wait_for_gpu_capacity
+    echo -n "{s} [tower] [192.168.005.001] 14/26. Installing NVIDIA device plugin... "
+    echo -e "\033[32m✅\033[0m"
+  else
+    echo -e "\033[31m❌\033[0m"
+    exit 1
+  fi
+fi
+STEP=15
 
 # Configure NVIDIA Runtime on Agent (via SSH)
 if [ "$DEBUG" = "1" ]; then
@@ -359,17 +370,17 @@ if [ "$DEBUG" = "1" ]; then
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo systemctl start k3s-agent"
   wait_for_agent
 else
-  echo -n "14/20. Configuring NVIDIA runtime on agent... "
+  echo -n "{a} [nano ] [192.168.005.021] 15/26. Configuring NVIDIA runtime on agent... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo systemctl stop k3s-agent" > /dev/null 2>&1 && ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo systemctl start k3s-agent" > /dev/null 2>&1; then
     wait_for_agent
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
-STEP=15
+STEP=16
 
 # Copy Files for Build
 if [ "$DEBUG" = "1" ]; then
@@ -379,16 +390,16 @@ if [ "$DEBUG" = "1" ]; then
   scp /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@192.168.5.21:~
   scp -r /home/sanjay/containers/kubernetes/agent/nano/app sanjay@192.168.5.21:~
 else
-  echo -n "15/20. Copying files for Docker build... "
+  echo -n "{a} [nano ] [192.168.005.021] 16/26. Copying files for Docker build... "
   sleep 5
   if scp /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@192.168.5.21:~ > /dev/null 2>&1 && scp /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@192.168.5.21:~ > /dev/null 2>&1 && scp -r /home/sanjay/containers/kubernetes/agent/nano/app sanjay@192.168.5.21:~ > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
-STEP=16
+STEP=17
 
 # Build Image (via SSH)
 if [ "$DEBUG" = "1" ]; then
@@ -396,16 +407,16 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo docker build -t fastapi_nano:latest -f dockerfile.nano.req ."
 else
-  echo -n "16/20. Building Docker image... "
+  echo -n "{a} [nano ] [192.168.005.021] 17/26. Building Docker image... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo docker build -t fastapi_nano:latest -f dockerfile.nano.req ." > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
-STEP=17
+STEP=18
 
 # Tag Image (via SSH)
 if [ "$DEBUG" = "1" ]; then
@@ -413,16 +424,16 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo docker tag fastapi_nano:latest 192.168.5.1:5000/fastapi_nano:latest"
 else
-  echo -n "17/20. Tagging Docker image... "
+  echo -n "{a} [nano ] [192.168.005.021] 18/26. Tagging Docker image... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo docker tag fastapi_nano:latest 192.168.5.1:5000/fastapi_nano:latest" > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
-STEP=18
+STEP=19
 
 # Push Image (via SSH)
 if [ "$DEBUG" = "1" ]; then
@@ -430,19 +441,19 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo docker push 192.168.5.1:5000/fastapi_nano:latest"
 else
-  echo -n "18/20. Pushing Docker image to registry... "
+  echo -n "{a} [nano ] [192.168.005.021] 19/26. Pushing Docker image to registry... "
   sleep 5
   if ssh -o StrictHostKeyChecking=no sanjay@192.168.5.21 "sudo docker push 192.168.5.1:5000/fastapi_nano:latest" > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
 STEP=19
 
 # Create Deployment YAML
-echo "Creating Deployment YAML..."
+echo "{s} [tower] [192.168.005.001] 19/26. Creating Deployment YAML..."
 sleep 5
 rm -f fastapi-deployment-full.yaml
 cat <<DEPLOYMENT > fastapi-deployment-full.yaml
@@ -587,7 +598,7 @@ spec:
     name: jupyter
   type: NodePort
 DEPLOYMENT
-
+STEP=21
 
 # Deploy Application
 if [ "$DEBUG" = "1" ]; then
@@ -595,16 +606,17 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f fastapi-deployment-full.yaml
 else
-  echo -n "19/20. Deploying FastAPI application... "
+  STEP=21
+  echo -n "{s} [tower] [192.168.005.001] 21/26. Deploying FastAPI application... "
   sleep 5
   if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f fastapi-deployment-full.yaml > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
-STEP=20
+STEP=22
 
 # Monitor Pod Status
 if [ "$DEBUG" = "1" ]; then
@@ -612,15 +624,16 @@ if [ "$DEBUG" = "1" ]; then
   sleep 5
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -o wide
 else
-  echo -n "20/20. Monitoring pod status... "
+  echo -n "{s} [tower] [192.168.005.001] 22/26. Monitoring pod status... "
   sleep 5
   if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -o wide > /dev/null 2>&1; then
-    echo -e "\033[32m✔\033[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
 fi
+STEP=23
 
 # Force Restart if Stuck (optional, commented out)
 # echo "Force Restart if Stuck..."
@@ -636,14 +649,87 @@ if [ "$DEBUG" = "1" ]; then
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node nano | grep -A 5 Capacity
   curl http://192.168.5.21:30002/health
 else
-  echo -n "Reviewing and Validating Implementation... "
+  STEP=22
+  echo -n "{s} [tower] [192.168.005.001] 22/26. Monitoring pod status... "
   sleep 5
-  if (sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes > /dev/null 2>&1 && sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -o wide > /dev/null 2>&1 && sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node nano | grep -A 5 Capacity > /dev/null 2>&1) && (curl http://192.168.5.21:30002/health > /dev/null 2>&1 || true); then
-    echo -e "\033[32m✔\033[0m"
+  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -o wide > /dev/null 2>&1; then
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "\033[31m✗\033[0m"
+    echo -e "\033[31m❌\033[0m"
     exit 1
   fi
+fi
+
+# Deploy PgAdmin
+if [ "$DEBUG" = "1" ]; then
+  echo "Deploying PgAdmin..."
+  sleep 5
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /home/sanjay/containers/kubernetes/server/pgadmin/pgadmin-secret.yaml
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /home/sanjay/containers/kubernetes/server/pgadmin/pgadmin-deployment.yaml
+else
+  STEP=22
+  echo -n "{s} [tower] [192.168.005.001] 22/26. Deploying PgAdmin secret... "
+  sleep 5
+  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /home/sanjay/containers/kubernetes/server/pgadmin/pgadmin-secret.yaml > /dev/null 2>&1; then
+    echo -e "\033[32m✅\033[0m"
+  else
+    echo -e "\033[31m❌\033[0m"
+    exit 1
+  fi
+  STEP=23
+  echo -n "{s} [tower] [192.168.005.001] 23/26. Deploying PgAdmin... "
+  sleep 5
+  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /home/sanjay/containers/kubernetes/server/pgadmin/pgadmin-deployment.yaml > /dev/null 2>&1; then
+    echo -e "\033[32m✅\033[0m"
+  else
+    echo -e "\033[31m❌\033[0m"
+    exit 1
+  fi
+fi
+
+# Apply NodePort services
+if [ "$DEBUG" = "1" ]; then
+  echo "Applying NodePort services..."
+  sleep 5
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /home/sanjay/containers/kubernetes/server/postgres-pgadmin-nodeport-services.yaml
+else
+  STEP=24
+  echo -n "{s} [tower] [192.168.005.001] 24/26. Applying NodePort services... "
+  sleep 5
+  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /home/sanjay/containers/kubernetes/server/postgres-pgadmin-nodeport-services.yaml > /dev/null 2>&1; then
+    echo -e "\033[32m✅\033[0m"
+  else
+    echo -e "\033[31m❌\033[0m"
+    exit 1
+  fi
+fi
+
+# Final validation
+if [ "$DEBUG" = "1" ]; then
+  echo "Reviewing and Validating Implementation..."
+  sleep 5
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -o wide
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node nano | grep -A 5 Capacity
+  curl http://192.168.5.21:30002/health
+  curl http://192.168.5.21:30080
+else
+  STEP=25
+  echo -n "{s} [tower] [192.168.005.001] 25/26. Reviewing and Validating Implementation... "
+  sleep 5
+  if (sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes > /dev/null 2>&1 && sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -o wide > /dev/null 2>&1) && (curl http://192.168.5.21:30002/health > /dev/null 2>&1 || true) && (curl http://192.168.5.21:30080 > /dev/null 2>&1 || true); then
+    echo -e "\033[32m✅\033[0m"
+    echo ""
+    echo "🎉 K3s cluster setup complete!"
+  else
+    echo -e "\033[31m❌\033[0m"
+  fi
+  echo ""
+  echo "📍 FastAPI app with GPU support: http://192.168.5.21:30002"
+  echo "📍 Jupyter Lab: http://192.168.5.21:30002/jupyter/lab"
+  echo "📍 PgAdmin: http://192.168.5.1:30080 (email: pgadmin@pgadmin.org, password: pgadmin)"
+  echo "📍 PostgreSQL: 192.168.5.1:30432 (username: postgres, password: mysecretpassword)"
+  echo ""
 fi
 POD_NAME=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-nano -o jsonpath='{.items[0].metadata.name}')
 sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml exec $POD_NAME -- nvidia-smi 2>/dev/null
