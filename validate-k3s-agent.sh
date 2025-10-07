@@ -38,8 +38,12 @@ elif ip addr show | grep -q "$NANO_IP"; then
     DEVICE_IP="$NANO_IP"
     OTHER_DEVICE_IP="$AGX_IP"
     OTHER_DEVICE_NAME="AGX"
+elif ip addr show | grep -q "192.168.5.1\|192.168.10.1"; then
+    echo -e "${YELLOW}INFO: This appears to be the Tower server. This validation script is for K3s agents (AGX or Nano).${NC}"
+    echo -e "${YELLOW}For Tower validation, use a different script or check manually.${NC}"
+    exit 0
 else
-    echo -e "${RED}ERROR: Cannot detect device type (not AGX or Nano)${NC}"
+    echo -e "${RED}ERROR: Cannot detect device type (not AGX, Nano, or Tower)${NC}"
     exit 1
 fi
 
