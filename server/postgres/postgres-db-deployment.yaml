@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: postgres-db
-          image: localhost:5000/postgres:latest
+          image: 10.1.10.150:5000/postgres:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: TZ
