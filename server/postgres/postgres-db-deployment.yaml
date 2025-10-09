@@ -20,7 +20,7 @@ spec:
             - name: TZ
               value: America/Los_Angeles
             - name: POSTGRES_PASSWORD
-              value: mysecretpassword
+              value: "$POSTGRES_PASSWORD"
           volumeMounts:
             - name: pgdata
               mountPath: /var/lib/postgresql/data

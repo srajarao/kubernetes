@@ -17,7 +17,7 @@ spec:
         image: localhost:5000/pgadmin:latest
         env:
         - name: PGADMIN_DEFAULT_EMAIL
-          value: pgadmin@pgadmin.org
+          value: "$PGADMIN_EMAIL"
         - name: PGADMIN_DEFAULT_PASSWORD
           valueFrom:
             secretKeyRef:
