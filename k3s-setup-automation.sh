@@ -23,8 +23,8 @@ fi
 
 # Initialize Dynamic Step Counter
 CURRENT_STEP=1
-# NOTE: Total steps count is 39
-TOTAL_STEPS=44
+# NOTE: Total steps count is 50
+TOTAL_STEPS=50
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.

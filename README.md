@@ -49,7 +49,7 @@ This repository provides a complete, automated setup for a high-performance Kube
 ```
 kubernetes/
 ├── k3s-config.sh                    # Configuration file (IPs, passwords, enable/disable components)
-├── k3s-setup-automation.sh          # Main automated setup script (42+ steps)
+├── k3s-setup-automation.sh          # Main automated setup script (50 steps)
 ├── README.md                        # This comprehensive documentation
 ├── validate-k3s-agent.sh            # Cluster validation script
 ├── fastapi-deployment-full.yaml     # K8s deployment manifests
@@ -311,7 +311,7 @@ open http://10.1.10.150:30080
 - **Health Verification**: Comprehensive database connectivity and extension checks
 
 ### ✅ Enhanced Automation
-- **42+ Step Process**: Complete end-to-end cluster setup
+- **50 Step Process**: Complete end-to-end cluster setup
 - **Access Information Display**: Automatic endpoint reporting on successful deployment
 - **Comprehensive Logging**: All operations logged with timestamps
 - **Traefik Optimization**: Automatic node placement for ingress controller
