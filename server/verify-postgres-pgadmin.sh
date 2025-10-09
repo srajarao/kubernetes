@@ -16,12 +16,13 @@ echo
 
 # Test pgAdmin web access
 echo "3. Testing pgAdmin web access..."
-PGADMIN_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://10.1.10.150:30080)
+PGADMIN_RESPONSE=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" http://10.1.10.150:30080)
 if [ "$PGADMIN_RESPONSE" = "302" ] || [ "$PGADMIN_RESPONSE" = "200" ]; then
     echo "✅ pgAdmin accessible at http://10.1.10.150:30080"
     echo "   Login: pgadmin@pgadmin.org / pgadmin"
 else
     echo "❌ pgAdmin not accessible (HTTP $PGADMIN_RESPONSE)"
+    exit 1
 fi
 echo
 

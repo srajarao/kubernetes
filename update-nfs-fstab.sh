@@ -22,7 +22,7 @@ echo "   📋 Backed up current fstab to: $FSTAB_BACKUP"
 sudo sed -i '/vmstore/d' /etc/fstab
 
 # Add the new NFS mount entry
-FSTAB_ENTRY="$TOWER_IP:$NFS_EXPORT $MOUNT_POINT nfs defaults,nofail 0 0"
+FSTAB_ENTRY="$TOWER_IP:$NFS_EXPORT $MOUNT_POINT nfs noauto,x-systemd.automount,nofail,nfsvers=4 0 0"
 echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab > /dev/null
 
 echo "   ✅ Added NFS mount to fstab:"

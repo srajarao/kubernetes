@@ -39,7 +39,15 @@ EXIT_FASTAPI_NANO_FAIL = 7
 EXIT_DB_FAIL = 8
 
 # Load environment variables from the .env file.
-load_dotenv(dotenv_path="/app/app/config/postgres.env")
+# load_dotenv(dotenv_path="/app/app/config/postgres.env")
+
+# For learning environment: Hardcoded credentials (NOT RECOMMENDED for production!)
+import os
+os.environ['POSTGRES_HOST'] = 'postgres-db'
+os.environ['POSTGRES_PORT'] = '5432'
+os.environ['POSTGRES_DB'] = 'postgres'
+os.environ['POSTGRES_USER'] = 'postgres'
+os.environ['POSTGRES_PASSWORD'] = 'postgres'
 
 
 # A Pydantic model to define the data structure for an Item

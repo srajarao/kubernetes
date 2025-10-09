@@ -7,8 +7,8 @@ echo "## Authentication (Tower → Devices)   ##"
 echo "########################################"
 
 # Configuration
-NANO_IP="192.168.5.21"
-AGX_IP="192.168.10.11"
+NANO_IP="10.1.10.181"
+AGX_IP="10.1.10.244"
 SSH_USER="sanjay"
 KEY_TYPE="ed25519"
 KEY_FILE="$HOME/.ssh/id_${KEY_TYPE}"

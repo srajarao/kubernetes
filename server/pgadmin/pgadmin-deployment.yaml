@@ -12,17 +12,16 @@ spec:
       labels:
         app: pgadmin
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: tower
       containers:
       - name: pgadmin
-        image: localhost:5000/pgadmin:latest
+        image: 10.1.10.150:5000/pgadmin:latest
         env:
         - name: PGADMIN_DEFAULT_EMAIL
-          value: "$PGADMIN_EMAIL"
+          value: "pgadmin@pgadmin.org"
         - name: PGADMIN_DEFAULT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: pgadmin-secret
-              key: PGADMIN_DEFAULT_PASSWORD
+          value: "pgadmin"
         resources:
           requests:
             memory: "128Mi"
@@ -32,6 +31,24 @@ spec:
             cpu: "500m"
         ports:
         - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
         volumeMounts:
         - name: workspace
           mountPath: /workspace
