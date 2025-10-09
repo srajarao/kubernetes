@@ -45,8 +45,8 @@ fi
 
 # Initialize Dynamic Step Counter
 CURRENT_STEP=1
-# NOTE: Total steps count is 52 (includes final stability verification)
-TOTAL_STEPS=52
+# NOTE: Total steps count is 53 (includes final stability verification)
+TOTAL_STEPS=53
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.
@@ -419,6 +419,8 @@ if [ "$INSTALL_SERVER" = true ]; then
   echo -e "[32m$(printf '%.0s=' {1..80})[0m"
   step_echo_start "s" "tower" "$TOWER_IP" "K3s server installed."
   echo -e "[32m✅[0m"
+  echo -e "Waiting for K3s server to fully initialize..."
+  sleep 30
   step_increment
   print_divider
 
@@ -528,7 +530,7 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
     ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$NANO_IP "$K3S_REINSTALL_CMD"
     wait_for_agent
   else
-    step_echo_start "a" "nano" "$NANO_IP" "Reinstalling K3s agent on nano (explicit IP binding)..."
+    step_echo_start "a" "nano" "$NANO_IP" "Reinstalling K3s agent on nano..."
     sleep 5
     # Execute the robust reinstall command
     if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$NANO_IP "$K3S_REINSTALL_CMD" > /dev/null 2>&1; then
@@ -707,12 +709,12 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Fixing Registry YAML Syntax on AGX..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
 configs:
   \"$REGISTRY_IP:$REGISTRY_PORT\":
     insecure_skip_verify: true
     http: true
-EOF"
+EOF
   else
     step_echo_start "a" "agx" "$AGX_IP" "Fixing registry YAML syntax on agx..."
     sleep 5
@@ -766,12 +768,12 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Fixing Registry YAML Syntax..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
 configs:
   \"$REGISTRY_IP:$REGISTRY_PORT\":
     insecure_skip_verify: true
     http: true
-EOF"
+EOF
   else
     step_echo_start "a" "nano" "$NANO_IP" "Fixing registry YAML syntax..."
     sleep 5
@@ -968,8 +970,7 @@ else
   step_echo_start "s" "tower" "$TOWER_IP" "Verifying agent nodes are ready..."
   sleep 5
   if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes --no-headers | grep -E "(nano|agx)" | grep -q "Ready" 2>/dev/null; then
-    echo -en " ✅[0m
-"
+    echo -e "\n✅"
   else
     echo -e "[31m❌[0m"
     exit 1
@@ -1040,7 +1041,7 @@ metadata:
 handler: nvidia
 ' | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    echo -e "[32m✅[0m"
+    echo -e "\n\033[32m✅\033[0m"
   else
     echo -e "[31m❌[0m"
     exit 1
@@ -1074,7 +1075,7 @@ step_increment
 print_divider
 
 # --------------------------------------------------------------------------------
-# NEW STEP 32: FIX NFS VOLUME PATHS (Addresses 'No such file or directory' error)
+# STEP 32: FIX NFS VOLUME PATHS (Addresses 'No such file or directory' error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Setting up NFS volumes..."
 NFS_BASE="/export/vmstore"
@@ -1585,6 +1586,7 @@ step_echo_start "s" "tower" "$TOWER_IP" "Verifying PostgreSQL and pgAdmin..."
 # Give pgAdmin time to fully start up before verification
 echo "Waiting for applications to fully initialize..."
 sleep 120
+echo ""
 
 # Run the comprehensive verification script
 echo "Running database verification checks..."
@@ -1658,7 +1660,7 @@ step_echo_start "s" "tower" "$TOWER_IP" "Final verification..."
 
 # First verify kubectl connectivity
 echo -e "🔍 Testing kubectl connectivity..."
-if kubectl get nodes >/dev/null 2>&1; then
+if sudo k3s kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes >/dev/null 2>&1; then
   echo -e "✅ kubectl connectivity verified"
 else
   echo -e "❌ kubectl connectivity failed - cluster may not be accessible"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # PostgreSQL + pgAdmin + pgvector Verification Script
 
-echo "=== PostgreSQL + pgvector + pgAdmin Verification ==="
+echo -e "\033[32m=== PostgreSQL + pgvector + pgAdmin Verification ===\033[0m"
 echo
 
 # Check services
@@ -50,4 +50,4 @@ echo "6. External Access Summary:"
 echo "   PostgreSQL: 10.1.10.150:30432"
 echo "   pgAdmin:    http://10.1.10.150:30080"
 echo
-echo "=== Verification Complete ==="
+echo -e "\033[32m=== Verification Complete ===\033[0m"
