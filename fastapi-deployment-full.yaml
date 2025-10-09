@@ -26,7 +26,7 @@ spec:
         kubernetes.io/hostname: nano
       containers:
       - name: fastapi-nano
-        image: 192.168.10.1:5000/fastapi_nano:latest
+        image: 10.1.10.150:5000/fastapi_nano:latest
         ports:
         - containerPort: 8000
           name: http
@@ -74,15 +74,15 @@ spec:
       volumes:
       - name: vmstore
         nfs:
-          server: 192.168.5.1
+          server: 10.1.10.150
           path: /export/vmstore
       - name: nano-home
         nfs:
-          server: 192.168.5.1
+          server: 10.1.10.150
           path: /export/vmstore/nano_home
       - name: nano-config
         nfs:
-          server: 192.168.5.1
+          server: 10.1.10.150
           path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
       tolerations:
       - key: "node-role.kubernetes.io/agent"
