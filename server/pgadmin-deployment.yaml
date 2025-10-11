@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: tower
+      containers:
+      - name: pgadmin
+        image: 10.1.10.150:5000/pgadmin:latest
+        env:
+        - name: PGADMIN_DEFAULT_EMAIL
+          value: "pgadmin@pgadmin.org"
+        - name: PGADMIN_DEFAULT_PASSWORD
+          value: "pgadmin"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+      volumes:
+      - name: workspace
+        hostPath:
+          path: /home/sanjay/containers/kubernetes/server/pgadmin
+          type: Directory

@@ -1,0 +1,120 @@
+12:if [ -f "$SCRIPT_DIR/k3s-config.sh" ]; then
+21:if ! [[ "$TOWER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+25:if ! [[ "$NANO_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+29:if ! [[ "$AGX_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+40:if [ "$DEBUG" = "1" ]; then
+53:if [ "$DEBUG" != "1" ]; then
+76:  if [ -z "$DIVIDER_LENGTH" ] || [ "$DIVIDER_LENGTH" -lt 1 ]; then
+168:  if [ "$DEBUG" = "1" ]; then echo "Waiting for server to be ready..."; fi
+170:    if [ $count -ge $timeout ]; then
+177:  if [ "$DEBUG" = "1" ]; then echo "Server is ready"; fi
+184:  if [ "$DEBUG" = "1" ]; then echo "Waiting for agent to be ready..."; fi
+186:    if [ $count -ge $timeout ]; then
+193:  if [ "$DEBUG" = "1" ]; then echo "Agent is ready"; fi
+200:  if [ "$DEBUG" = "1" ]; then echo "Waiting for GPU capacity to be added..."; fi
+202:    if [ $count -ge $timeout ]; then
+209:    if [ "$DEBUG" = "1" ]; then echo "GPU capacity added"; fi
+217:  if ping -c 3 -W 1 $NODE_IP > /dev/null 2>&1; then
+222:    if echo "$ARP_STATUS" | grep -q "INCOMPLETE"; then
+268:    if (total_steps_line) {
+294:if ip addr show enp1s0f1 | grep -q "$TOWER_IP"; then
+314:if [ "$AGX_INTERFACE_AVAILABLE" = true ]; then
+316:  if [ $? -eq 0 ]; then
+332:if [ "$DEBUG" = "1" ]; then
+341:  if sudo /usr/local/bin/k3s-uninstall.sh > /dev/null 2>&1; then
+354:if [ "$INSTALL_SERVER" = true ]; then
+387:  if sudo systemctl restart k3s > /dev/null 2>&1; then
+409:if [ "$DEBUG" = "1" ]; then echo "Getting Token: $TOKEN"; fi
+422:if [ "$INSTALL_NANO_AGENT" = true ]; then
+423:  if [ "$DEBUG" = "1" ]; then
+429:  if ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "hostname" > /dev/null 2>&1; then
+450:if [ "$INSTALL_AGX_AGENT" = true ]; then
+451:  if [ "$DEBUG" = "1" ]; then
+457:  if ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "hostname" > /dev/null 2>&1; then
+479:if [ "$INSTALL_NANO_AGENT" = true ]; then
+490:if [ "$INSTALL_AGX_AGENT" = true ]; then
+501:if [ "$INSTALL_NANO_AGENT" = true ]; then
+502:  if [ "$DEBUG" = "1" ]; then
+509:    if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
+522:if [ "$INSTALL_AGX_AGENT" = true ]; then
+523:  if [ "$DEBUG" = "1" ]; then
+530:    if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
+544:if [ "$INSTALL_NANO_AGENT" = true ]; then
+552:  if [ "$DEBUG" = "1" ]; then
+565:    if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$NANO_IP "$K3S_REINSTALL_CMD" > /dev/null 2>&1; then
+586:if [ "$INSTALL_AGX_AGENT" = true ]; then
+590:  if [ "$DEBUG" = "1" ]; then
+602:    if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "$K3S_REINSTALL_CMD" > /dev/null 2>&1; then
+644:if [ $? -eq 0 ]; then
+678:if [ $? -eq 0 ]; then
+701:if [ "$INSTALL_NANO_AGENT" = true ]; then
+702:  if [ "$DEBUG" = "1" ]; then
+709:    if ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
+723:if [ "$INSTALL_AGX_AGENT" = true ]; then
+724:  if [ "$DEBUG" = "1" ]; then
+731:    if ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
+746:if [ "$INSTALL_NANO_AGENT" = true ]; then
+747:  if [ "$DEBUG" = "1" ]; then
+787:    if [ $? -eq 0 ]; then
+802:if [ "$INSTALL_AGX_AGENT" = true ]; then
+803:  if [ "$DEBUG" = "1" ]; then
+843:    if [ $? -eq 0 ]; then
+861:if [ "$INSTALL_AGX_AGENT" = true ]; then
+862:  if [ "$DEBUG" = "1" ]; then
+887:    if [ $? -eq 0 ]; then
+914:if sudo sed -i 's/192.168.5.1/10.1.10.150/g' /etc/rancher/k3s/k3s.yaml > /dev/null 2>&1; then
+929:if sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $USER:$USER ~/.kube/config; then
+932:  if grep -q "server: https://$TOWER_IP:6443" ~/.kube/config; then
+950:  if [ "$DEBUG" = "1" ]; then
+962:    if [ $? -eq 0 ]; then
+977:if [ "$INSTALL_AGX_AGENT" = true ]; then
+978:  if [ "$DEBUG" = "1" ]; then
+990:    if [ $? -eq 0 ]; then
+1009:if [ "$DEBUG" = "1" ]; then
+1018:    if ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1; then
+1033:if [ "$DEBUG" = "1" ]; then
+1042:  if ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1; then
+1058:if [ "$DEBUG" = "1" ]; then
+1066:  if sudo timeout 30 systemctl restart k3s > /dev/null 2>&1; then
+1094:if [ $? -eq 0 ]; then
+1109:if [ "$INSTALL_AGX_AGENT" = true ]; then
+1114:if sudo scp -i ~/.ssh/id_ed25519 /etc/rancher/k3s/k3s.yaml sanjay@$AGX_IP:/tmp/k3s.yaml.agx > /dev/null 2>&1; then
+1121:    if [ $? -eq 0 ]; then
+1142:if [ "$DEBUG" = "1" ]; then
+1150:  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes --no-headers | grep -E "(nano|agx)" | grep -q "Ready" 2>/dev/null; then
+1163:if [ "$DEBUG" = "1" ]; then
+1180:  if [ $? -eq 0 ]; then
+1195:if [ "$DEBUG" = "1" ]; then
+1203:  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f nvidia-ds-updated.yaml > /dev/null 2>&1; then
+1224:if sudo mkdir -p "$NFS_CONFIG_PATH" "$NFS_HOME_PATH" > /dev/null 2>&1; then
+1244:if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml patch daemonset nvidia-device-plugin-daemonset -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/affinity", "value": {"nodeAffinity": {"requiredDuringSchedulingIgnoredDuringExecution": {"nodeSelectorTerms": [{"matchExpressions": [{"key": "kubernetes.io/hostname", "operator": "In", "values": ["nano", "agx"]}]}]}}}}]' > /dev/null 2>&1; then
+1250:    if [ ! -z "$CRASHING_POD" ]; then
+1271:if sudo mkdir -p "$NFS_CONFIG_PATH" "$NFS_HOME_PATH" > /dev/null 2>&1; then
+1286:if [ "$INSTALL_NANO_AGENT" = true ]; then
+1287:  if [ "$DEBUG" = "1" ]; then
+1296:    if ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo systemctl stop k3s-agent" > /dev/null 2>&1 && ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo systemctl start k3s-agent" > /dev/null 2>&1; then
+1311:if [ "$DEBUG" = "1" ]; then
+1320:  if scp /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp -r /home/sanjay/containers/kubernetes/agent/nano/app sanjay@$NANO_IP:~ > /dev/null 2>&1; then
+1333:if [ "$DEBUG" = "1" ]; then
+1340:  if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker build -t fastapi_nano:latest -f dockerfile.nano.req ." > /dev/null 2>&1; then
+1353:if [ "$DEBUG" = "1" ]; then
+1360:  if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker tag fastapi_nano:latest $REGISTRY_IP:$REGISTRY_PORT/fastapi_nano:latest" > /dev/null 2>&1; then
+1373:if [ "$DEBUG" = "1" ]; then
+1380:  if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker push $REGISTRY_IP:$REGISTRY_PORT/fastapi_nano:latest" > /dev/null 2>&1; then
+1396:if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods --all --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+1401:if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment --all -n default --ignore-not-found=true > /dev/null 2>&1; then
+1431:if [ -f "/export/vmstore/tower_home/kubernetes/agent/nano/app/config/postgres.env" ]; then
+1603:if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment --all -n default --ignore-not-found=true > /dev/null 2>&1; then
+1620:if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods --all --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+1625:if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment --all -n default --ignore-not-found=true > /dev/null 2>&1; then
+1640:if [ "$DEBUG" = "1" ]; then
+1647:  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f fastapi-deployment-full.yaml > /dev/null 2>&1; then
+1661:if [ "$DEBUG" = "1" ]; then
+1670:  if sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" server/postgres/postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1 && \
+1685:if [ "$DEBUG" = "1" ]; then
+1694:  if sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" server/pgadmin/pgadmin-deployment.yaml | \
+1713:if [ "$DEBUG" != "1" ]; then
+1730:if cd server && ./verify-postgres-pgadmin.sh; then
+1749:if [ $? -eq 0 ]; then # This checks the exit code of the previous command
+1798:if sudo k3s kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes >/dev/null 2>&1; then
+1808:if "$SCRIPT_DIR/stability-manager.sh" check; then

@@ -27,6 +27,66 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  K3s Agent Comprehensive Validation${NC}"
 echo -e "${BLUE}========================================${NC}"
 
+# Network Interface Pre-Verification
+echo -e "${BLUE}🔍 Pre-validating network configuration...${NC}"
+
+# Check for NetworkManager vs systemd-networkd renderer conflicts
+INTERFACE_STATE=$(networkctl 2>/dev/null | grep -E "(eno1|enp1s0f1)" | awk '{print $4}' || echo "unknown")
+if [ "$INTERFACE_STATE" = "configuring" ]; then
+    echo -e "${RED}❌ CRITICAL: Network interface is stuck in 'configuring' state${NC}"
+    echo -e "${YELLOW}   This indicates a NetworkManager/systemd-networkd renderer conflict${NC}"
+    echo -e "${YELLOW}   Fix: Run 'sudo nmcli device set <interface> managed no' and 'sudo netplan apply'${NC}"
+    echo -e "${YELLOW}   Current netplan renderers:${NC}"
+    grep -r "renderer:" /etc/netplan/ 2>/dev/null | head -3 | sed 's/^/      /' || echo -e "${YELLOW}      No netplan files found${NC}"
+    exit 1
+elif [ "$INTERFACE_STATE" = "configured" ]; then
+    echo -e "${GREEN}✅ Network interface properly configured${NC}"
+else
+    echo -e "${YELLOW}⚠️  Network interface state: $INTERFACE_STATE (monitoring...)${NC}"
+fi
+
+# DNS and Hostname Resolution Check
+echo -e "${BLUE}🔍 Checking DNS and hostname resolution...${NC}"
+
+# Test connectivity to Tower (critical for K3s agents)
+if ping -c 2 -W 2 "$TOWER_IP" >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Can reach Tower server at $TOWER_IP${NC}"
+else
+    echo -e "${RED}❌ Cannot reach Tower server at $TOWER_IP${NC}"
+    echo -e "${YELLOW}   This will prevent K3s agent from connecting to the server${NC}"
+    exit 1
+fi
+
+# Test hostname resolution
+if getent hosts tower >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Hostname 'tower' resolves correctly${NC}"
+else
+    echo -e "${YELLOW}⚠️  Hostname 'tower' does not resolve (using IP address instead)${NC}"
+fi
+
+echo -e "${GREEN}✅ DNS and hostname resolution check completed${NC}"
+
+# Routing Table Check
+echo -e "${BLUE}🔍 Checking routing table...${NC}"
+
+# Check for default route
+if ! ip route show | grep -q "^default"; then
+    echo -e "${RED}❌ No default route found!${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✅ Default route exists${NC}"
+fi
+
+# Check for local subnet route
+if ! ip route show | grep -q "10.1.10.0/24"; then
+    echo -e "${RED}❌ No route to local subnet 10.1.10.0/24!${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✅ Local subnet route exists${NC}"
+fi
+
+echo -e "${GREEN}✅ Routing table check completed${NC}"
+
 # Detect device type
 if ip addr show | grep -q "$AGX_IP"; then
     DEVICE_TYPE="AGX"

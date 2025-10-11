@@ -7,7 +7,10 @@ This repository provides a complete, automated setup for a high-performance Kube
 ### ✅ Complete AI-Ready Kubernetes Cluster
 - **Automated Setup**: Single-command cluster deployment with network configuration
 - **GPU Optimization**: NVIDIA GPU support with runtime classes and device plugins
-- **Dual-Network Performance**: 10G dedicated link for AGX Orin,---
+- **Dual-Network Performance**: 10G dedicated link for AGX Orin, 1G for Nano
+- **Application Stack**: FastAPI with GPU acceleration, PostgreSQL with pgvector, pgAdmin
+- **Production Ready**: Comprehensive stability verification and monitoring
+- **53-Step Automation**: Complete end-to-end deployment with validation
 
 ## 🔧 Troubleshooting Guide
 
@@ -211,7 +214,7 @@ sudo k3s kubectl apply -f fastapi-deployment-full.yaml
 - **Zero Interference**: Isolated networks prevent bandwidth sharing issues
 - **GPU Acceleration**: CUDA, TensorRT, PyTorch, TensorFlow optimized
 - **Database Performance**: pgvector extension for AI vector operations
-- **🆕 Stability Verification**: 52-step automated deployment with comprehensive validation
+- **🆕 Stability Verification**: 53-step automated deployment with comprehensive validation
 
 ## 🏗️ Architecture Overview
 
@@ -244,7 +247,7 @@ sudo k3s kubectl apply -f fastapi-deployment-full.yaml
 ```
 kubernetes/
 ├── k3s-config.sh                    # Configuration file (IPs, passwords, enable/disable components)
-├── k3s-setup-automation.sh          # 🆕 Main automated setup script (52 steps with stability verification)
+├── k3s-setup-automation.sh          # 🆕 Main automated setup script (53 steps with stability verification)
 ├── stability-manager.sh             # 🆕 Advanced cluster stability manager
 ├── STABILITY-README.md              # 🆕 Stability manager documentation
 ├── README.md                        # This comprehensive documentation
@@ -326,7 +329,7 @@ kubernetes/
    ```
 
    **What the automated script provides:**
-   - ✅ **52-step deployment process** with real-time progress
+   - ✅ **53-step deployment process** with real-time progress
    - ✅ **Comprehensive stability verification** at completion
    - ✅ **Clean output** with no SSH warnings or formatting issues
    - ✅ **Automatic service validation** (PostgreSQL, pgAdmin, FastAPI)
@@ -485,7 +488,7 @@ The stability manager validates:
 - ✅ **Storage**: NFS mounts and persistent volumes
 
 ### Integration with Automation
-- **52-Step Deployment**: Includes stability verification as final step
+- **53-Step Deployment**: Includes stability verification as final step
 - **Clean Output**: No warnings or formatting issues
 - **Progress Indicators**: Real-time status during long operations
 - **Error Recovery**: Automatic retry mechanisms for transient failures
@@ -521,12 +524,12 @@ The stability manager uses these configuration files:
 
 For detailed documentation, see `STABILITY-README.md`.
 
-## 🚀 Automated Deployment (52 Steps)
+## 🚀 Automated Deployment (53 Steps)
 
 The deployment automation script (`k3s-setup-automation.sh`) provides a comprehensive, production-ready K3s cluster setup with full validation and error handling.
 
 ### Key Features
-- **52-Step Process**: Complete end-to-end automation
+- **53-Step Process**: Complete end-to-end automation
 - **Error Recovery**: Automatic retry mechanisms for transient failures
 - **Progress Tracking**: Real-time status updates with timestamps
 - **Validation**: Comprehensive checks at each stage
@@ -566,7 +569,7 @@ The deployment automation script (`k3s-setup-automation.sh`) provides a comprehe
 - Ingress rules and routing
 - GPU resource allocation
 
-#### Phase 6: Validation & Stability (Steps 51-52)
+#### Phase 6: Validation & Stability (Steps 51-53)
 - Comprehensive health checks
 - Stability manager integration
 - Final verification and reporting
@@ -640,7 +643,7 @@ For detailed deployment logs and troubleshooting, check the timestamped log file
 - **Performance Tracking**: Resource usage monitoring
 
 ### Recent Improvements
-- ✅ **52-step automation** with full validation
+- ✅ **53-step automation** with full validation
 - ✅ **Stability manager** for continuous monitoring
 - ✅ **Clean deployment output** with progress indicators
 - ✅ **Error recovery mechanisms** for transient failures
@@ -806,7 +809,7 @@ This K3s automation project has been evaluated across multiple robustness dimens
 ### 📊 Robustness Score: **9.2/10**
 
 #### **Deployment Robustness** ⭐⭐⭐⭐⭐ (5/5)
-- **52-Step Automated Process**: Complete end-to-end automation with validation at each stage
+- **53-Step Automated Process**: Complete end-to-end automation with validation at each stage
 - **Pre-flight Validation**: Configuration and environment checks before deployment
 - **Error Recovery**: Automatic retry mechanisms for transient failures
 - **Clean Output**: No warnings or formatting issues during execution
@@ -901,7 +904,7 @@ This K3s automation project has been evaluated across multiple robustness dimens
 - **Incident Response**: Structured troubleshooting procedures
 
 ### Production Readiness Checklist ✅
-- [x] **Automated Deployment**: 52-step process with validation
+- [x] **Automated Deployment**: 53-step process with validation
 - [x] **Health Monitoring**: Continuous stability checks
 - [x] **Error Recovery**: Automatic and manual recovery procedures
 - [x] **Security Hardening**: RBAC, network policies, secrets management

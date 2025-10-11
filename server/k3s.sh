@@ -1,34 +1,50 @@
 #!/bin/bash
 
 clear
+# k3s-config.sh
 
-# K3s Setup and FastAPI Deployment Automation Script
-# Automates the setup of K3s cluster with GPU support for FastAPI on Jetson Nano and AGX.
-# Run this script on the server (tower) machine.
+# K3s Installation Configuration
+# Set to true to install the respective components
 
-# Source configuration
-# NOTE: Ensure k3s-config.sh exists and contains TOWER_IP, NANO_IP, AGX_IP, REGISTRY_IP, etc.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/k3s-config.sh" ]; then
-  source "$SCRIPT_DIR/k3s-config.sh"
-else
-  echo "ERROR: k3s-config.sh not found in $SCRIPT_DIR"
-  exit 1
-fi
+# Install K3s server on tower
+INSTALL_SERVER=true # Set to true to allow server uninstall/install steps to run
+
+# Install K3s agent on nano
+INSTALL_NANO_AGENT=true
+
+# Install K3s agent on agx
+INSTALL_AGX_AGENT=true
+
+# IP addresses
+TOWER_IP="10.1.10.150"
+NANO_IP="10.1.10.181"   # <-- Use the correct, reachable IP
+AGX_IP="10.1.10.244"
+
+# Registry settings
+REGISTRY_IP="10.1.10.150"
+REGISTRY_PORT="5000"
+
+# Database Configuration
+POSTGRES_PASSWORD="postgres"  # PostgreSQL admin password
+PGADMIN_PASSWORD="pgadmin"          # pgAdmin default password
+PGADMIN_EMAIL="pgadmin@pgadmin.org" # pgAdmin default email
+
+# Debug mode (0 for silent, 1 for verbose)
+DEBUG=0
 
 # Pre-flight validation
 echo "🔍 Running pre-flight checks..."
 if ! [[ "$TOWER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "❌ ERROR: TOWER_IP ($TOWER_IP) is not a valid IP address"
-  exit 1
+    echo "❌ ERROR: TOWER_IP ($TOWER_IP) is not a valid IP address"
+    exit 1
 fi
 if ! [[ "$NANO_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "❌ ERROR: NANO_IP ($NANO_IP) is not a valid IP address"
-  exit 1
+    echo "❌ ERROR: NANO_IP ($NANO_IP) is not a valid IP address"
+    exit 1
 fi
 if ! [[ "$AGX_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "❌ ERROR: AGX_IP ($AGX_IP) is not a valid IP address"
-  exit 1
+    echo "❌ ERROR: AGX_IP ($AGX_IP) is not a valid IP address"
+    exit 1
 fi
 echo "✅ Configuration validation passed"
 
@@ -38,20 +54,21 @@ DEBUG=${DEBUG:-0}
 START_MESSAGE="Starting K3s Setup and FastAPI Deployment in SILENT NORMAL mode..."
 
 if [ "$DEBUG" = "1" ]; then
-  echo "Starting K3s Setup and FastAPI Deployment in **VERBOSE DEBUG** mode..."
+    echo "Starting K3s Setup and FastAPI Deployment in **VERBOSE DEBUG** mode..."
 else
-  echo "Starting K3s Setup and FastAPI Deployment in **SILENT NORMAL** mode..."
+    echo "Starting K3s Setup and FastAPI Deployment in **SILENT NORMAL** mode..."
 fi
 
 # Initialize Dynamic Step Counter
 CURRENT_STEP=1
-# NOTE: Total steps count is 53 (includes final stability verification)
-TOTAL_STEPS=53
+
+# NOTE: Total steps count is 54 (includes final stability verification)
+TOTAL_STEPS=55
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.
 if [ "$DEBUG" != "1" ]; then
-  set +e
+    set +e
 fi
 
 # Function to display step with timestamp and increment counter with fixed-width formatting
@@ -74,7 +91,7 @@ step_echo_start() {
   # FALLBACK: If the calculation fails (e.g., the script is run for the first time
   # and doesn't have the long separator lines yet), use a safe default of 75.
   if [ -z "$DIVIDER_LENGTH" ] || [ "$DIVIDER_LENGTH" -lt 1 ]; then
-      DIVIDER_LENGTH=75
+    DIVIDER_LENGTH=75
   fi
 
     # Add timestamp to each step
@@ -94,6 +111,12 @@ print_divider() {
     # Note: We subtract 2 from the length here because the output includes '# ' (2 characters).
     HYPHENS=$(printf "%*s" $((DIVIDER_LENGTH - 2)) "" | tr ' ' '-')
     echo "# $HYPHENS"
+    
+}
+
+# Function to increment step counter
+step_increment() {
+    CURRENT_STEP=$((CURRENT_STEP + 1))
 }
 
 # --- NEW VARIABLE ---
@@ -156,11 +179,6 @@ capture_final_log() {
 --- LOG CAPTURE COMPLETE ---" >> "$log_file"
 }
 
-# Function to increment the step counter
-step_increment() {
-    CURRENT_STEP=$((CURRENT_STEP + 1))
-}
-
 # Function to wait for server readiness (runs silently in normal mode)
 wait_for_server() {
   local timeout=60
@@ -209,6 +227,7 @@ wait_for_gpu_capacity() {
     if [ "$DEBUG" = "1" ]; then echo "GPU capacity added"; fi
 }
 
+
 # Function for the critical ARP/Ping check
 run_network_check() {
   local NODE_IP=$1
@@ -237,52 +256,95 @@ run_network_check() {
 }
 
 
-## =========================================================================
-# STEP 1: SELF-RENUMBER SCRIPT STEPS AND TOTAL_STEPS VARIABLE (AUTO-FIX)
-# =========================================================================
-step_echo_start "s" "tower" "$TOWER_IP" "Executing self-renumbering script logic..."
 
-# --- AWK Logic for Renumbering ---
-# This AWK script reads the entire file, renumbers 'STEP 2:' and 'STEP [0-9]+:' comments sequentially,
-# updates the TOTAL_STEPS variable, and overwrites the script file.
-SCRIPT_CONTENT=$(awk '
-  BEGIN { step_count = 0; }
-  
-  # 1. Find and renumber the step definition comments (including XX)
-  /^#+.*STEP ([0-9]+|XX):/ {
-    step_count++;
-    sub(/STEP ([0-9]+|XX)/, "STEP " step_count);
-  }
-  
-  # 2. Identify the line containing TOTAL_STEPS
-  /TOTAL_STEPS=/ {
-    total_steps_line = NR;
-  }
+# Function to deploy FastAPI on nano
+deploy_fastapi() {
+    local step_num="$1"
+    local node="$2"
+    local ip="$3"
+    local msg="$4"
 
-  # Store every line (modified or not) in an array
-  { lines[NR] = $0 }
-  
-  # END Block: Update and Print all lines
-  END {
-    # Update the TOTAL_STEPS line with the final count
-    if (total_steps_line) {
-      gsub(/TOTAL_STEPS=[0-9]+/, "TOTAL_STEPS=" step_count, lines[total_steps_line]);
-    }
-    
-    # Print all lines from the array
-    for (i=1; i<=NR; i++) {
-      print lines[i];
-    }
-  }
-' "$0")
-# Overwrite the current script file with the corrected content
-echo "$SCRIPT_CONTENT" > "$0"
-echo -e "✅"
-step_increment
-print_divider
+    step_echo_start "$step_num" "$node" "$ip" "$msg"
 
+# 1. Force-delete ALL stuck pods (addresses the persistent 'Terminating' issue)
+if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods --all --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    :
+fi
+
+# 2. Delete only the FastAPI deployment to avoid conflicts
+if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-nano -n default --ignore-not-found=true > /dev/null 2>&1; then
+  sleep 5 # Give 5 seconds for resources to be fully released before the next deployment
+  echo -e "[32m✅[0m"
+else
+  echo -e "[31m❌[0m"
+  echo -e "[31mFATAL: Failed to clean up old deployments.[0m"
+  return 1
+fi    # 3. Deploy FastAPI on nano
+    cat > /tmp/fastapi-deployment.yaml <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-nano
+  labels:
+    app: fastapi-nano
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-nano
+  template:
+    metadata:
+      labels:
+        app: fastapi-nano
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: nano
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      containers:
+      - name: fastapi
+        image: 10.1.10.150:5000/fastapi_nano:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+EOF
+    if [ "$DEBUG" = "1" ]; then
+        echo "Applying FastAPI deployment YAML..."
+        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-deployment.yaml
+        apply_exit=$?
+    else
+        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-deployment.yaml > /dev/null 2>&1
+        apply_exit=$?
+    fi
+    if [ $apply_exit -eq 0 ]; then
+        echo -e "✅ FastAPI deployed on nano"
+        # Wait for the pod to be running
+        echo "Waiting for FastAPI pod to be ready..."
+        for i in {1..30}; do
+            if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-nano -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+                echo -e "✅ FastAPI pod is running"
+                break
+            fi
+            sleep 5
+        done
+        if [ $i -eq 30 ]; then
+            echo -e "❌ FastAPI pod did not start within 2.5 minutes"
+            return 1
+        fi
+        step_increment
+        print_divider
+        return 0
+    else
+        echo -e "❌ Failed to deploy FastAPI on nano"
+        return 1
+    fi
+}
+
+
+step_01(){
 # -------------------------------------------------------------------------
-# STEP 3: Tower Network Verification
+# STEP 01: Tower Network Verification
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Tower Network Verification..."
 echo ""
@@ -304,11 +366,12 @@ step_echo_start "s" "tower" "$TOWER_IP" "Tower Network Verification..."
 echo -e "[32m✅[0m"
 step_increment
 print_divider
+}
 
 
-
+step_02(){
 # -------------------------------------------------------------------------
-# STEP 4: Start iperf3 server
+# STEP 02: Start iperf3 server
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Starting iperf3 server for network testing..."
 if [ "$AGX_INTERFACE_AVAILABLE" = true ]; then
@@ -321,13 +384,15 @@ if [ "$AGX_INTERFACE_AVAILABLE" = true ]; then
 else
   echo -e "[33m⚠️  Skipped (10G interface unavailable)[0m"
 fi
-step_increment
 print_divider
+step_increment
+}
 
 
 
+step_03(){
 # -------------------------------------------------------------------------
-# STEP 5: Uninstall Server
+# STEP 03: Uninstall Server
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Uninstalling Server... (Verbose output below)"
@@ -345,11 +410,16 @@ else
 "  # Print checkmark anyway, as uninstall may not exist
   fi
 fi
-step_increment
 print_divider
+step_increment
+}
+
+
+
+step_04(){
 
 # -------------------------------------------------------------------------
-# STEP 6: Install Server
+# STEP 04: Install Server
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SERVER" = true ]; then
   step_echo_start "s" "tower" "$TOWER_IP" "Installing K3s server..."
@@ -366,16 +436,21 @@ if [ "$INSTALL_SERVER" = true ]; then
   echo -e "[32m✅[0m"
   step_increment
   print_divider
+fi
+}
 
 
+
+step_05(){
 # -------------------------------------------------------------------------
-# STEP 7: Correct K3s Network Configuration (SIMPLIFIED MESSAGE)
+# STEP 05: Correct K3s Network Configuration (SIMPLIFIED MESSAGE)
 # -------------------------------------------------------------------------
-step_echo_start "s" "tower" "$TOWER_IP" "Correcting K3s network configuration..."
-# Stop the service installed by the curl script (Silent in both modes)
-sudo systemctl stop k3s > /dev/null 2>&1
-# 2. Write the corrected config file (Silent in both modes)
-sudo tee /etc/rancher/k3s/config.yaml > /dev/null << EOF
+if [ "$INSTALL_SERVER" = true ]; then
+  step_echo_start "s" "tower" "$TOWER_IP" "Correcting K3s network configuration..."
+  # Stop the service installed by the curl script (Silent in both modes)
+  sudo systemctl stop k3s > /dev/null 2>&1
+  # 2. Write the corrected config file (Silent in both modes)
+  sudo tee /etc/rancher/k3s/config.yaml > /dev/null << EOF
 bind-address: $TOWER_IP
 advertise-address: $TOWER_IP
 flannel-iface: enp1s0f1
@@ -386,9 +461,9 @@ EOF
   sudo systemctl daemon-reload > /dev/null 2>&1
   if sudo systemctl restart k3s > /dev/null 2>&1; then
     wait_for_server # Ensure it's ready before proceeding
-    echo -e "[32m✅[0m"
+    echo -e "\033[32m✅\033[0m"
   else
-    echo -e "[31m❌ Failed to restart K3s with corrected config[0m"
+    echo -e "\033[31m❌ Failed to restart K3s with corrected config\033[0m"
     exit 1
   fi
   step_increment
@@ -397,15 +472,15 @@ else
   # Skip server installation steps if INSTALL_SERVER is false
   step_echo_start "s" "tower" "$TOWER_IP" "K3s server installation skipped."
   step_increment
-  print_divider
-  step_echo_start "s" "tower" "$TOWER_IP" "K3s network configuration fix skipped."
-  step_increment
-  print_divider
 fi
+}
 
+
+
+step_06(){
 # -------------------------------------------------------------------------
-# STEP 8: Get Token
-# -------------------------------------------------------------------------
+# STEP 06: Get Token
+# ------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then echo "Getting Token: $TOKEN"; fi
 step_echo_start "s" "tower" "$TOWER_IP" "Getting server token..."
 sleep 5
@@ -413,11 +488,12 @@ TOKEN=$(sudo cat /var/lib/rancher/k3s/server/node-token)
 echo -e "[32m✅[0m"
 step_increment
 print_divider
+}
 
 
-
+step_07(){
 # -------------------------------------------------------------------------
-# STEP 9: Nano SSH Validation
+# STEP 07: Nano SSH Validation
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -443,9 +519,12 @@ else
 fi
 step_increment
 print_divider
+}
 
+
+step_08(){
 # -------------------------------------------------------------------------
-# STEP 10: AGX SSH Validation
+# STEP 08: AGX SSH Validation
 # -------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -471,10 +550,11 @@ else
 fi
 step_increment
 print_divider
+}
 
-
+step_09(){
 # -------------------------------------------------------------------------
-# STEP 11: NANO ARP/PING CHECK
+# STEP 09: NANO ARP/PING CHECK
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   step_echo_start "a" "nano" "$NANO_IP" "Verifying Nano network reachability (ARP/Ping)..."
@@ -483,9 +563,11 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
 fi
 step_increment
 print_divider
+}
 
+step_10(){
 # -------------------------------------------------------------------------
-# STEP 12: AGX ARP/PING CHECK
+# STEP 10: AGX ARP/PING CHECK
 # -------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "a" "agx" "$AGX_IP" "Verifying AGX network reachability (ARP/Ping)..."
@@ -494,9 +576,11 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
 fi
 step_increment
 print_divider
+}
 
+step_11(){
 # -------------------------------------------------------------------------
-# STEP 13: Uninstall Nano Agent
+# STEP 11: Uninstall Nano Agent
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -515,9 +599,11 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
 fi
 step_increment
 print_divider
+}
 
+step_12(){
 # -------------------------------------------------------------------------
-# STEP 14: Uninstall AGX Agent
+# STEP 12: Uninstall AGX Agent
 # -------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -538,8 +624,12 @@ fi
 step_increment
 print_divider
 
+}
+
+
+step_13(){
 # -------------------------------------------------------------------------
-# STEP 15: Reinstall Nano Agent (FIXED IP CACHE ERROR + SYSTEMD RELOAD)
+# STEP 11: Reinstall Nano Agent (FIXED IP CACHE ERROR + SYSTEMD RELOAD)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   # Define the robust installation command with explicit IP binding
@@ -578,10 +668,12 @@ fi
 step_increment
 print_divider
 
+}
 
 
+step_14(){
 # -------------------------------------------------------------------------
-# STEP 16: Reinstall AGX Agent (FIXED IP CACHE ERROR + SYSTEMD RELOAD)
+# STEP 14: Reinstall AGX Agent (FIXED IP CACHE ERROR + SYSTEMD RELOAD)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   # Define the robust installation command with explicit IP binding
@@ -615,14 +707,12 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
 fi
 step_increment
 print_divider
+}
 
 
-
-
-
-
+step_15(){
 # =========================================================================
-# STEP 17: Systemd Service Override (force correct server/node IP) NANO
+# STEP 15: Systemd Service Override (force correct server/node IP) NANO
 # =========================================================================
 step_echo_start "a" "nano" "$NANO_IP" "Forcing K3s nano agent to use correct server IP..."
 
@@ -644,17 +734,54 @@ ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$N
 if [ $? -eq 0 ]; then
     # Wait for the agent to re-join and be ready
     wait_for_agent 
-    echo -en "✅[0m"
+    echo -en "✅[0m
+"
 else
-    echo -en "❌[0m"
+    echo -en "❌[0m
+"
     echo -e "[31mFATAL: Failed to overwrite NANO service file.[0m"
     exit 1
 fi
 step_increment
 print_divider
 
+}
+
+
+
+step_16(){
+# -------------------------------------------------------------------------
+# STEP 16: Create Registry Config Directory NANO
+# -------------------------------------------------------------------------
+if [ "$INSTALL_NANO_AGENT" = true ]; then
+  if [ "$DEBUG" = "1" ]; then
+    echo "Adding Registry Config Dir..."
+    sleep 5
+    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /etc/rancher/k3s/"
+    echo ""
+  else
+    step_echo_start "a" "nano" "$NANO_IP" "Creating nano registry configuration directory..."
+    sleep 5
+    if ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
+      echo -en " ✅[0m"
+    else
+      echo -e "[31m❌[0m"
+      exit 1
+    fi
+  fi
+  step_increment
+  print_divider
+ fi
+}
+
+
+
+
+
+
+step_17(){
 # =========================================================================
-# STEP 18: Systemd Service Override (force correct server/node IP) AGX
+# STEP 17: Systemd Service Override (force correct server/node IP) AGX
 # =========================================================================
 step_echo_start "a" "agx" "$AGX_IP" "Forcing K3s agx agent to use correct server IP..."
 
@@ -668,7 +795,6 @@ ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$A
 Environment="K3S_URL=https://$TOWER_IP:6443"
 Environment="K3S_NODE_IP=$AGX_IP"
 EOF
-
 # Restart the service to apply the forced environment variables
 ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "sudo systemctl daemon-reload && sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1
 
@@ -676,51 +802,28 @@ ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$A
 if [ $? -eq 0 ]; then
     # Wait for the agent to re-join and be ready
     wait_for_agent 
-  echo -en "✅\x1b[0m"
+  echo -e "✅\x1b[0m"
 else
-  echo -en "❌\x1b[0m"
+  echo -e "❌\x1b[0m"
   echo -e "\x1b[31mFATAL: Failed to overwrite AGX service file.\x1b[0m"
   exit 1
 fi
 step_increment
 print_divider
+}
 
 
 
-
-
+step_18(){
 # -------------------------------------------------------------------------
-# STEP 19: Create Registry Config Directory NANO
-# -------------------------------------------------------------------------
-if [ "$INSTALL_NANO_AGENT" = true ]; then
-  if [ "$DEBUG" = "1" ]; then
-    echo "Adding Registry Config Dir..."
-    sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /etc/rancher/k3s/"
-  else
-    step_echo_start "a" "nano" "$NANO_IP" "Creating nano registry configuration directory..."
-    sleep 5
-    if ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
-      echo -en " ✅[0m
-"
-    else
-      echo -e "[31m❌[0m"
-      exit 1
-    fi
-  fi
-  step_increment
-  print_divider
-fi
-
-
-# -------------------------------------------------------------------------
-# STEP 20: Create Registry Config Directory AGX
+# STEP 18: Create Registry Config Directory AGX
 # -------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Adding Registry Config Dir on AGX..."
     sleep 5
     ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /etc/rancher/k3s/"
+    echo ""
   else
     step_echo_start "a" "agx" "$AGX_IP" "Creating agx registry configuration directory..."
     sleep 5
@@ -735,9 +838,14 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
   print_divider
 fi
 
+}
 
+
+
+
+step_19(){
 # -------------------------------------------------------------------------
-# STEP 21: Write Registry YAML and Containerd TOML (Nano)
+# STEP 19: Write Registry YAML and Containerd TOML (Nano)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -792,8 +900,12 @@ step_increment
 print_divider
 
 
+}
+
+
+step_20(){
 # -------------------------------------------------------------------------
-# STEP 22: Write Registry YAML and Containerd TOML (AGX)
+# STEP 20: Write Registry YAML and Containerd TOML (AGX)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -847,12 +959,14 @@ fi
 step_increment
 print_divider
 
+}
 
 
 
 
+step_21(){
 # -------------------------------------------------------------------------
-# STEP 23: Configure Registry for AGX
+# STEP 21: Configure Registry for AGX
 # -------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -890,6 +1004,50 @@ EOF
 fi
 step_increment
 print_divider
+}
+
+
+step_22(){
+# -------------------------------------------------------------------------
+# STEP 22: Configure Registry for AGX
+# -------------------------------------------------------------------------
+if [ "$INSTALL_AGX_AGENT" = true ]; then
+  if [ "$DEBUG" = "1" ]; then
+    echo "Configuring Registry for AGX..."
+    sleep 5
+  else
+    step_echo_start "a" "agx" "$AGX_IP" "Configuring registry for agx..."
+    sleep 5
+    ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1 && \
+    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+mirrors:
+  \"$REGISTRY_IP:$REGISTRY_PORT\":
+    endpoint:
+      - \"http://$REGISTRY_IP:$REGISTRY_PORT\"
+
+configs:
+  \"$REGISTRY_IP:$REGISTRY_PORT\":
+    tls:
+      insecure_skip_verify: true
+EOF
+" > /dev/null 2>&1 && \
+    ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1 && \
+    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+[host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
+  capabilities = [\"pull\", \"resolve\", \"push\"]
+EOF
+" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      echo -e "[32m✅[0m"
+    else
+      echo -e "[31m❌[0m"
+      exit 1
+    fi
+  fi
+fi
+step_increment
+print_divider
+}
 
 
 
@@ -901,9 +1059,9 @@ print_divider
 
 
 
-
+step_23(){
 # --------------------------------------------------------------------------------
-# NEW STEP 24: FIX KUBECONFIG IP (Addresses the 'i/o timeout' error)
+# NEW STEP 23: FIX KUBECONFIG IP (Addresses the 'i/o timeout' error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Patching Kubeconfig with correct API IP..."
 # Fix the old/incorrect IP (e.g., 192.168.5.1) to the current static IP (10.1.10.150)
@@ -916,9 +1074,11 @@ else
 fi
 step_increment
 print_divider
+}
 
+step_24(){
 # --------------------------------------------------------------------------------
-# STEP 25: COPY UPDATED KUBECONFIG TO LOCAL USER
+# STEP 24: COPY UPDATED KUBECONFIG TO LOCAL USER
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Copying Kubeconfig to local user..."
 # Copy the patched kubeconfig to the user's local kubeconfig directory
@@ -938,10 +1098,13 @@ fi
 step_increment
 print_divider
 
+}
 
 
+
+step_25(){
 # -------------------------------------------------------------------------
-# STEP 26: Configure Containerd for Registry (Nano)
+# STEP 25: Configure Containerd for Registry (Nano)
 # -------------------------------------------------------------------------
   if [ "$DEBUG" = "1" ]; then
     echo "Configuring Containerd for Registry..."
@@ -966,7 +1129,40 @@ EOF
   step_increment
   print_divider
 
+}
 
+
+
+step_26(){
+# -------------------------------------------------------------------------
+# STEP 26: Configure Containerd for Registry (AGX)
+# -------------------------------------------------------------------------
+if [ "$INSTALL_AGX_AGENT" = true ]; then
+  if [ "$DEBUG" = "1" ]; then
+    echo "Configuring Containerd for Registry on AGX..."
+    sleep 5
+  else
+    step_echo_start "a" "agx" "$AGX_IP" "Configuring containerd for registry..."
+    sleep 5
+    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1 && \
+    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+[host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
+  capabilities = [\"pull\", \"resolve\", \"push\"]
+EOF
+" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      echo -en " ✅\033[0m\n"
+    else
+      echo -e "\033[31m❌\033[0m"
+      exit 1
+    fi
+  fi
+  step_increment
+  print_divider
+fi
+}
+
+step_27(){
 # -------------------------------------------------------------------------
 # STEP 27: Configure Containerd for Registry (AGX)
 # -------------------------------------------------------------------------
@@ -993,12 +1189,11 @@ EOF
   step_increment
   print_divider
 fi
+}
 
 
 
-
-
-
+step_28(){
 # -------------------------------------------------------------------------
 # STEP 28: Restart Agent After Registry Config NANO
 # -------------------------------------------------------------------------
@@ -1007,7 +1202,7 @@ if [ "$DEBUG" = "1" ]; then
     sleep 5
     ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo systemctl restart k3s-agent"
     wait_for_agent
-  else
+else
     step_echo_start "a" "nano" "$NANO_IP" "Restarting K3s agent after registry config..."
     sleep 5
     # Use timeout to prevent hanging on systemctl restart
@@ -1023,6 +1218,9 @@ if [ "$DEBUG" = "1" ]; then
 step_increment
 print_divider
 
+}
+
+step_29(){
 # -------------------------------------------------------------------------
 # STEP 29: Restart Agent After Registry Config AGX
 # -------------------------------------------------------------------------
@@ -1047,7 +1245,10 @@ fi
 step_increment
 print_divider
 
+}
 
+
+step_30(){
 # -------------------------------------------------------------------------
 # STEP 30: Restart Server (Final Check)
 # -------------------------------------------------------------------------
@@ -1070,7 +1271,9 @@ else
 fi
 step_increment
 print_divider
+}
 
+step_31(){
 # =========================================================================
 # STEP 31: COPY KUBECONFIG TO NANO AGENT (Robust Copy using 'sudo cat')
 # =========================================================================
@@ -1099,8 +1302,11 @@ fi
 step_increment
 print_divider
 
+}
+
+step_32(){
 # =========================================================================
-# STEP 31 COPY KUBECONFIG TO AGX AGENT (Ultra-Robust 'sudo scp' version)
+# STEP 32: COPY KUBECONFIG TO AGX AGENT (Ultra-Robust 'sudo scp' version)
 # =========================================================================
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "s" "tower" "$TOWER_IP" "Copying Kubeconfig to agx agent..."
@@ -1130,10 +1336,11 @@ fi
 step_increment
 print_divider
 fi
+}
 
-
+step_33() {
 # =========================================================================
-# STEP 32: Verify Agent Node Readiness
+# STEP 33: Verify Agent Node Readiness
 # =========================================================================
 if [ "$DEBUG" = "1" ]; then
   echo "Verifying agent nodes are ready..."
@@ -1152,9 +1359,11 @@ else
 fi
 step_increment
 print_divider
+}
 
+step_34(){
 # -------------------------------------------------------------------------
-# STEP 33: Install NVIDIA RuntimeClass
+# STEP 34: Install NVIDIA RuntimeClass
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Installing NVIDIA RuntimeClass..."
@@ -1183,10 +1392,14 @@ fi
 step_increment
 print_divider
 
+}
 
 
+
+
+step_35(){
 # -------------------------------------------------------------------------
-# STEP 34: Install NVIDIA Device Plugin
+# STEP 35: Install NVIDIA Device Plugin
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Installing NVIDIA Device Plugin... (Verbose output below)"
@@ -1205,30 +1418,9 @@ else
 fi
 step_increment
 print_divider
+}
 
-
-
-# --------------------------------------------------------------------------------
-# STEP 35: FIX NFS VOLUME PATHS (Addresses 'No such file or directory' error)
-# --------------------------------------------------------------------------------
-step_echo_start "s" "tower" "$TOWER_IP" "Setting up NFS volumes..."
-NFS_BASE="/export/vmstore"
-# Paths identified from the Persistent Volume Claims (PVCs):
-NFS_CONFIG_PATH="$NFS_BASE/tower_home/kubernetes/agent/nano/app/config"
-NFS_HOME_PATH="$NFS_BASE/nano_home"
-
-if sudo mkdir -p "$NFS_CONFIG_PATH" "$NFS_HOME_PATH" > /dev/null 2>&1; then
-    # Re-export the volumes to ensure the new paths are available immediately
-    sudo exportfs -a > /dev/null 2>&1
-    echo -e "[32m✅[0m"
-else
-    echo -e "[31m❌[0m"
-    echo -e "[31mFATAL: Failed to create required NFS directories.[0m"
-    exit 1
-fi
-step_increment
-print_divider
-
+step_36(){
 # -------------------------------------------------------------------------
 # STEP 36: FIX NVIDIA DEVICE PLUGIN NODE AFFINITY (NEW SELF-HEALING STEP)
 # -------------------------------------------------------------------------
@@ -1255,12 +1447,17 @@ fi
 step_increment
 print_divider
 
+}
+
+
+
+step_37(){
 # --------------------------------------------------------------------------------
-# NEW STEP 37: FIX NFS VOLUME PATHS (Addresses 'No such file or directory' error)
+# STEP 37: FIX NFS VOLUME PATHS (Addresses 'No such file or directory' error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Setting up NFS volumes..."
 NFS_BASE="/export/vmstore"
-# Paths found during debugging from the pod YAML:
+# Paths identified from the Persistent Volume Claims (PVCs):
 NFS_CONFIG_PATH="$NFS_BASE/tower_home/kubernetes/agent/nano/app/config"
 NFS_HOME_PATH="$NFS_BASE/nano_home"
 
@@ -1276,10 +1473,11 @@ fi
 step_increment
 print_divider
 
+}
 
-
+step_40(){
 # -------------------------------------------------------------------------
-# STEP 38: Configure NVIDIA Runtime on Nano
+# STEP 40: Configure NVIDIA Runtime on Nano
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -1303,23 +1501,23 @@ fi
 step_increment
 print_divider
 
+}
 
 
-
-
-# -------------------------------------------------------------------------
+step_43(){
+## -------------------------------------------------------------------------
 # STEP 39: Copy Files for Build
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Copying Files for Build... (Verbose output below)"
   sleep 5
-  scp /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@$NANO_IP:~
-  scp /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@$NANO_IP:~
-  scp -r /home/sanjay/containers/kubernetes/agent/nano/app sanjay@$NANO_IP:~
+  scp -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@$NANO_IP:~
+  scp -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@$NANO_IP:~
+  scp -r -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/app sanjay@$NANO_IP:~
 else
   step_echo_start "a" "nano" "$NANO_IP" "Copying files for Docker build..."
   sleep 5
-  if scp /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp -r /home/sanjay/containers/kubernetes/agent/nano/app sanjay@$NANO_IP:~ > /dev/null 2>&1; then
+  if scp -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp -r -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/app sanjay@$NANO_IP:~ > /dev/null 2>&1; then
     echo -e "[32m✅[0m"
   else
     echo -e "[31m❌[0m"
@@ -1329,10 +1527,14 @@ fi
 step_increment
 print_divider
 
+}
 
 
 
 
+
+
+step_44(){
 # -------------------------------------------------------------------------
 # STEP 40: Build Image
 # -------------------------------------------------------------------------
@@ -1352,9 +1554,12 @@ else
 fi
 step_increment
 print_divider
+}
 
 
 
+
+step_45(){
 # -------------------------------------------------------------------------
 # STEP 41: Tag Image
 # -------------------------------------------------------------------------
@@ -1375,11 +1580,16 @@ fi
 step_increment
 print_divider
 
+}
+
+
+step_46(){
 # -------------------------------------------------------------------------
 # STEP 42: Push Image
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing Image... (Verbose output below)"
+ 
   sleep 5
   ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker push $REGISTRY_IP:$REGISTRY_PORT/fastapi_nano:latest"
 else
@@ -1395,8 +1605,10 @@ fi
 step_increment
 print_divider
 
+}
 
 
+step_47(){
 # --------------------------------------------------------------------------------
 # NEW STEP 43: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
 # --------------------------------------------------------------------------------
@@ -1416,10 +1628,17 @@ else
   echo -e "[31mFATAL: Failed to clean up old deployments.[0m"
   exit 1
 fi
+
 step_increment
 print_divider
+}
 
 
+
+
+
+
+step_48(){
 
 # -------------------------------------------------------------------------
 # STEP 44: Update Database Configuration
@@ -1440,6 +1659,9 @@ EOF
 # Also update the local copy
 cp /export/vmstore/tower_home/kubernetes/agent/nano/app/config/postgres.env /home/sanjay/containers/kubernetes/agent/nano/app/config/postgres.env
 
+# Create the init-sql configmap for postgres initialization
+sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml create configmap init-sql --from-file=init.sql=/home/sanjay/containers/kubernetes/agent/nano/app/src/init_db.sql --dry-run=client -o yaml | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1
+
 if [ -f "/export/vmstore/tower_home/kubernetes/agent/nano/app/config/postgres.env" ]; then
   echo -e "[32m✅[0m"
 else
@@ -1450,9 +1672,12 @@ fi
 step_increment
 print_divider
 
+}
 
-# -------------------------------------------------------------------------
-# STEP 45: Create Deployment YAML
+
+step_49(){
+# ------------------------------------------------------------------------
+# STEP 49: Create Deployment YAML
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Creating Deployment YAML..."
 sleep 5
@@ -1603,7 +1828,11 @@ echo -e "[32m✅[0m"
 step_increment
 print_divider
 
+}
 
+
+
+step_50(){
 
 # --------------------------------------------------------------------------------
 # STEP 46: Global Application Cleanup (Frees up lingering GPU resources)
@@ -1625,9 +1854,19 @@ else
 fi
 step_increment
 print_divider
+}
 
+
+
+
+
+
+
+
+
+step_50(){
 # --------------------------------------------------------------------------------
-# STEP 47: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
+# STEP 50: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Forcing cleanup of stuck deployments..."
 
@@ -1648,9 +1887,15 @@ else
 fi
 step_increment
 print_divider
+}
 
+
+
+
+
+step_51(){
 # -------------------------------------------------------------------------
-# STEP 48: Deploy Application
+# STEP 51: Deploy Application
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying Application... (Verbose output below)"
@@ -1669,21 +1914,25 @@ fi
 step_increment
 print_divider
 
+}
 
+
+
+step_51(){
 # -------------------------------------------------------------------------
-# STEP 49: Deploy PostgreSQL Database
+# STEP 51: Deploy PostgreSQL Database
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying PostgreSQL Database... (Verbose output below)"
   sleep 5
   # Substitute environment variables in deployment files
-  sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" server/postgres/postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f -
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f server/postgres-pgadmin-nodeport-services.yaml
+  sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f -
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f postgres-pgadmin-nodeport-services.yaml
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Deploying PostgreSQL database..."
   sleep 5
-  if sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" server/postgres/postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1 && \
-     sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f server/postgres-pgadmin-nodeport-services.yaml > /dev/null 2>&1; then
+  if sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1 && \
+     sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f postgres-pgadmin-nodeport-services.yaml > /dev/null 2>&1; then
     echo -e "[32m✅[0m"
   else
     echo -e "[31m❌[0m"
@@ -1692,21 +1941,22 @@ else
 fi
 step_increment
 print_divider
+}
 
-
+step_52(){
 # -------------------------------------------------------------------------
-# STEP 50: Deploy pgAdmin
+# STEP 52: Deploy pgAdmin
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying pgAdmin... (Verbose output below)"
   sleep 5
   # Apply pgAdmin deployment with hardcoded credentials
-  sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" server/pgadmin/pgadmin-deployment.yaml | \
+  sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" pgadmin-deployment.yaml | \
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f -
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Deploying pgAdmin management interface..."
   sleep 5
-  if sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" server/pgadmin/pgadmin-deployment.yaml | \
+  if sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" pgadmin-deployment.yaml | \
      sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1; then
     echo -e "[32m✅[0m"
   else
@@ -1716,11 +1966,20 @@ else
 fi
 step_increment
 print_divider
+}
 
 
+
+
+
+step_53(){
+# ------------------------------------------------------------------------
+# STEP 53: Deploy FastAPI and Final Success Message
 # -------------------------------------------------------------------------
-# STEP 51: Final Success Message
-# -------------------------------------------------------------------------
+# Deploy FastAPI after all cleanups to ensure persistence
+deploy_fastapi "a" "nano" "$NANO_IP" "Deploying FastAPI on nano"
+
+# Final success message
 step_echo_start "s" "tower" "$TOWER_IP" "Deployment complete! Verify cluster and application status."
 echo -e "[32m✅[0m"
 
@@ -1730,49 +1989,54 @@ if [ "$DEBUG" != "1" ]; then
 fi
 step_increment
 print_divider
+}
 
 
 
 
 
 
+step_54(){
+  # --------------------------------------------------------------------------------
+  # STEP 54: Verify PostgreSQL and pgAdmin Deployment
+  # --------------------------------------------------------------------------------
+  step_echo_start "s" "tower" "$TOWER_IP" "Verifying PostgreSQL and pgAdmin..."
+
+  # Give pgAdmin time to fully start up before verification
+  sleep 120
+  echo ""
+
+  # Run the comprehensive verification script
+  echo "Running database verification checks..."
+  if ./verify-postgres-pgadmin.sh; then
+    echo -e "[32m✅ PostgreSQL and pgAdmin verification passed[0m"
+  else
+    echo -e "[31m❌ PostgreSQL and pgAdmin verification failed[0m"
+    exit 1
+  fi
+  cd "$SCRIPT_DIR"
+  step_increment
+  print_divider
+}
+
+
+
+
+
+
+step_55() {
 # --------------------------------------------------------------------------------
-# STEP 52: Verify PostgreSQL and pgAdmin Deployment
-# --------------------------------------------------------------------------------
-step_echo_start "s" "tower" "$TOWER_IP" "Verifying PostgreSQL and pgAdmin..."
-
-# Give pgAdmin time to fully start up before verification
-sleep 120
-echo ""
-
-# Run the comprehensive verification script
-echo "Running database verification checks..."
-if cd server && ./verify-postgres-pgadmin.sh; then
-  echo -e "[32m✅ PostgreSQL and pgAdmin verification passed[0m"
-else
-  echo -e "[31m❌ PostgreSQL and pgAdmin verification failed[0m"
-  exit 1
-fi
-cd "$SCRIPT_DIR"
-step_increment
-print_divider
-
-
-# --------------------------------------------------------------------------------
-# STEP 53: FINAL DEPLOYMENT VERIFICATION AND LOGGING
+# STEP 55: FINAL DEPLOYMENT VERIFICATION AND LOGGING
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Running final verification and saving log..."
-
 # FIX: Calling the function without output redirection.
 capture_final_log "$FINAL_LOG_FILE" "$START_MESSAGE"
-
 if [ $? -eq 0 ]; then # This checks the exit code of the previous command
     echo -en "✅[0m
 "
     print_divider
     # Final success message, including the log file path
-    echo -e "
-[32m🌟 SUCCESS: Deployment Complete and Verified! 🌟[0m"
+    echo -e "[32m🌟 SUCCESS: Deployment Complete and Verified! 🌟[0m"
     echo -e "Final status log saved to: [33m$FINAL_LOG_FILE[0m"
     echo -e "Please share this log file to confirm successful deployment."
     echo -e ""
@@ -1802,16 +2066,21 @@ if [ $? -eq 0 ]; then # This checks the exit code of the previous command
     echo -e "[36m═══════════════════════════════════════════════════════════════════════════════[0m"
 else
     echo -e "[31m❌[0m"
-    echo -e "
-[31mFATAL: Final verification failed. Check the log for details.[0m"
+    echo -e "[31mFATAL: Final verification failed. Check the log for details.[0m"
 fi
 step_increment
 print_divider
+}
 
 
 
-# --------------------------------------------------------------------------------
-# STEP 54: FINAL STABILITY VERIFICATION AND ENVIRONMENT LOCKDOWN
+
+
+
+
+step_56() {
+# -------------------------------------------------------------------------------
+# STEP 56: FINAL STABILITY VERIFICATION AND ENVIRONMENT LOCKDOWN
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Final verification..."
 
@@ -1827,7 +2096,7 @@ fi
 echo -e "🔍 Running comprehensive stability verification..."
 echo -e "⏳ Waiting for FastAPI to fully initialize..."
 sleep 60
-if "$SCRIPT_DIR/stability-manager.sh" check; then
+if "./stability-manager.sh" check; then
   echo -e "✅ Stability verification passed - all systems operational"
 else
   echo -e "❌ Stability verification failed - check stability.log for details"
@@ -1835,3 +2104,60 @@ else
 fi
 step_increment
 print_divider
+
+}
+
+
+#main script logic continues...
+step_01
+step_02
+step_03
+step_04
+step_05 
+step_06
+step_07
+step_08
+step_09
+step_10
+step_11
+step_12
+step_13
+step_14
+step_15
+step_16
+step_17
+step_18
+step_19
+step_20
+step_21
+step_22
+step_23
+step_24
+step_25
+step_26
+step_27
+step_28
+step_29
+step_30
+step_31
+step_32
+step_33 
+step_34
+step_35
+step_36
+step_37
+step_40
+step_43
+step_44
+step_45
+step_46
+step_47
+step_48
+step_49
+step_50
+step_51
+step_52
+step_53
+step_54
+step_55
+step_56
