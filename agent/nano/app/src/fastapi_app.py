@@ -491,6 +491,7 @@ def get_fastapi_nano_app():
             cursor.execute("""
                 INSERT INTO embeddings (document_id, content, embedding, chunk_index)
                 VALUES (%s, %s, %s::vector, %s)
+                RETURNING id
             """, (document_id, text_content[:1000], embedding, 0))
             
             conn.commit()
@@ -715,11 +716,14 @@ def get_fastapi_nano_app():
                 "error": str(e)
             }
 
+    return app
+
 
 # === 3. MAIN SCRIPT LOGIC ===
 
 
 def main():
+    print("DEBUG: Starting main function")
     print("Arch:", os.uname().machine)
     
     print("Running libstdc++ check...")
