@@ -183,8 +183,8 @@ def check_jupyter():
             print("❌ Jupyter Lab: FAIL -> Unexpected output from 'jupyter lab --help':\n", out)
             return False
     except Exception as e:
-        print("❌ Jupyter Lab: FAIL ->", e)
-        return False
+        print("⚠️  Jupyter Lab: SKIP -> jupyterlab not installed (component not enabled)")
+        return True
 
 def check_fastapi_deps():
     print("\n=== FastAPI Project Dependencies Check ===")

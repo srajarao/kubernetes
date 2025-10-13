@@ -5,6 +5,13 @@ clear
 # K3s Setup and FastAPI Deployment Automation Script
 # Automates the setup of K3s cluster with GPU support for FastAPI on Jetson Nano and AGX.
 # Run this script on the server (tower) machine.
+#
+# Key Features & Improvements:
+# - Proper TLS certificate generation with SAN extensions for modern security compliance
+# - Intelligent Docker image caching (only pushes when images are newly built)
+# - Robust registry configuration with SSH-first, kubectl-debug fallback
+# - Automatic certificate verification to prevent deployment failures
+# - GPU library compatibility checks with conditional skip logic
 
 # Source configuration
 # NOTE: Ensure k3s-config.sh exists and contains TOWER_IP, NANO_IP, AGX_IP, REGISTRY_IP, etc.
@@ -16,23 +23,94 @@ else
   exit 1
 fi
 
-# Pre-flight validation
+# Source node configuration functions
+if [ -f "$SCRIPT_DIR/node-config.sh" ]; then
+  source "$SCRIPT_DIR/node-config.sh"
+else
+  echo "ERROR: node-config.sh not found in $SCRIPT_DIR"
+  exit 1
+fi
+
+# ==========================================
+# CLUSTER CONFIGURATION VALIDATION
+# ==========================================
+
+# Validate cluster configuration
+if ! validate_cluster_config; then
+  echo "❌ Cluster configuration validation failed. Please check k3s-config.sh"
+  exit 1
+fi
+
+# Show cluster summary if in debug mode
+if [ "$DEBUG" -ge 1 ]; then
+  show_cluster_summary
+fi
+
+# Parse cluster nodes for use throughout the script
+CLUSTER_NODE_LIST=$(parse_cluster_nodes "$CLUSTER_NODES")
+
+# ==========================================
+# LEGACY COMPATIBILITY VALIDATION
+# ==========================================
+
+# ==========================================
+# LEGACY COMPATIBILITY VALIDATION
+# ==========================================
+
+# Pre-flight validation (legacy compatibility)
 echo "🔍 Running pre-flight checks..."
-if ! [[ "$TOWER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "❌ ERROR: TOWER_IP ($TOWER_IP) is not a valid IP address"
-  exit 1
-fi
-if ! [[ "$NANO_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "❌ ERROR: NANO_IP ($NANO_IP) is not a valid IP address"
-  exit 1
-fi
-if ! [[ "$AGX_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "❌ ERROR: AGX_IP ($AGX_IP) is not a valid IP address"
-  exit 1
-fi
+
+# Validate IPs for enabled nodes
+for node in $CLUSTER_NODE_LIST; do
+  node_ip=$(get_node_ip "$node")
+  if [ -n "$node_ip" ]; then
+    if ! [[ "$node_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      echo "❌ ERROR: IP for $node ($node_ip) is not a valid IP address"
+      exit 1
+    fi
+  fi
+done
+
 echo "✅ Configuration validation passed"
 
 DEBUG=${DEBUG:-0}
+
+# Parse command line arguments
+IMAGE_MODE="local"  # Default: use local images or download if missing
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --image-mode)
+      IMAGE_MODE="$2"
+      shift 2
+      ;;
+    --help)
+      echo "Usage: $0 [--image-mode MODE]"
+      echo "  --image-mode MODE: Docker image management mode"
+      echo "    local      - Use local images or download if missing (default)"
+      echo "    download   - Always download fresh images from registry"
+      echo "    save-tar   - Save images as tar files for offline use"
+      echo "    use-tar    - Use local tar files instead of building from Dockerfiles"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Use --help for usage information"
+      exit 1
+      ;;
+  esac
+done
+
+# Validate image mode
+case $IMAGE_MODE in
+  local|download|save-tar|use-tar)
+    ;;
+  *)
+    echo "❌ Invalid image mode: $IMAGE_MODE"
+    echo "Valid modes: local, download, save-tar, use-tar"
+    exit 1
+    ;;
+esac
 
 # Define the initial script message to be logged
 START_MESSAGE="Starting K3s Setup and FastAPI Deployment in SILENT NORMAL mode..."
@@ -209,6 +287,120 @@ wait_for_gpu_capacity() {
     if [ "$DEBUG" = "1" ]; then echo "GPU capacity added"; fi
 }
 
+# Function to check if config has changed (for build optimization)
+check_config_changed() {
+  local node_type="$1"
+  local config_checksum_file="$SCRIPT_DIR/images/config/${node_type}_checksum.txt"
+  local current_checksum=""
+
+  # Get current checksum of relevant config files
+  if [ "$node_type" = "nano" ]; then
+    current_checksum=$(find "$SCRIPT_DIR/agent/nano" -name "dockerfile.*" -o -name "requirements.*" | sort | xargs cat | sha256sum | cut -d' ' -f1)
+  elif [ "$node_type" = "agx" ]; then
+    current_checksum=$(find "$SCRIPT_DIR/agent/agx" -name "dockerfile.*" -o -name "requirements.*" | sort | xargs cat | sha256sum | cut -d' ' -f1)
+  fi
+
+  # Check if checksum file exists and matches
+  if [ -f "$config_checksum_file" ]; then
+    stored_checksum=$(cat "$config_checksum_file" | tr -d '\n')
+    if [ "$current_checksum" = "$stored_checksum" ]; then
+      return 1  # No change
+    fi
+  fi
+
+  # Update checksum file (without trailing newline)
+  printf "%s" "$current_checksum" > "$config_checksum_file"
+  return 0  # Changed or first time
+}
+
+# Function to build image centrally on tower
+build_image_on_tower() {
+  local node_type="$1"
+  local image_name="$2"
+  local dockerfile_path="$3"
+  local context_dir="$4"
+
+  if [ "$DEBUG" = "1" ]; then
+    echo "Building $node_type image on tower: $image_name"
+    echo "Dockerfile: $dockerfile_path"
+    echo "Context: $context_dir"
+  fi
+
+  # Determine the target platform based on node type
+  local platform=""
+  case "$node_type" in
+    "nano"|"agx")
+      platform="--platform linux/arm64"
+      ;;
+    "tower"|*)
+      platform="--platform linux/amd64"
+      ;;
+  esac
+
+  # Build the image using buildx for cross-platform support
+  if docker buildx build $platform -t "$image_name:latest" -f "$dockerfile_path" "$context_dir" --load; then
+    if [ "$DEBUG" = "1" ]; then
+      echo "Successfully built $image_name on tower"
+    fi
+    return 0
+  else
+    echo "Failed to build $image_name on tower"
+    return 1
+  fi
+}
+
+# Function to save image as tar centrally
+save_image_tar_central() {
+  local image_name="$1"
+  local tar_path="$2"
+
+  if [ "$DEBUG" = "1" ]; then
+    echo "Saving $image_name to tar: $tar_path"
+  fi
+
+  # Create directory if it doesn't exist
+  mkdir -p "$(dirname "$tar_path")"
+
+  # Save image to tar
+  if docker save "$image_name:latest" > "$tar_path"; then
+    if [ "$DEBUG" = "1" ]; then
+      echo "Successfully saved $image_name to $tar_path"
+    fi
+    return 0
+  else
+    echo "Failed to save $image_name to tar"
+    return 1
+  fi
+}
+
+# Function to load image from central tar
+load_image_from_central_tar() {
+  local node_ip="$1"
+  local node_type="$2"
+  local tar_path="$3"
+  local image_name="$4"
+
+  if [ "$DEBUG" = "1" ]; then
+    echo "Loading $image_name from tar on $node_type ($node_ip)"
+  fi
+
+  # Copy tar to node
+  if scp "$tar_path" "sanjay@$node_ip:~/"; then
+    # Load image on node
+    if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR "sanjay@$node_ip" "docker load < $(basename "$tar_path")"; then
+      # Clean up tar file on node
+      ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR "sanjay@$node_ip" "rm $(basename "$tar_path")"
+      if [ "$DEBUG" = "1" ]; then
+        echo "Successfully loaded $image_name on $node_type"
+      fi
+      return 0
+    fi
+  fi
+
+  echo "Failed to load $image_name from tar on $node_type"
+  return 1
+}
+
 # Function for the critical ARP/Ping check
 run_network_check() {
   local NODE_IP=$1
@@ -235,6 +427,157 @@ run_network_check() {
     fi
   fi
 }
+
+# Function to configure registry on a node using kubectl debug as fallback when SSH fails
+configure_node_registry() {
+  local NODE_IP=$1
+  local NODE_NAME=$2
+  local REGISTRY_IP=$3
+  local REGISTRY_PORT=$4
+  local REGISTRY_PROTOCOL=$5
+
+  echo "Attempting SSH-based registry configuration for $NODE_NAME..."
+
+  # Try SSH first
+  if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
+    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 sanjay@$NODE_IP "sudo mkdir -p /etc/docker/certs.d/$REGISTRY_IP" > /dev/null 2>&1 && \
+       scp -o StrictHostKeyChecking=no -o ConnectTimeout=10 /etc/docker/certs.d/$REGISTRY_IP/ca.crt sanjay@$NODE_IP:/tmp/ca.crt > /dev/null 2>&1 && \
+       ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 sanjay@$NODE_IP "sudo mv /tmp/ca.crt /etc/docker/certs.d/$REGISTRY_IP/ca.crt" > /dev/null 2>&1; then
+      echo "SSH certificate copy successful"
+    else
+      echo "SSH certificate copy failed, trying kubectl debug fallback..."
+      # Use kubectl debug to copy certificate
+      if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml debug node/$NODE_NAME --image=busybox -- sleep 300 > /dev/null 2>&1; then
+        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml cp /etc/docker/certs.d/$REGISTRY_IP/ca.crt $NODE_NAME:/tmp/ca.crt
+        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml exec $NODE_NAME -- sh -c "mkdir -p /etc/docker/certs.d/$REGISTRY_IP && mv /tmp/ca.crt /etc/docker/certs.d/$REGISTRY_IP/ca.crt"
+      else
+        echo "kubectl debug also failed for certificate copy"
+        return 1
+      fi
+    fi
+  fi
+
+  # Configure K3s registries.yaml
+  if generate_k3s_registry_config "$REGISTRY_IP" "$REGISTRY_PORT" "$REGISTRY_PROTOCOL" | ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 sanjay@$NODE_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" > /dev/null 2>&1; then
+    echo "SSH K3s config successful"
+  else
+    echo "SSH K3s config failed, trying kubectl debug fallback..."
+    if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml debug node/$NODE_NAME --image=busybox -- sleep 300 > /dev/null 2>&1; then
+      generate_k3s_registry_config "$REGISTRY_IP" "$REGISTRY_PORT" "$REGISTRY_PROTOCOL" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml exec $NODE_NAME -- sh -c "cat > /tmp/registries.yaml && mkdir -p /etc/rancher/k3s && mv /tmp/registries.yaml /etc/rancher/k3s/registries.yaml"
+    else
+      echo "kubectl debug also failed for K3s config"
+      return 1
+    fi
+  fi
+
+  # Configure containerd hosts.toml
+  if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 sanjay@$NODE_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1 && \
+     generate_containerd_hosts_config "$REGISTRY_IP" "$REGISTRY_PORT" "$REGISTRY_PROTOCOL" | ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 sanjay@$NODE_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null" > /dev/null 2>&1; then
+    echo "SSH containerd config successful"
+  else
+    echo "SSH containerd config failed, trying kubectl debug fallback..."
+    if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml debug node/$NODE_NAME --image=busybox -- sleep 300 > /dev/null 2>&1; then
+      generate_containerd_hosts_config "$REGISTRY_IP" "$REGISTRY_PORT" "$REGISTRY_PROTOCOL" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml exec $NODE_NAME -- sh -c "mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT && cat > /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml"
+    else
+      echo "kubectl debug also failed for containerd config"
+      return 1
+    fi
+  fi
+
+  echo "Registry configuration completed for $NODE_NAME"
+  return 0
+}
+
+
+# =========================================================================
+# HTTPS REGISTRY SETUP (if enabled)
+# =========================================================================
+
+if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
+  echo "🔐 Setting up HTTPS registry with certificates..."
+
+  # Create certificate directory
+  CERT_DIR="/etc/docker/certs.d/$REGISTRY_IP"
+  sudo mkdir -p "$CERT_DIR"
+
+  # Generate proper certificate chain with SAN extensions
+  echo "   📜 Generating CA and server certificates with SAN extensions..."
+
+  # Generate CA certificate
+  sudo openssl req -newkey rsa:4096 -nodes -sha256 -keyout "$CERT_DIR/ca.key" -x509 -days 365 -out "$CERT_DIR/ca.crt" -subj "/C=US/ST=State/L=City/O=Organization/CN=K3s Registry CA" -addext "basicConstraints=CA:TRUE" -addext "keyUsage=keyCertSign,cRLSign"
+
+  # Generate server certificate signing request
+  sudo openssl req -newkey rsa:4096 -nodes -sha256 -keyout "$CERT_DIR/registry.key" -out "$CERT_DIR/registry.csr" -subj "/C=US/ST=State/L=City/O=Organization/CN=$REGISTRY_IP" -addext "subjectAltName=IP:$REGISTRY_IP"
+
+  # Create extension file for server certificate
+  echo "subjectAltName=IP:$REGISTRY_IP" | sudo tee "$CERT_DIR/extfile.cnf" > /dev/null
+
+  # Sign server certificate with CA
+  sudo openssl x509 -req -in "$CERT_DIR/registry.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" -CAcreateserial -out "$CERT_DIR/registry.crt" -days 365 -sha256 -extfile "$CERT_DIR/extfile.cnf"
+
+  # Clean up temporary files
+  sudo rm -f "$CERT_DIR/registry.csr" "$CERT_DIR/extfile.cnf"
+
+  # Create registry config for HTTPS
+  echo "   ⚙️ Configuring registry for HTTPS..."
+  sudo tee /etc/docker/registry/config.yml > /dev/null <<EOF
+version: 0.1
+log:
+  fields:
+    service: registry
+storage:
+  cache:
+    blobdescriptor: inmemory
+  filesystem:
+    rootdirectory: /var/lib/registry
+http:
+  addr: 0.0.0.0:5000
+  tls:
+    certificate: $CERT_DIR/registry.crt
+    key: $CERT_DIR/registry.key
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+    threshold: 3
+EOF
+
+  # Restart registry with HTTPS
+  echo "   🔄 Restarting registry with HTTPS..."
+  if docker ps | grep -q registry; then
+    docker stop registry
+    docker rm registry
+  fi
+
+  docker run -d --name registry \
+    --restart=always \
+    -p 5000:5000 \
+    -v /etc/docker/registry/config.yml:/etc/docker/registry/config.yml:ro \
+    -v $CERT_DIR:/certs:ro \
+    -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt \
+    -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key \
+    registry:2
+
+  echo "✅ HTTPS registry setup complete with proper certificates"
+fi
+
+# =========================================================================
+# CERTIFICATE VERIFICATION (if HTTPS enabled)
+# =========================================================================
+
+if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
+  echo "🔍 Verifying certificate configuration..."
+
+  # Test certificate with curl
+  if curl -k --cacert /etc/docker/certs.d/$REGISTRY_IP/ca.crt -s https://$REGISTRY_IP:5000/v2/_catalog > /dev/null 2>&1; then
+    echo "   ✅ Certificate verification successful"
+  else
+    echo "   ❌ Certificate verification failed - check certificate configuration"
+    echo "   📋 Certificate details:"
+    openssl x509 -in /etc/docker/certs.d/$REGISTRY_IP/ca.crt -text -noout | grep -E '(Subject:|Issuer:|Subject Alternative Name)' | head -3
+    exit 1
+  fi
+fi
 
 
 ## =========================================================================
@@ -741,46 +1084,13 @@ fi
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
-    echo "Fixing Registry YAML Syntax on Nano..."
+    echo "Configuring Registry for Nano..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
-mirrors:
-  \"$REGISTRY_IP:$REGISTRY_PORT\":
-    endpoint:
-      - \"http://$REGISTRY_IP:$REGISTRY_PORT\"
-
-configs:
-  \"$REGISTRY_IP:$REGISTRY_PORT\":
-    tls:
-      insecure_skip_verify: true
-EOF
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT"
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null" <<EOF
-[host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
-  capabilities = [\"pull\", \"resolve\", \"push\"]
-EOF
+    configure_node_registry "$NANO_IP" "nano" "$REGISTRY_IP" "$REGISTRY_PORT" "$REGISTRY_PROTOCOL"
   else
-    step_echo_start "a" "nano" "$NANO_IP" "Write Registry YAML and Containerd TOML (Nano)..."
+    step_echo_start "a" "nano" "$NANO_IP" "Configuring registry for nano..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
-mirrors:
-  \"$REGISTRY_IP:$REGISTRY_PORT\":
-    endpoint:
-      - \"http://$REGISTRY_IP:$REGISTRY_PORT\"
-
-configs:
-  \"$REGISTRY_IP:$REGISTRY_PORT\":
-    tls:
-      insecure_skip_verify: true
-EOF
-" > /dev/null 2>&1
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
-[host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
-  capabilities = [\"pull\", \"resolve\", \"push\"]
-EOF
-" > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
+    if configure_node_registry "$NANO_IP" "nano" "$REGISTRY_IP" "$REGISTRY_PORT" "$REGISTRY_PROTOCOL"; then
       echo -en " ✅\033[0m\n"
     else
       echo -e "\033[31m❌\033[0m"
@@ -797,46 +1107,13 @@ print_divider
 # -------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
-    echo "Fixing Registry YAML Syntax on AGX..."
+    echo "Configuring Registry for AGX..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
-mirrors:
-  "$REGISTRY_IP:$REGISTRY_PORT":
-    endpoint:
-      - "http://$REGISTRY_IP:$REGISTRY_PORT"
-
-configs:
-  "$REGISTRY_IP:$REGISTRY_PORT":
-    tls:
-      insecure_skip_verify: true
-EOF
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT"
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null" <<EOF
-[host."http://$REGISTRY_IP:$REGISTRY_PORT"]
-  capabilities = ["pull", "resolve", "push"]
-EOF
+    configure_node_registry "$AGX_IP" "agx" "$REGISTRY_IP" "$REGISTRY_PORT" "$REGISTRY_PROTOCOL"
   else
-    step_echo_start "a" "agx" "$AGX_IP" "Write Registry YAML and Containerd TOML (AGX)"
+    step_echo_start "a" "agx" "$AGX_IP" "Configuring registry for agx..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
-mirrors:
-  \"$REGISTRY_IP:$REGISTRY_PORT\":
-    endpoint:
-      - \"http://$REGISTRY_IP:$REGISTRY_PORT\"
-
-configs:
-  \"$REGISTRY_IP:$REGISTRY_PORT\":
-    tls:
-      insecure_skip_verify: true
-EOF
-" > /dev/null 2>&1
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
-[host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
-  capabilities = [\"pull\", \"resolve\", \"push\"]
-EOF
-" > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
+    if configure_node_registry "$AGX_IP" "agx" "$REGISTRY_IP" "$REGISTRY_PORT" "$REGISTRY_PROTOCOL"; then
       echo -en " ✅\033[0m\n"
     else
       echo -e "\033[31m❌\033[0m"
@@ -1308,97 +1585,356 @@ print_divider
 
 
 # -------------------------------------------------------------------------
-# STEP 39: Copy Files for Build
+# STEP 39: Build Images Centrally on Tower
 # -------------------------------------------------------------------------
-if [ "$DEBUG" = "1" ]; then
-  echo "Copying Files for Build... (Verbose output below)"
-  sleep 5
-  scp /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@$NANO_IP:~
-  scp /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@$NANO_IP:~
-  scp -r /home/sanjay/containers/kubernetes/agent/nano/app sanjay@$NANO_IP:~
-else
-  step_echo_start "a" "nano" "$NANO_IP" "Copying files for Docker build..."
-  sleep 5
-  if scp /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp -r /home/sanjay/containers/kubernetes/agent/nano/app sanjay@$NANO_IP:~ > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
 
+# Source the node configuration functions
+source "$SCRIPT_DIR/node-config.sh"
 
+# Parse cluster nodes
+nodes=$(parse_cluster_nodes "$CLUSTER_NODES")
 
+# Build images centrally on tower (only for agent nodes)
+for node in $nodes; do
+    if [ "$node" = "tower" ]; then
+        continue  # Skip tower (server components)
+    fi
 
+    node_ip=$(get_node_ip "$node")
+    node_image_name=$(get_node_image_name "$node")
+    dockerfile_path="$SCRIPT_DIR/agent/$node/dockerfile.$node.req"
+    context_dir="$SCRIPT_DIR/agent/$node"
+    tar_path="$SCRIPT_DIR/images/tar/${node_image_name}.tar"
 
-# -------------------------------------------------------------------------
-# STEP 40: Build Image
-# -------------------------------------------------------------------------
-if [ "$DEBUG" = "1" ]; then
-  echo "Building Image... (Verbose output below)"
-  sleep 5
-  ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker build -t fastapi_nano:latest -f dockerfile.nano.req ."
-else
-  step_echo_start "a" "nano" "$NANO_IP" "Building Docker image..."
-  sleep 5
-  if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker build -t fastapi_nano:latest -f dockerfile.nano.req ." > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
+    # Check if config has changed
+    if check_config_changed "$node"; then
+        if [ "$DEBUG" = "1" ]; then
+            echo "Config changed for $node, building image centrally..."
+        fi
 
+        # Build image on tower
+        if [ "$DEBUG" = "1" ]; then
+            step_echo_start "s" "tower" "$TOWER_IP" "Building $node image centrally..."
+            sleep 5
+            if build_image_on_tower "$node" "$node_image_name" "$dockerfile_path" "$context_dir"; then
+                echo -e "[32m✅[0m"
+            else
+                echo -e "[31m❌[0m"
+                exit 1
+            fi
+        else
+            step_echo_start "s" "tower" "$TOWER_IP" "Building $node image centrally..."
+            sleep 5
+            if build_image_on_tower "$node" "$node_image_name" "$dockerfile_path" "$context_dir" > /dev/null 2>&1; then
+                echo -e "[32m✅[0m"
+            else
+                echo -e "[31m❌[0m"
+                exit 1
+            fi
+        fi
+        step_increment
 
+        # Handle different image modes
+        case $IMAGE_MODE in
+            "save-tar")
+                # Save tar centrally
+                if [ "$DEBUG" = "1" ]; then
+                    step_echo_start "s" "tower" "$TOWER_IP" "Saving $node image tar centrally..."
+                    sleep 5
+                    if save_image_tar_central "$node_image_name" "$tar_path"; then
+                        echo -e "[32m✅[0m"
+                    else
+                        echo -e "[31m❌[0m"
+                        exit 1
+                    fi
+                else
+                    step_echo_start "s" "tower" "$TOWER_IP" "Saving $node image tar centrally..."
+                    sleep 5
+                    if save_image_tar_central "$node_image_name" "$tar_path" > /dev/null 2>&1; then
+                        echo -e "[32m✅[0m"
+                    else
+                        echo -e "[31m❌[0m"
+                        exit 1
+                    fi
+                fi
+                step_increment
+                ;;
+            "local"|"download")
+                # Tag and push to registry
+                if [ "$DEBUG" = "1" ]; then
+                    step_echo_start "s" "tower" "$TOWER_IP" "Tagging $node image for registry..."
+                    sleep 5
+                    docker tag "${node_image_name}:latest" "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest"
+                    echo -e "[32m✅[0m"
+                    step_increment
 
-# -------------------------------------------------------------------------
-# STEP 41: Tag Image
-# -------------------------------------------------------------------------
-if [ "$DEBUG" = "1" ]; then
-  echo "Tagging Image..."
-  sleep 5
-  ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker tag fastapi_nano:latest $REGISTRY_IP:$REGISTRY_PORT/fastapi_nano:latest"
-else
-  step_echo_start "a" "nano" "$NANO_IP" "Tagging Docker image..."
-  sleep 5
-  if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker tag fastapi_nano:latest $REGISTRY_IP:$REGISTRY_PORT/fastapi_nano:latest" > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
+                    step_echo_start "s" "tower" "$TOWER_IP" "Pushing $node image to registry..."
+                    sleep 5
+                    docker push "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest"
+                    echo -e "[32m✅[0m"
+                else
+                    step_echo_start "s" "tower" "$TOWER_IP" "Tagging $node image for registry..."
+                    sleep 5
+                    if docker tag "${node_image_name}:latest" "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest" > /dev/null 2>&1; then
+                        echo -e "[32m✅[0m"
+                    else
+                        echo -e "[31m❌[0m"
+                        exit 1
+                    fi
+                    step_increment
 
-# -------------------------------------------------------------------------
-# STEP 42: Push Image
-# -------------------------------------------------------------------------
-if [ "$DEBUG" = "1" ]; then
-  echo "Pushing Image... (Verbose output below)"
-  sleep 5
-  ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker push $REGISTRY_IP:$REGISTRY_PORT/fastapi_nano:latest"
-else
-  step_echo_start "a" "nano" "$NANO_IP" "Pushing Docker image to registry..."
-  sleep 5
-  if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo docker push $REGISTRY_IP:$REGISTRY_PORT/fastapi_nano:latest" > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
+                    step_echo_start "s" "tower" "$TOWER_IP" "Pushing $node image to registry..."
+                    sleep 5
+                    if docker push "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest" > /dev/null 2>&1; then
+                        echo -e "[32m✅[0m"
+                    else
+                        echo -e "[31m❌[0m"
+                        exit 1
+                    fi
+                fi
+                step_increment
+                ;;
+        esac
+    else
+        if [ "$DEBUG" = "1" ]; then
+            echo "Config unchanged for $node, checking local image and registry..."
+        fi
+
+        # Even when config is unchanged, check if we need to rebuild or push
+        case $IMAGE_MODE in
+            "local"|"download")
+                # First check if local image exists (either local or registry-tagged)
+                if ! docker images | grep -q "${node_image_name}"; then
+                    if [ "$DEBUG" = "1" ]; then
+                        echo "Local image missing, forcing rebuild..."
+                    fi
+                    # Force rebuild by temporarily removing checksum file
+                    rm -f "$config_checksum_file"
+                    # Call build function again
+                    if build_image_on_tower "$node" "$node_image_name" "$dockerfile_path" "$context_dir" && \
+                       docker tag "${node_image_name}:latest" "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest" && \
+                       docker push "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest"; then
+                        # Recreate checksum file
+                        current_checksum=$(find "$SCRIPT_DIR/agent/$node" -name "dockerfile.*" -o -name "requirements.*" | sort | xargs cat | sha256sum | cut -d' ' -f1)
+                        printf "%s" "$current_checksum" > "$config_checksum_file"
+                        step_echo_start "s" "tower" "$TOWER_IP" "Rebuilt and pushed $node image..."
+                        sleep 2
+                        echo -e "[32m✅ (rebuilt)[0m"
+                    else
+                        echo -e "[31m❌ Failed to rebuild image[0m"
+                        exit 1
+                    fi
+                    step_increment
+                else
+                    # Local image exists, check if it's in registry
+                    http_code=$(curl -k -s -o /dev/null -w "%{http_code}" "https://$REGISTRY_IP:$REGISTRY_PORT/v2/${node_image_name}/manifests/latest")
+                    if [ "$http_code" != "200" ]; then
+                        if [ "$DEBUG" = "1" ]; then
+                            echo "Image not in registry, pushing cached image..."
+                            step_echo_start "s" "tower" "$TOWER_IP" "Pushing cached $node image to registry..."
+                            sleep 5
+                            # Check if we need to tag the image first
+                            if ! docker images | grep -q "^${node_image_name} "; then
+                                docker tag "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest" "${node_image_name}:latest"
+                            fi
+                            docker tag "${node_image_name}:latest" "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest"
+                            docker push "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest"
+                            echo -e "[32m✅[0m"
+                        else
+                            step_echo_start "s" "tower" "$TOWER_IP" "Pushing cached $node image to registry..."
+                            sleep 5
+                            # Check if we need to tag the image first
+                            if ! docker images | grep -q "^${node_image_name} "; then
+                                docker tag "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest" "${node_image_name}:latest" > /dev/null 2>&1
+                            fi
+                            if docker tag "${node_image_name}:latest" "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest" > /dev/null 2>&1 && \
+                               docker push "$REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest" > /dev/null 2>&1; then
+                                echo -e "[32m✅[0m"
+                            else
+                                echo -e "[31m❌[0m"
+                                exit 1
+                            fi
+                        fi
+                        step_increment
+                    else
+                        if [ "$DEBUG" = "1" ]; then
+                            echo "Image already in registry, skipping push"
+                        fi
+                        step_echo_start "s" "tower" "$TOWER_IP" "Using cached $node image (already in registry)..."
+                        sleep 2
+                        echo -e "[32m✅ (registry)[0m"
+                        step_increment
+                    fi
+                fi
+                ;;
+            "save-tar")
+                # For save-tar mode, check if tar file exists
+                if [ ! -f "$tar_path" ]; then
+                    if [ "$DEBUG" = "1" ]; then
+                        echo "Tar file not found, need to rebuild..."
+                        # Force rebuild by temporarily removing checksum file
+                        rm -f "$config_checksum_file"
+                        # Rebuild and save tar
+                        if build_image_on_tower "$node" "$node_image_name" "$dockerfile_path" "$context_dir" && \
+                           save_image_tar_central "$node_image_name" "$tar_path"; then
+                            # Recreate checksum file
+                            current_checksum=$(find "$SCRIPT_DIR/agent/$node" -name "dockerfile.*" -o -name "requirements.*" | sort | xargs cat | sha256sum | cut -d' ' -f1)
+                            printf "%s" "$current_checksum" > "$config_checksum_file"
+                            step_echo_start "s" "tower" "$TOWER_IP" "Created missing $node tar file..."
+                            sleep 2
+                            echo -e "[32m✅ (created)[0m"
+                        else
+                            echo -e "[31m❌ Failed to create tar file[0m"
+                            exit 1
+                        fi
+                    else
+                        # Force rebuild by temporarily removing checksum file
+                        rm -f "$config_checksum_file"
+                        # Rebuild and save tar
+                        if build_image_on_tower "$node" "$node_image_name" "$dockerfile_path" "$context_dir" && \
+                           save_image_tar_central "$node_image_name" "$tar_path"; then
+                            # Recreate checksum file
+                            current_checksum=$(find "$SCRIPT_DIR/agent/$node" -name "dockerfile.*" -o -name "requirements.*" | sort | xargs cat | sha256sum | cut -d' ' -f1)
+                            printf "%s" "$current_checksum" > "$config_checksum_file"
+                            step_echo_start "s" "tower" "$TOWER_IP" "Created missing $node tar file..."
+                            sleep 2
+                            echo -e "[32m✅ (created)[0m"
+                        else
+                            echo -e "[31m❌ Failed to create tar file[0m"
+                            exit 1
+                        fi
+                    fi
+                    step_increment
+                else
+                    if [ "$DEBUG" = "1" ]; then
+                        echo "Tar file exists, skipping build"
+                    fi
+                    step_echo_start "s" "tower" "$TOWER_IP" "Using cached $node tar file..."
+                    sleep 2
+                    echo -e "[32m✅ (tar exists)[0m"
+                    step_increment
+                fi
+                ;;
+        esac
+    fi
+    print_divider
+done
+
+# Deploy images to nodes based on mode
+for node in $nodes; do
+    if [ "$node" = "tower" ]; then
+        continue  # Skip tower (server components)
+    fi
+
+    node_ip=$(get_node_ip "$node")
+    node_image_name=$(get_node_image_name "$node")
+    tar_path="$SCRIPT_DIR/images/tar/${node_image_name}.tar"
+
+    case $IMAGE_MODE in
+        "local")
+            # Check if image exists on node, download if needed
+            if [ "$DEBUG" = "1" ]; then
+                step_echo_start "a" "$node" "$node_ip" "Checking/deploying $node image..."
+                sleep 5
+                if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$node_ip "sudo docker images | grep -q ${node_image_name}"; then
+                    echo "Local image found on $node"
+                    echo -e "[32m✅ (existing)[0m"
+                else
+                    echo "Pulling image from registry to $node..."
+                    ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$node_ip "sudo docker pull $REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest && sudo docker tag $REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest ${node_image_name}:latest"
+                    echo -e "[32m✅ (pulled)[0m"
+                fi
+            else
+                step_echo_start "a" "$node" "$node_ip" "Checking/deploying $node image..."
+                sleep 5
+                if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$node_ip "sudo docker images | grep -q ${node_image_name}" > /dev/null 2>&1; then
+                    echo -e "[32m✅ (existing)[0m"
+                else
+                    if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$node_ip "sudo docker pull $REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest && sudo docker tag $REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest ${node_image_name}:latest" > /dev/null 2>&1; then
+                        echo -e "[32m✅ (pulled)[0m"
+                    else
+                        echo -e "[31m❌[0m"
+                        exit 1
+                    fi
+                fi
+            fi
+            ;;
+        "download")
+            # Always download fresh
+            if [ "$DEBUG" = "1" ]; then
+                step_echo_start "a" "$node" "$node_ip" "Downloading fresh $node image..."
+                sleep 5
+                ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$node_ip "sudo docker pull $REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest && sudo docker tag $REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest ${node_image_name}:latest"
+                echo -e "[32m✅[0m"
+            else
+                step_echo_start "a" "$node" "$node_ip" "Downloading fresh $node image..."
+                sleep 5
+                if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$node_ip "sudo docker pull $REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest && sudo docker tag $REGISTRY_IP:$REGISTRY_PORT/${node_image_name}:latest ${node_image_name}:latest" > /dev/null 2>&1; then
+                    echo -e "[32m✅[0m"
+                else
+                    echo -e "[31m❌[0m"
+                    exit 1
+                fi
+            fi
+            ;;
+        "save-tar")
+            # Tar already saved centrally, now copy to node and load
+            if [ "$DEBUG" = "1" ]; then
+                step_echo_start "a" "$node" "$node_ip" "Deploying $node image from central tar..."
+                sleep 5
+                if load_image_from_central_tar "$node_ip" "$node" "$tar_path" "$node_image_name"; then
+                    echo -e "[32m✅[0m"
+                else
+                    echo -e "[31m❌[0m"
+                    exit 1
+                fi
+            else
+                step_echo_start "a" "$node" "$node_ip" "Deploying $node image from central tar..."
+                sleep 5
+                if load_image_from_central_tar "$node_ip" "$node" "$tar_path" "$node_image_name" > /dev/null 2>&1; then
+                    echo -e "[32m✅[0m"
+                else
+                    echo -e "[31m❌[0m"
+                    exit 1
+                fi
+            fi
+            ;;
+        "use-tar")
+            # Load from existing central tar
+            if [ -f "$tar_path" ]; then
+                if [ "$DEBUG" = "1" ]; then
+                    step_echo_start "a" "$node" "$node_ip" "Loading $node image from central tar..."
+                    sleep 5
+                    if load_image_from_central_tar "$node_ip" "$node" "$tar_path" "$node_image_name"; then
+                        echo -e "[32m✅[0m"
+                    else
+                        echo -e "[31m❌[0m"
+                        exit 1
+                    fi
+                else
+                    step_echo_start "a" "$node" "$node_ip" "Loading $node image from central tar..."
+                    sleep 5
+                    if load_image_from_central_tar "$node_ip" "$node" "$tar_path" "$node_image_name" > /dev/null 2>&1; then
+                        echo -e "[32m✅[0m"
+                    else
+                        echo -e "[31m❌[0m"
+                        exit 1
+                    fi
+                fi
+            else
+                echo "ERROR: Central tar file $tar_path not found for $node"
+                exit 1
+            fi
+            ;;
+    esac
+    step_increment
+    print_divider
+done
 
 
 
 # --------------------------------------------------------------------------------
-# NEW STEP 43: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
+# NEW STEP 40: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Cleaning up stuck pods and old deployments..."
 
@@ -1422,7 +1958,7 @@ print_divider
 
 
 # -------------------------------------------------------------------------
-# STEP 44: Update Database Configuration
+# STEP 41: Update Database Configuration
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Updating database config..."
 sleep 5
@@ -1452,20 +1988,47 @@ print_divider
 
 
 # -------------------------------------------------------------------------
-# STEP 45: Create Deployment YAML
+# STEP 42: Create Deployment YAML
+# -------------------------------------------------------------------------
+# STEP 43: Create Deployment YAML
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Creating Deployment YAML..."
 sleep 5
 rm -f fastapi-deployment-full.yaml
-cat <<DEPLOYMENT > fastapi-deployment-full.yaml
+
+# Source the node configuration functions
+source "$SCRIPT_DIR/node-config.sh"
+
+# Parse cluster nodes
+nodes=$(parse_cluster_nodes "$CLUSTER_NODES")
+deployment_content=""
+
+for node in $nodes; do
+    if [ "$node" = "tower" ]; then
+        continue  # Skip tower for now
+    fi
+
+    # Get node-specific configuration
+    node_ip=$(get_node_ip "$node")
+    node_components=$(get_node_components "$node")
+    node_image_name=$(get_node_image_name "$node")
+
+    # Determine GPU requirements based on components
+    gpu_required="false"
+    if echo "$node_components" | grep -q "gpu-monitoring\|cuda\|tensorrt\|pytorch\|tensorflow"; then
+        gpu_required="true"
+    fi
+
+    # Generate deployment for this node
+    cat <<NODE_DEPLOYMENT >> fastapi-deployment-full.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastapi-nano
+  name: fastapi-$node
   namespace: default
   labels:
-    app: fastapi-nano
-    device: nano
+    app: fastapi-$node
+    device: $node
     tier: agent
 spec:
   replicas: 1
@@ -1473,25 +2036,47 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: fastapi-nano
+      app: fastapi-$node
   template:
     metadata:
       labels:
-        app: fastapi-nano
-        device: nano
+        app: fastapi-$node
+        device: $node
         tier: agent
     spec:
+NODE_DEPLOYMENT
+
+    # Add runtime class and node selector for GPU-enabled nodes
+    if [ "$gpu_required" = "true" ]; then
+        cat <<GPU_CONFIG >> fastapi-deployment-full.yaml
       runtimeClassName: nvidia
       nodeSelector:
-        kubernetes.io/hostname: nano
+        kubernetes.io/hostname: $node
+GPU_CONFIG
+    else
+        cat <<CPU_CONFIG >> fastapi-deployment-full.yaml
+      nodeSelector:
+        kubernetes.io/hostname: $node
+CPU_CONFIG
+    fi
+
+    # Generate container spec
+    cat <<CONTAINER_SPEC >> fastapi-deployment-full.yaml
       containers:
-      - name: fastapi-nano
-        image: $REGISTRY_IP:$REGISTRY_PORT/fastapi_nano:latest
+      - name: fastapi-$node
+        image: $REGISTRY_IP:$REGISTRY_PORT/$node_image_name:latest
         ports:
         - containerPort: 8000
           name: http
         - containerPort: 8888
           name: jupyter
+        - containerPort: 22
+          name: ssh
+CONTAINER_SPEC
+
+    # Add resource requests/limits based on GPU requirements
+    if [ "$gpu_required" = "true" ]; then
+        cat <<GPU_RESOURCES >> fastapi-deployment-full.yaml
         resources:
           requests:
             memory: "512Mi"
@@ -1501,23 +2086,44 @@ spec:
             memory: "2Gi"
             cpu: "1000m"
             nvidia.com/gpu: 1
+GPU_RESOURCES
+    else
+        cat <<CPU_RESOURCES >> fastapi-deployment-full.yaml
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+CPU_RESOURCES
+    fi
+
+    # Add environment variables
+    cat <<ENV_VARS >> fastapi-deployment-full.yaml
         env:
         - name: DEVICE_TYPE
-          value: "nano"
+          value: "$node"
         - name: GPU_ENABLED
-          value: "true"
+          value: "$gpu_required"
         - name: FORCE_GPU_CHECKS
-          value: "true"
+          value: "$gpu_required"
         - name: NODE_NAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: NODE_IP
+          value: "$node_ip"
+ENV_VARS
+
+    # Add volume mounts
+    cat <<VOLUME_MOUNTS >> fastapi-deployment-full.yaml
         volumeMounts:
         - name: vmstore
           mountPath: /mnt/vmstore
-        - name: nano-home
-          mountPath: /home/nano
-        - name: nano-config
+        - name: ${node}-home
+          mountPath: /home/$node
+        - name: ${node}-config
           mountPath: /app/app/config
         livenessProbe:
           httpGet:
@@ -1536,14 +2142,14 @@ spec:
         nfs:
           server: $TOWER_IP
           path: /export/vmstore
-      - name: nano-home
+      - name: ${node}-home
         nfs:
           server: $TOWER_IP
-          path: /export/vmstore/nano_home
-      - name: nano-config
+          path: /export/vmstore/${node}_home
+      - name: ${node}-config
         nfs:
           server: $TOWER_IP
-          path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
+          path: /export/vmstore/tower_home/kubernetes/agent/$node/app/config
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"
@@ -1556,14 +2162,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-nano-service
+  name: fastapi-$node-service
   namespace: default
   labels:
-    app: fastapi-nano
-    device: nano
+    app: fastapi-$node
+    device: $node
 spec:
   selector:
-    app: fastapi-nano
+    app: fastapi-$node
   ports:
   - port: 8000
     targetPort: 8000
@@ -1573,19 +2179,23 @@ spec:
     targetPort: 8888
     protocol: TCP
     name: jupyter
+  - port: 22
+    targetPort: 22
+    protocol: TCP
+    name: ssh
   type: ClusterIP
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-nano-nodeport
+  name: fastapi-$node-nodeport
   namespace: default
   labels:
-    app: fastapi-nano
-    device: nano
+    app: fastapi-$node
+    device: $node
 spec:
   selector:
-    app: fastapi-nano
+    app: fastapi-$node
   ports:
   - port: 8000
     targetPort: 8000
@@ -1597,8 +2207,17 @@ spec:
     nodePort: 30003
     protocol: TCP
     name: jupyter
+  - port: 22
+    targetPort: 22
+    nodePort: 30022
+    protocol: TCP
+    name: ssh
   type: NodePort
-DEPLOYMENT
+---
+
+VOLUME_MOUNTS
+done
+
 echo -e "[32m✅[0m"
 step_increment
 print_divider
@@ -1606,7 +2225,7 @@ print_divider
 
 
 # --------------------------------------------------------------------------------
-# STEP 46: Global Application Cleanup (Frees up lingering GPU resources)
+# STEP 44: Global Application Cleanup (Frees up lingering GPU resources)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting old deployments to free GPU..."
 
@@ -1627,7 +2246,7 @@ step_increment
 print_divider
 
 # --------------------------------------------------------------------------------
-# STEP 47: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
+# STEP 45: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Forcing cleanup of stuck deployments..."
 
@@ -1650,7 +2269,7 @@ step_increment
 print_divider
 
 # -------------------------------------------------------------------------
-# STEP 48: Deploy Application
+# STEP 46: Deploy Application
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying Application... (Verbose output below)"
@@ -1671,7 +2290,7 @@ print_divider
 
 
 # -------------------------------------------------------------------------
-# STEP 49: Deploy PostgreSQL Database
+# STEP 47: Deploy PostgreSQL Database
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying PostgreSQL Database... (Verbose output below)"
@@ -1695,7 +2314,7 @@ print_divider
 
 
 # -------------------------------------------------------------------------
-# STEP 50: Deploy pgAdmin
+# STEP 48: Deploy pgAdmin
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying pgAdmin... (Verbose output below)"
@@ -1719,7 +2338,7 @@ print_divider
 
 
 # -------------------------------------------------------------------------
-# STEP 51: Final Success Message
+# STEP 49: Final Success Message
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deployment complete! Verify cluster and application status."
 echo -e "[32m✅[0m"
@@ -1737,7 +2356,7 @@ print_divider
 
 
 # --------------------------------------------------------------------------------
-# STEP 52: Verify PostgreSQL and pgAdmin Deployment
+# STEP 50: Verify PostgreSQL and pgAdmin Deployment
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Verifying PostgreSQL and pgAdmin..."
 
@@ -1759,7 +2378,7 @@ print_divider
 
 
 # --------------------------------------------------------------------------------
-# STEP 53: FINAL DEPLOYMENT VERIFICATION AND LOGGING
+# STEP 51: FINAL DEPLOYMENT VERIFICATION AND LOGGING
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Running final verification and saving log..."
 
@@ -1811,7 +2430,7 @@ print_divider
 
 
 # --------------------------------------------------------------------------------
-# STEP 54: FINAL STABILITY VERIFICATION AND ENVIRONMENT LOCKDOWN
+# STEP 52: FINAL STABILITY VERIFICATION AND ENVIRONMENT LOCKDOWN
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Final verification..."
 

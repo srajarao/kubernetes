@@ -1,0 +1,44 @@
+{
+    "name": "FastAPI AGX Container",
+    "build": {
+        "dockerfile": "../dockerfile.fastapi_agx",
+        "context": ".."
+    },
+    "runArgs": [
+        "--gpus=all",
+        "--runtime=nvidia",
+        "--device=/dev/video0",
+        "--device=/dev/snd",
+        "--network=host",
+        "-v",
+        "/run/user/$(id -u)/pulse:/tmp/pulse",
+        "-e",
+        "PULSE_SERVER=unix:/tmp/pulse/native"
+    ],
+    "mounts": [
+        "source=${localWorkspaceFolder},target=/workspace,type=bind",
+        "source=/mnt/vmstore,target=/mnt/vmstore,type=bind"
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-toolsai.jupyter",
+                "ms-python.pylint",
+                "ms-python.black-formatter"
+            ]
+        }
+    },
+    "remoteUser": "root",
+    "overrideCommand": false,
+    "portsAttributes": {
+        "8000": {
+            "label": "FastAPI",
+            "onAutoForward": "openBrowser"
+        },
+        "8889": {
+            "label": "Jupyter",
+            "onAutoForward": "openBrowser"
+        }
+    }
+}

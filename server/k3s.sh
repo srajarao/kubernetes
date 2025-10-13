@@ -23,6 +23,7 @@ AGX_IP="10.1.10.244"
 # Registry settings
 REGISTRY_IP="10.1.10.150"
 REGISTRY_PORT="5000"
+REGISTRY_PROTOCOL="http"  # "http" or "https"
 
 # Database Configuration
 POSTGRES_PASSWORD="postgres"  # PostgreSQL admin password
@@ -851,26 +852,73 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Fixing Registry YAML Syntax on Nano..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
+    if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
 mirrors:
-  \"$REGISTRY_IP:$REGISTRY_PORT\":
+  "$REGISTRY_IP:$REGISTRY_PORT":
     endpoint:
-      - \"http://$REGISTRY_IP:$REGISTRY_PORT\"
+      - "https://$REGISTRY_IP:$REGISTRY_PORT"
 
 configs:
-  \"$REGISTRY_IP:$REGISTRY_PORT\":
+  "$REGISTRY_IP:$REGISTRY_PORT":
+    tls:
+      ca_file: "/etc/docker/certs.d/$REGISTRY_IP/ca.crt"
+      cert_file: "/etc/docker/certs.d/$REGISTRY_IP/registry.crt"
+      key_file: "/etc/docker/certs.d/$REGISTRY_IP/registry.key"
+EOF
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT"
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null" <<EOF
+[host."https://$REGISTRY_IP:$REGISTRY_PORT"]
+  capabilities = ["pull", "resolve", "push"]
+  ca = "/etc/docker/certs.d/$REGISTRY_IP/ca.crt"
+  client = ["/etc/docker/certs.d/$REGISTRY_IP/registry.crt", "/etc/docker/certs.d/$REGISTRY_IP/registry.key"]
+EOF
+    else
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
+mirrors:
+  "$REGISTRY_IP:$REGISTRY_PORT":
+    endpoint:
+      - "http://$REGISTRY_IP:$REGISTRY_PORT"
+
+configs:
+  "$REGISTRY_IP:$REGISTRY_PORT":
     tls:
       insecure_skip_verify: true
 EOF
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT"
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null" <<EOF
-[host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
-  capabilities = [\"pull\", \"resolve\", \"push\"]
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT"
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null" <<EOF
+[host."http://$REGISTRY_IP:$REGISTRY_PORT"]
+  capabilities = ["pull", "resolve", "push"]
 EOF
+    fi
   else
     step_echo_start "a" "nano" "$NANO_IP" "Write Registry YAML and Containerd TOML (Nano)..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+    if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+mirrors:
+  \"$REGISTRY_IP:$REGISTRY_PORT\":
+    endpoint:
+      - \"https://$REGISTRY_IP:$REGISTRY_PORT\"
+
+configs:
+  \"$REGISTRY_IP:$REGISTRY_PORT\":
+    tls:
+      ca_file: \"/etc/docker/certs.d/$REGISTRY_IP/ca.crt\"
+      cert_file: \"/etc/docker/certs.d/$REGISTRY_IP/registry.crt\"
+      key_file: \"/etc/docker/certs.d/$REGISTRY_IP/registry.key\"
+EOF
+" > /dev/null 2>&1
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+[host.\"https://$REGISTRY_IP:$REGISTRY_PORT\"]
+  capabilities = [\"pull\", \"resolve\", \"push\"]
+  ca = \"/etc/docker/certs.d/$REGISTRY_IP/ca.crt\"
+  client = [\"/etc/docker/certs.d/$REGISTRY_IP/registry.crt\", \"/etc/docker/certs.d/$REGISTRY_IP/registry.key\"]
+EOF
+" > /dev/null 2>&1
+    else
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 mirrors:
   \"$REGISTRY_IP:$REGISTRY_PORT\":
     endpoint:
@@ -882,12 +930,13 @@ configs:
       insecure_skip_verify: true
 EOF
 " > /dev/null 2>&1
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1
-    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1
+      ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
 [host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
   capabilities = [\"pull\", \"resolve\", \"push\"]
 EOF
 " > /dev/null 2>&1
+    fi
     if [ $? -eq 0 ]; then
       echo -en " ✅\033[0m\n"
     else
@@ -911,7 +960,29 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Fixing Registry YAML Syntax on AGX..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
+    if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
+mirrors:
+  "$REGISTRY_IP:$REGISTRY_PORT":
+    endpoint:
+      - "https://$REGISTRY_IP:$REGISTRY_PORT"
+
+configs:
+  "$REGISTRY_IP:$REGISTRY_PORT":
+    tls:
+      ca_file: "/etc/docker/certs.d/$REGISTRY_IP/ca.crt"
+      cert_file: "/etc/docker/certs.d/$REGISTRY_IP/registry.crt"
+      key_file: "/etc/docker/certs.d/$REGISTRY_IP/registry.key"
+EOF
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT"
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null" <<EOF
+[host."https://$REGISTRY_IP:$REGISTRY_PORT"]
+  capabilities = ["pull", "resolve", "push"]
+  ca = "/etc/docker/certs.d/$REGISTRY_IP/ca.crt"
+  client = ["/etc/docker/certs.d/$REGISTRY_IP/registry.crt", "/etc/docker/certs.d/$REGISTRY_IP/registry.key"]
+EOF
+    else
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null" <<EOF
 mirrors:
   "$REGISTRY_IP:$REGISTRY_PORT":
     endpoint:
@@ -922,15 +993,40 @@ configs:
     tls:
       insecure_skip_verify: true
 EOF
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT"
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null" <<EOF
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT"
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null" <<EOF
 [host."http://$REGISTRY_IP:$REGISTRY_PORT"]
   capabilities = ["pull", "resolve", "push"]
 EOF
+    fi
   else
     step_echo_start "a" "agx" "$AGX_IP" "Write Registry YAML and Containerd TOML (AGX)"
     sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+    if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+mirrors:
+  \"$REGISTRY_IP:$REGISTRY_PORT\":
+    endpoint:
+      - \"https://$REGISTRY_IP:$REGISTRY_PORT\"
+
+configs:
+  \"$REGISTRY_IP:$REGISTRY_PORT\":
+    tls:
+      ca_file: \"/etc/docker/certs.d/$REGISTRY_IP/ca.crt\"
+      cert_file: \"/etc/docker/certs.d/$REGISTRY_IP/registry.crt\"
+      key_file: \"/etc/docker/certs.d/$REGISTRY_IP/registry.key\"
+EOF
+" > /dev/null 2>&1
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+[host.\"https://$REGISTRY_IP:$REGISTRY_PORT\"]
+  capabilities = [\"pull\", \"resolve\", \"push\"]
+  ca = \"/etc/docker/certs.d/$REGISTRY_IP/ca.crt\"
+  client = [\"/etc/docker/certs.d/$REGISTRY_IP/registry.crt\", \"/etc/docker/certs.d/$REGISTRY_IP/registry.key\"]
+EOF
+" > /dev/null 2>&1
+    else
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 mirrors:
   \"$REGISTRY_IP:$REGISTRY_PORT\":
     endpoint:
@@ -942,12 +1038,13 @@ configs:
       insecure_skip_verify: true
 EOF
 " > /dev/null 2>&1
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1
+      ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
 [host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
   capabilities = [\"pull\", \"resolve\", \"push\"]
 EOF
 " > /dev/null 2>&1
+    fi
     if [ $? -eq 0 ]; then
       echo -en " ✅\033[0m\n"
     else

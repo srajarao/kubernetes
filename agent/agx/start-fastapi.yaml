@@ -15,19 +15,19 @@ spec:
         app: fastapi-agx
     spec:
       runtimeClassName: nvidia  # Uses the NVIDIA Container Runtime
-      hostNetwork: true         # Allows direct access to the host's network interfaces
+      # hostNetwork: true         # Allows direct access to the host's network interfaces
       nodeSelector:
         kubernetes.io/hostname: agx
       securityContext:
         runAsUser: 0            # Runs as root user inside the container
       containers:
         - name: fastapi
-          image: 192.168.10.1:5000/fastapi_agx:latest
+          image: 10.43.57.161:5000/fastapi_agx:latest
        
           # -------------------------------------------------------------------
-          # FIX 1: Force use of local image to bypass pull issue
+          # FIX 1: Pull from registry with insecure config
           # -------------------------------------------------------------------
-          imagePullPolicy: "IfNotPresent" # <--- CHANGE THIS
+          imagePullPolicy: "Always" # <--- Pull from registry
           
           # -------------------------------------------------------------------
           # FIX 2: Set working directory to the mounted code path
@@ -37,7 +37,7 @@ spec:
           # -------------------------------------------------------------------
           # FIX 3: Command to start the FastAPI application with Uvicorn
           # -------------------------------------------------------------------
-          command: ["python", "src/fastapi_app.py"]
+          command: ["python", "/app/app/src/fastapi_app.py"]
           # -------------------------------------------------------------------
 
           env:
@@ -51,8 +51,12 @@ spec:
               value: "AspenHills123!"
             - name: DB_PORT
               value: "5432"
-            - name: PULSE_SERVER
-              value: "unix:/tmp/pulse/native"  # For PulseAudio pass-through
+            - name: SKIP_DB_CHECK
+              value: "true"
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
           resources:
             requests:
               cpu: "500m"
@@ -69,7 +73,7 @@ spec:
       volumes:
         - name: workspace
           hostPath:
-            path: /home/sanjay/containers/fastapi  # Maps your local code to /workspace
+            path: /home/sanjay/containers/kubernetes/agent/agx  # Maps your local code to /workspace
         - name: pulse
           hostPath:
             path: /run/user/1000/pulse
@@ -81,11 +85,10 @@ metadata:
   labels:
     app: fastapi-agx
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: fastapi-agx
   ports:
     - name: http
       port: 8000
       targetPort: 8000
-      nodePort: 30080  # Access at http://192.168.10.11:30080

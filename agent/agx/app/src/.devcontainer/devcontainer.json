@@ -1,0 +1,61 @@
+{
+  "name": "AGX FastAPI Development",
+  "build": {
+    "dockerfile": "../../../dockerfile.agx.req",
+    "context": "../../.."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.10"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "18"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "ms-toolsai.jupyter",
+        "ms-toolsai.jupyter-renderers",
+        "ms-toolsai.vscode-jupyter-powertoys",
+        "redhat.vscode-yaml",
+        "ms-vscode.vscode-json",
+        "ms-vscode-remote.remote-containers"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python",
+        "python.terminal.activateEnvironment": true,
+        "jupyter.jupyterServerType": "local",
+        "jupyter.notebookFileRoot": "/workspaces",
+        "jupyter.interactiveWindowMode": "perFile"
+      }
+    }
+  },
+  "postCreateCommand": "pip install jupyterlab notebook ipykernel",
+  "remoteUser": "sanjay",
+  "mounts": [
+    "source=/home/sanjay/containers/kubernetes/agent/agx,bind=type=bind,target=/workspaces,consistency=cached",
+    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached"
+  ],
+  "containerEnv": {
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "SKIP_DB_CHECK": "true",
+    "SKIP_JUPYTER_CHECK": "false",
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "NVIDIA_DRIVER_CAPABILITIES": "compute,utility"
+  },
+  "portsAttributes": {
+    "8000": {
+      "label": "FastAPI",
+      "onAutoForward": "notify"
+    },
+    "8888": {
+      "label": "Jupyter Lab",
+      "onAutoForward": "notify"
+    }
+  },
+  "forwardPorts": [8000, 8888]
+}

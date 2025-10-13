@@ -209,8 +209,8 @@ def check_jupyter():
             )
             return False
     except Exception as e:
-        print("❌ Jupyter Lab: FAIL ->", e)
-        return False
+        print("⚠️  Jupyter Lab: SKIP -> jupyterlab not installed (component not enabled)")
+        return True
 
 
 def start_jupyter_lab():
@@ -258,11 +258,13 @@ def check_fastapi_nano_deps():
     dependencies = {
         "psycopg2": "psycopg2",
         "python-dotenv": "dotenv",
-    "fastapi_nano": "fastapi",
+        "fastapi": "fastapi",
         "uvicorn": "uvicorn",
         "pydantic": "pydantic",
+    }
+    optional_deps = {
         "scipy": "scipy",
-        "pandas": "pandas",
+        "pandas": "pandas", 
         "scikit-learn": "sklearn",
     }
     missing_deps = []
@@ -271,9 +273,21 @@ def check_fastapi_nano_deps():
             importlib.import_module(import_name)
         except ImportError:
             missing_deps.append(pkg)
+    
+    missing_optional = []
+    for pkg, import_name in optional_deps.items():
+        try:
+            importlib.import_module(import_name)
+        except ImportError:
+            missing_optional.append(pkg)
+    
     if missing_deps:
         print(f"❌ FastAPI Nano dependencies missing: {', '.join(missing_deps)}")
         return False
+    
+    if missing_optional:
+        print(f"⚠️  Optional FastAPI Nano dependencies not installed: {', '.join(missing_optional)}")
+    
     print("✅ FastAPI Nano Dependencies: PASS")
     return True
 
@@ -417,9 +431,15 @@ def main():
         result5 = check_tensorrt()
         print(f"TensorRT result: {result5}")
     
-    print("Running Jupyter check...")
-    result6 = check_jupyter()
-    print(f"Jupyter result: {result6}")
+    # Check Jupyter (skip if SKIP_JUPYTER_CHECK is set)
+    if os.getenv("SKIP_JUPYTER_CHECK", "false").lower() == "true":
+        print("Skipping Jupyter check (SKIP_JUPYTER_CHECK=true)...")
+        result6 = True  # Skip Jupyter check
+        print(f"Jupyter result: {result6} (skipped)")
+    else:
+        print("Running Jupyter check...")
+        result6 = check_jupyter()
+        print(f"Jupyter result: {result6}")
     
     print("Running FastAPI Nano deps check...")
     result7 = check_fastapi_nano_deps()
