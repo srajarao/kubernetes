@@ -394,15 +394,157 @@ def get_fastapi_nano_app():
     async def ready():
         return {"status": "ready"}
 
-    @app.get("/config")
-    async def config():
-        # Mock config response
-        return {
-            "models": ["gpt-4", "clip", "search-index"],
-            "settings": {"multimodal": True, "max_results": 10},
-        }
+    @app.post("/db/create-tables")
+    async def create_rag_tables():
+        """Create RAG database tables if they don't exist"""
+        try:
+            # Connect to database
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            conn.autocommit = True
+            cursor = conn.cursor()
 
-    return app
+            # Check if tables already exist
+            cursor.execute("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND table_name IN ('documents', 'embeddings', 'conversations', 'search_queries')
+            """)
+            existing_tables = [row[0] for row in cursor.fetchall()]
+
+            if len(existing_tables) == 4:
+                return {
+                    "status": "tables_exist",
+                    "message": "All RAG tables already exist",
+                    "tables": existing_tables
+                }
+
+            # Create tables if they don't exist
+            create_schema_sql = """
+            -- Documents table for storing source documents
+            CREATE TABLE IF NOT EXISTS documents (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(500) NOT NULL,
+                content TEXT NOT NULL,
+                source_url VARCHAR(1000),
+                file_path VARCHAR(1000),
+                content_type VARCHAR(100),
+                metadata JSONB,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            -- Embeddings table for vector storage
+            CREATE TABLE IF NOT EXISTS embeddings (
+                id SERIAL PRIMARY KEY,
+                document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                embedding vector(1536), -- OpenAI text-embedding-ada-002 dimension
+                chunk_index INTEGER,
+                metadata JSONB,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            -- Conversations table for chat history
+            CREATE TABLE IF NOT EXISTS conversations (
+                id SERIAL PRIMARY KEY,
+                session_id VARCHAR(255) NOT NULL,
+                user_message TEXT NOT NULL,
+                assistant_message TEXT NOT NULL,
+                metadata JSONB,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            -- Search queries table for analytics
+            CREATE TABLE IF NOT EXISTS search_queries (
+                id SERIAL PRIMARY KEY,
+                query TEXT NOT NULL,
+                results_count INTEGER,
+                response_time_ms INTEGER,
+                metadata JSONB,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            -- Create indexes for better performance
+            CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
+            CREATE INDEX IF NOT EXISTS idx_documents_content_type ON documents(content_type);
+            CREATE INDEX IF NOT EXISTS idx_embeddings_document_id ON embeddings(document_id);
+            CREATE INDEX IF NOT EXISTS idx_embeddings_vector ON embeddings USING ivfflat (embedding vector_cosine_ops);
+            CREATE INDEX IF NOT EXISTS idx_conversations_session_id ON conversations(session_id);
+            CREATE INDEX IF NOT EXISTS idx_search_queries_created_at ON search_queries(created_at);
+
+            -- Create function for similarity search
+            CREATE OR REPLACE FUNCTION similarity_search(query_embedding vector(1536), match_threshold float DEFAULT 0.1, match_count int DEFAULT 10)
+            RETURNS TABLE(
+                id integer,
+                document_id integer,
+                content text,
+                similarity float
+            )
+            LANGUAGE plpgsql
+            AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT
+                    e.id,
+                    e.document_id,
+                    e.content,
+                    1 - (e.embedding <=> query_embedding) as similarity
+                FROM embeddings e
+                WHERE 1 - (e.embedding <=> query_embedding) > match_threshold
+                ORDER BY e.embedding <=> query_embedding
+                LIMIT match_count;
+            END;
+            $$;
+
+            -- Create function to update updated_at timestamp
+            CREATE OR REPLACE FUNCTION update_updated_at_column()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = NOW();
+                RETURN NEW;
+            END;
+            $$ language 'plpgsql';
+
+            -- Create trigger for documents table
+            CREATE TRIGGER update_documents_updated_at
+                BEFORE UPDATE ON documents
+                FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+            """
+
+            cursor.execute(create_schema_sql)
+
+            # Verify tables were created
+            cursor.execute("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND table_name IN ('documents', 'embeddings', 'conversations', 'search_queries')
+                ORDER BY table_name
+            """)
+            created_tables = [row[0] for row in cursor.fetchall()]
+
+            cursor.close()
+            conn.close()
+
+            return {
+                "status": "tables_created",
+                "message": "RAG database tables created successfully",
+                "tables": created_tables
+            }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Failed to create RAG tables: {str(e)}",
+                "error": str(e)
+            }
 
 
 # === 3. MAIN SCRIPT LOGIC ===
