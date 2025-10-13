@@ -26,6 +26,8 @@ from pydantic import BaseModel
 from typing import Dict, Optional
 import threading
 import time
+import openai
+from openai import OpenAI
 
 
 EXIT_OK = 0
@@ -59,6 +61,9 @@ class Item(BaseModel):
 
 # A simple in-memory "database"
 items_db: Dict[int, Item] = {}
+
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # === 1. HEALTH CHECK FUNCTIONS ===
 
@@ -326,35 +331,179 @@ def get_fastapi_nano_app():
         image: Optional[str] = Body(None, embed=True),
         chat_thread: Optional[list] = Body(default_factory=list, embed=True),
     ):
-        # Mock search response for now (replace with real backend later)
-        return {
-            "results": [
-                {"doc_id": "doc1", "text": f"Mock search result for query: {query}", "score": 0.95},
-                {"doc_id": "doc2", "text": f"Another mock result", "score": 0.87}
-            ]
-        }
+        if not query:
+            return {"results": []}
+        
+        try:
+            # Generate embedding for the query
+            response = openai_client.embeddings.create(
+                input=query,
+                model="text-embedding-ada-002"
+            )
+            query_embedding = response.data[0].embedding
+            
+            # Connect to database
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            cursor = conn.cursor()
+            
+            # Call similarity search function
+            cursor.execute("""
+                SELECT * FROM similarity_search(%s::vector, 0.1, 10)
+            """, (query_embedding,))
+            
+            results = cursor.fetchall()
+            
+            # Format results
+            formatted_results = []
+            for row in results:
+                embedding_id, document_id, content, similarity = row
+                formatted_results.append({
+                    "id": embedding_id,
+                    "document_id": document_id,
+                    "content": content,
+                    "score": float(similarity)
+                })
+            
+            conn.close()
+            return {"results": formatted_results}
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
     @app.post("/chat")
     async def chat(message: str = Body(..., embed=True)):
-        # Mock chat response with citations
-        return {
-            "response": f"Echo: {message}",
-            "citations": [{"doc_id": "doc1", "text": "Sample citation for chat"}],
-        }
+        try:
+            # For now, simple echo with OpenAI completion
+            response = openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": message}]
+            )
+            
+            assistant_message = response.choices[0].message.content
+            
+            # Store conversation (optional)
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO conversations (session_id, user_message, assistant_message)
+                VALUES (%s, %s, %s)
+            """, ("default", message, assistant_message))
+            conn.commit()
+            conn.close()
+            
+            return {
+                "response": assistant_message,
+                "citations": []  # Could add retrieved docs here
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 
     @app.get("/citations")
     async def citations(doc_id: str = Query(...)):
-        # Mock citation data
-        return {"citations": [{"doc_id": doc_id, "text": "Sample citation text"}]}
+        try:
+            # Connect to database
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            cursor = conn.cursor()
+            
+            # Get document info
+            cursor.execute("""
+                SELECT id, title, content, source_url, metadata
+                FROM documents
+                WHERE id = %s
+            """, (doc_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                raise HTTPException(status_code=404, detail="Document not found")
+            
+            doc_id, title, content, source_url, metadata = row
+            
+            conn.close()
+            return {
+                "citations": [{
+                    "doc_id": doc_id,
+                    "title": title,
+                    "content": content,
+                    "source_url": source_url,
+                    "metadata": metadata
+                }]
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to get citations: {str(e)}")
 
     @app.post("/upload")
     async def upload(file: UploadFile = File(...)):
-        # Mock upload response
-        return {
-            "status": "success",
-            "filename": file.filename,
-            "doc_id": "doc_uploaded",
-        }
+        try:
+            # Read file content
+            content = await file.read()
+            text_content = content.decode('utf-8')
+            
+            # Generate embedding for the content
+            response = openai_client.embeddings.create(
+                input=text_content[:8000],  # Limit for embedding
+                model="text-embedding-ada-002"
+            )
+            embedding = response.data[0].embedding
+            
+            # Connect to database
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            cursor = conn.cursor()
+            
+            # Insert document
+            cursor.execute("""
+                INSERT INTO documents (title, content, content_type, metadata)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, (file.filename, text_content, file.content_type, {"uploaded_at": "now"}))
+            
+            document_id = cursor.fetchone()[0]
+            
+            # Insert embedding
+            cursor.execute("""
+                INSERT INTO embeddings (document_id, content, embedding, chunk_index)
+                VALUES (%s, %s, %s::vector, %s)
+            """, (document_id, text_content[:1000], embedding, 0))
+            
+            conn.commit()
+            conn.close()
+            
+            return {
+                "status": "success",
+                "filename": file.filename,
+                "doc_id": document_id,
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
     @app.get("/health")
     async def health():
@@ -392,7 +541,27 @@ def get_fastapi_nano_app():
 
     @app.get("/ready")
     async def ready():
-        return {"status": "ready"}
+        try:
+            # Check database connectivity
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            conn.close()
+            return {"status": "ready", "database": "connected"}
+        except Exception as e:
+            return {"status": "not ready", "database": f"error: {str(e)}"}
+
+    @app.get("/config")
+    async def config():
+        return {
+            "models": ["text-embedding-ada-002"],
+            "settings": {"multimodal": False, "max_results": 10},
+            "device": "nano"
+        }
 
     @app.post("/db/create-tables")
     async def create_rag_tables():

@@ -256,40 +256,41 @@ def get_fastapi_nano_app():
     from typing import Optional
 
     # --- Real backend integration for /search ---
-    from src.backend.multimodalrag import MultimodalRag
-    from src.backend.search_grounding import SearchGroundingRetriever
-    from src.backend.data_model import DocumentPerChunkDataModel
-    from src.backend.knowledge_agent import KnowledgeAgentGrounding
-    from src.backend.models import SearchConfig, Message
-    from azure.search.documents.aio import SearchClient
-    from azure.storage.blob import ContainerClient
-    from openai import AsyncAzureOpenAI
-    import os
+    # Note: Complex RAG integration commented out due to missing dependencies
+    # from src.backend.multimodalrag import MultimodalRag
+    # from src.backend.search_grounding import SearchGroundingRetriever
+    # from src.backend.data_model import DocumentPerChunkDataModel
+    # from src.backend.knowledge_agent import KnowledgeAgentGrounding
+    # from src.backend.models import SearchConfig, Message
+    # from azure.search.documents.aio import SearchClient
+    # from azure.storage.blob import ContainerClient
+    # from openai import AsyncAzureOpenAI
+    # import os
 
-    # These should be loaded from config/env for production
-    SEARCH_ENDPOINT = os.getenv("SEARCH_ENDPOINT", "<your-search-endpoint>")
-    SEARCH_KEY = os.getenv("SEARCH_KEY", "<your-search-key>")
-    SEARCH_INDEX = os.getenv("SEARCH_INDEX", "<your-search-index>")
-    OPENAI_ENDPOINT = os.getenv("OPENAI_ENDPOINT", "<your-openai-endpoint>")
-    OPENAI_KEY = os.getenv("OPENAI_KEY", "<your-openai-key>")
-    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
-    STORAGE_CONN_STR = os.getenv("STORAGE_CONN_STR", "<your-storage-conn-str>")
-    STORAGE_CONTAINER = os.getenv("STORAGE_CONTAINER", "<your-container>")
+    # # These should be loaded from config/env for production
+    # SEARCH_ENDPOINT = os.getenv("SEARCH_ENDPOINT", "<your-search-endpoint>")
+    # SEARCH_KEY = os.getenv("SEARCH_KEY", "<your-search-key>")
+    # SEARCH_INDEX = os.getenv("SEARCH_INDEX", "<your-search-index>")
+    # OPENAI_ENDPOINT = os.getenv("OPENAI_ENDPOINT", "<your-openai-endpoint>")
+    # OPENAI_KEY = os.getenv("OPENAI_KEY", "<your-openai-key>")
+    # OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
+    # STORAGE_CONN_STR = os.getenv("STORAGE_CONN_STR", "<your-storage-conn-str>")
+    # STORAGE_CONTAINER = os.getenv("STORAGE_CONTAINER", "<your-container>")
 
-    # Backend object initialization (should be done once, not per request)
-    search_client = SearchClient(SEARCH_ENDPOINT, SEARCH_INDEX, SEARCH_KEY)
-    openai_client = AsyncAzureOpenAI(api_key=OPENAI_KEY, azure_endpoint=OPENAI_ENDPOINT)
-    data_model = DocumentPerChunkDataModel()
-    search_grounding = SearchGroundingRetriever(
-        search_client, openai_client, data_model, OPENAI_MODEL
-    )
-    knowledge_agent = KnowledgeAgentGrounding()
-    container_client = ContainerClient.from_connection_string(
-        STORAGE_CONN_STR, STORAGE_CONTAINER
-    )
-    rag = MultimodalRag(
-        knowledge_agent, search_grounding, openai_client, OPENAI_MODEL, container_client
-    )
+    # # Backend object initialization (should be done once, not per request)
+    # search_client = SearchClient(SEARCH_ENDPOINT, SEARCH_INDEX, SEARCH_KEY)
+    # openai_client = AsyncAzureOpenAI(api_key=OPENAI_KEY, azure_endpoint=OPENAI_ENDPOINT)
+    # data_model = DocumentPerChunkDataModel()
+    # search_grounding = SearchGroundingRetriever(
+    #     search_client, openai_client, data_model, OPENAI_MODEL
+    # )
+    # knowledge_agent = KnowledgeAgentGrounding()
+    # container_client = ContainerClient.from_connection_string(
+    #     STORAGE_CONN_STR, STORAGE_CONTAINER
+    # )
+    # rag = MultimodalRag(
+    #     knowledge_agent, search_grounding, openai_client, OPENAI_MODEL, container_client
+    # )
 
     @app.post("/search")
     async def search(
@@ -297,42 +298,222 @@ def get_fastapi_nano_app():
         image: Optional[str] = Body(None, embed=True),
         chat_thread: Optional[list] = Body(default_factory=list, embed=True),
     ):
-        # Build search config (can be extended to accept more params)
-        search_config: SearchConfig = {
-            "chunk_count": 10,
-            "openai_api_mode": "chat_completions",
-            "use_semantic_ranker": True,
-            "use_streaming": False,
-            "use_knowledge_agent": False,
-        }
-        user_message = query or ""
-        # Convert chat_thread to expected format
-        thread = chat_thread if chat_thread else []
-        # Call backend search logic
-        results = await search_grounding.retrieve(user_message, thread, search_config)
-        return {"results": results}
+        if not query:
+            return {"results": []}
+        
+        try:
+            # For AGX, use Azure OpenAI if available, else fallback
+            try:
+                from openai import AsyncAzureOpenAI
+                openai_client = AsyncAzureOpenAI(
+                    api_key=os.getenv("OPENAI_KEY", os.getenv("OPENAI_API_KEY")),
+                    azure_endpoint=os.getenv("OPENAI_ENDPOINT")
+                )
+                response = await openai_client.embeddings.create(
+                    input=query,
+                    model="text-embedding-ada-002"
+                )
+                query_embedding = response.data[0].embedding
+            except:
+                # Fallback to synchronous
+                import openai
+                client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                response = client.embeddings.create(
+                    input=query,
+                    model="text-embedding-ada-002"
+                )
+                query_embedding = response.data[0].embedding
+            
+            # Connect to database
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            cursor = conn.cursor()
+            
+            # Call similarity search function
+            cursor.execute("""
+                SELECT * FROM similarity_search(%s::vector, 0.1, 10)
+            """, (query_embedding,))
+            
+            results = cursor.fetchall()
+            
+            # Format results
+            formatted_results = []
+            for row in results:
+                embedding_id, document_id, content, similarity = row
+                formatted_results.append({
+                    "id": embedding_id,
+                    "document_id": document_id,
+                    "content": content,
+                    "score": float(similarity)
+                })
+            
+            conn.close()
+            return {"results": formatted_results}
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
     @app.post("/chat")
     async def chat(message: str = Body(..., embed=True)):
-        # Mock chat response with citations
-        return {
-            "response": f"Echo: {message}",
-            "citations": [{"doc_id": "doc1", "text": "Sample citation for chat"}],
-        }
+        try:
+            # Use Azure OpenAI for chat
+            try:
+                from openai import AsyncAzureOpenAI
+                openai_client = AsyncAzureOpenAI(
+                    api_key=os.getenv("OPENAI_KEY", os.getenv("OPENAI_API_KEY")),
+                    azure_endpoint=os.getenv("OPENAI_ENDPOINT")
+                )
+                response = await openai_client.chat.completions.create(
+                    model=os.getenv("OPENAI_MODEL", "gpt-4"),
+                    messages=[{"role": "user", "content": message}]
+                )
+                assistant_message = response.choices[0].message.content
+            except:
+                # Fallback
+                import openai
+                client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": message}]
+                )
+                assistant_message = response.choices[0].message.content
+            
+            # Store conversation
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO conversations (session_id, user_message, assistant_message)
+                VALUES (%s, %s, %s)
+            """, ("default", message, assistant_message))
+            conn.commit()
+            conn.close()
+            
+            return {
+                "response": assistant_message,
+                "citations": []
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 
     @app.get("/citations")
     async def citations(doc_id: str = Query(...)):
-        # Mock citation data
-        return {"citations": [{"doc_id": doc_id, "text": "Sample citation text"}]}
+        try:
+            # Connect to database
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            cursor = conn.cursor()
+            
+            # Get document info
+            cursor.execute("""
+                SELECT id, title, content, source_url, metadata
+                FROM documents
+                WHERE id = %s
+            """, (doc_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                raise HTTPException(status_code=404, detail="Document not found")
+            
+            doc_id, title, content, source_url, metadata = row
+            
+            conn.close()
+            return {
+                "citations": [{
+                    "doc_id": doc_id,
+                    "title": title,
+                    "content": content,
+                    "source_url": source_url,
+                    "metadata": metadata
+                }]
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to get citations: {str(e)}")
 
     @app.post("/upload")
     async def upload(file: UploadFile = File(...)):
-        # Mock upload response
-        return {
-            "status": "success",
-            "filename": file.filename,
-            "doc_id": "doc_uploaded",
-        }
+        try:
+            # Read file content
+            content = await file.read()
+            text_content = content.decode('utf-8')
+            
+            # Generate embedding
+            try:
+                from openai import AsyncAzureOpenAI
+                openai_client = AsyncAzureOpenAI(
+                    api_key=os.getenv("OPENAI_KEY", os.getenv("OPENAI_API_KEY")),
+                    azure_endpoint=os.getenv("OPENAI_ENDPOINT")
+                )
+                response = await openai_client.embeddings.create(
+                    input=text_content[:8000],
+                    model="text-embedding-ada-002"
+                )
+                embedding = response.data[0].embedding
+            except:
+                import openai
+                client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                response = client.embeddings.create(
+                    input=text_content[:8000],
+                    model="text-embedding-ada-002"
+                )
+                embedding = response.data[0].embedding
+            
+            # Connect to database
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            cursor = conn.cursor()
+            
+            # Insert document
+            cursor.execute("""
+                INSERT INTO documents (title, content, content_type, metadata)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, (file.filename, text_content, file.content_type, {"uploaded_at": "now"}))
+            
+            document_id = cursor.fetchone()[0]
+            
+            # Insert embedding
+            cursor.execute("""
+                INSERT INTO embeddings (document_id, content, embedding, chunk_index)
+                VALUES (%s, %s, %s::vector, %s)
+            """, (document_id, text_content[:1000], embedding, 0))
+            
+            conn.commit()
+            conn.close()
+            
+            return {
+                "status": "success",
+                "filename": file.filename,
+                "doc_id": document_id,
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
     @app.get("/health")
     async def health():
@@ -384,7 +565,19 @@ def get_fastapi_nano_app():
 
     @app.get("/ready")
     async def ready():
-        return {"status": "ready"}
+        try:
+            # Check database connectivity
+            conn = psycopg2.connect(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB"),
+            )
+            conn.close()
+            return {"status": "ready", "database": "connected", "device": "agx"}
+        except Exception as e:
+            return {"status": "not ready", "database": f"error: {str(e)}", "device": "agx"}
 
     @app.get("/config")
     async def config():

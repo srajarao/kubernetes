@@ -13,3 +13,6 @@ python-multipart
 # gpu-monitoring dependencies
 nvidia-ml-py
 
+# RAG dependencies
+openai
+
