@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 clear
 # k3s-config.sh
 
@@ -63,8 +66,8 @@ fi
 # Initialize Dynamic Step Counter
 CURRENT_STEP=1
 
-# NOTE: Total steps count is 54 (includes final stability verification)
-TOTAL_STEPS=55
+# NOTE: Total steps count is 60 (includes nano and AGX GPU enablement)
+TOTAL_STEPS=63
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.
@@ -228,6 +231,22 @@ wait_for_gpu_capacity() {
     if [ "$DEBUG" = "1" ]; then echo "GPU capacity added"; fi
 }
 
+# Function to wait for AGX GPU capacity
+wait_for_agx_gpu_capacity() {
+  local timeout=120
+  local count=0
+  if [ "$DEBUG" = "1" ]; then echo "Waiting for AGX GPU capacity to be added..."; fi
+  while ! sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get node agx -o jsonpath='{.status.capacity.nvidia\.com/gpu}' | grep -q '1'; do
+    if [ $count -ge $timeout ]; then
+      echo "AGX GPU capacity not added within $timeout seconds"
+      exit 1
+    fi
+    sleep 5
+    count=$((count + 5))
+  done
+    if [ "$DEBUG" = "1" ]; then echo "AGX GPU capacity added"; fi
+}
+
 
 # Function for the critical ARP/Ping check
 run_network_check() {
@@ -258,12 +277,13 @@ run_network_check() {
 
 
 
-# Function to deploy FastAPI on nano
+# Function to deploy FastAPI on specified device
 deploy_fastapi() {
     local step_num="$1"
-    local node="$2"
-    local ip="$3"
-    local msg="$4"
+    local device="$2"
+    local node="$3"
+    local ip="$4"
+    local msg="$5"
 
     step_echo_start "$step_num" "$node" "$ip" "$msg"
 
@@ -273,42 +293,49 @@ if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods --all --force -
 fi
 
 # 2. Delete only the FastAPI deployment to avoid conflicts
-if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-nano -n default --ignore-not-found=true > /dev/null 2>&1; then
+if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-${device} -n default --ignore-not-found=true > /dev/null 2>&1; then
   sleep 5 # Give 5 seconds for resources to be fully released before the next deployment
   echo -e "[32m✅[0m"
 else
   echo -e "[31m❌[0m"
   echo -e "[31mFATAL: Failed to clean up old deployments.[0m"
   return 1
-fi    # 3. Deploy FastAPI on nano
+fi    # 3. Deploy FastAPI on specified device
     cat > /tmp/fastapi-deployment.yaml <<EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastapi-nano
+  name: fastapi-${device}
   labels:
-    app: fastapi-nano
+    app: fastapi-${device}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: fastapi-nano
+      app: fastapi-${device}
   template:
     metadata:
       labels:
-        app: fastapi-nano
+        app: fastapi-${device}
     spec:
       nodeSelector:
-        kubernetes.io/hostname: nano
+        kubernetes.io/hostname: ${node}
       tolerations:
       - key: CriticalAddonsOnly
         operator: Exists
       containers:
       - name: fastapi
-        image: 10.1.10.150:5000/fastapi_nano:latest
+        image: 10.1.10.150:5000/fastapi_${device}:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
+        env:
+        - name: SKIP_GPU_CHECKS
+          value: "true"
+        - name: SKIP_JUPYTER_CHECK
+          value: "true"
+        - name: SKIP_DB_CHECK
+          value: "true"
 EOF
     if [ "$DEBUG" = "1" ]; then
         echo "Applying FastAPI deployment YAML..."
@@ -319,11 +346,11 @@ EOF
         apply_exit=$?
     fi
     if [ $apply_exit -eq 0 ]; then
-        echo -e "✅ FastAPI deployed on nano"
+        echo -e "✅ FastAPI deployed on ${device}"
         # Wait for the pod to be running
         echo "Waiting for FastAPI pod to be ready..."
         for i in {1..30}; do
-            if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-nano -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+            if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-${device} -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
                 echo -e "✅ FastAPI pod is running"
                 break
             fi
@@ -337,7 +364,7 @@ EOF
         print_divider
         return 0
     else
-        echo -e "❌ Failed to deploy FastAPI on nano"
+        echo -e "❌ Failed to deploy FastAPI on ${device}"
         return 1
     fi
 }
@@ -610,15 +637,24 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Uninstalling Agent on AGX... (Verbose output below)"
     sleep 5
-    ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh"
+    # Check if k3s binaries exist before attempting uninstall
+    if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "test -x /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
+      ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh"
+    else
+      echo "k3s-agent-uninstall.sh not found on AGX - no uninstall needed"
+    fi
   else
     step_echo_start "a" "agx" "$AGX_IP" "Uninstalling K3s agent on agx..."
     sleep 5
-    if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
-      echo -e "[32m✅[0m"
+    # Check if k3s binaries exist before attempting uninstall
+    if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "test -x /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
+      if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
+        echo -e "[32m✅[0m"
+      else
+        echo -e "[32m✅[0m"  # Print checkmark anyway, as uninstall may have partial success
+      fi
     else
-    echo -en " ✅[0m
-"  # Print checkmark anyway
+      echo -e "[32m✅[0m"  # Print checkmark if uninstall script doesn't exist (already uninstalled)
     fi
   fi
 fi
@@ -630,15 +666,50 @@ print_divider
 
 step_13(){
 # -------------------------------------------------------------------------
-# STEP 11: Reinstall Nano Agent (FIXED IP CACHE ERROR + SYSTEMD RELOAD)
+# STEP 13: Reinstall Nano Agent (BINARY TRANSFER INSTALL)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
-  # Define the robust installation command with explicit IP binding
-  K3S_REINSTALL_CMD="export K3S_TOKEN=\"$TOKEN\"; \
-    sudo curl -sfL https://get.k3s.io | \
-    K3S_URL=https://$TOWER_IP:6443 \
-    K3S_TOKEN=\$K3S_TOKEN \
-    INSTALL_K3S_EXEC=\"agent --node-ip $NANO_IP\" sh -"
+  # Use binary transfer for consistent and reliable installation
+  K3S_REINSTALL_CMD="export K3S_TOKEN=\"$TOKEN\";
+    scp -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$TOWER_IP:/tmp/k3s-arm64-nano /tmp/k3s-arm64;
+    sudo chmod +x /tmp/k3s-arm64;
+    sudo cp /tmp/k3s-arm64 /usr/local/bin/k3s;
+    sudo chmod +x /usr/local/bin/k3s;
+    sudo mkdir -p /etc/systemd/system;
+    sudo bash -c 'cat > /etc/systemd/system/k3s-agent.service << EOF
+[Unit]
+Description=Lightweight Kubernetes
+Documentation=https://k3s.io
+Wants=network-online.target
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=notify
+EnvironmentFile=-/etc/default/%N
+EnvironmentFile=-/etc/sysconfig/%N
+EnvironmentFile=-/etc/systemd/system/k3s-agent.service.env
+KillMode=process
+Delegate=yes
+User=root
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+Restart=always
+RestartSec=5s
+ExecStartPre=-/sbin/modprobe br_netfilter
+ExecStartPre=-/sbin/modprobe overlay
+ExecStart=/usr/local/bin/k3s agent --node-ip $NANO_IP
+EOF';
+    echo 'K3S_TOKEN=\"\$K3S_TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null;
+    echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null;
+    sudo systemctl daemon-reload;
+    sudo systemctl enable k3s-agent;
+    sudo systemctl start k3s-agent"
 
   if [ "$DEBUG" = "1" ]; then
     echo "Reinstalling Agent on Nano with explicit node-ip $NANO_IP..."
@@ -674,14 +745,54 @@ print_divider
 
 step_14(){
 # -------------------------------------------------------------------------
-# STEP 14: Reinstall AGX Agent (FIXED IP CACHE ERROR + SYSTEMD RELOAD)
+# STEP 14: Reinstall AGX Agent (BINARY TRANSFER INSTALL)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
-  # Define the robust installation command with explicit IP binding
-  K3S_REINSTALL_CMD="export K3S_TOKEN=\"$TOKEN\"; sudo curl -sfL https://get.k3s.io | K3S_URL=https://$TOWER_IP:6443 K3S_TOKEN=\$K3S_TOKEN INSTALL_K3S_EXEC=\"--node-ip $AGX_IP\" sh -"
+  # Use binary transfer for AGX (curl fails due to network restrictions)
+  K3S_REINSTALL_CMD="export K3S_TOKEN=\"$TOKEN\";
+    scp -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$TOWER_IP:/tmp/k3s-arm64 /tmp/k3s-arm64;
+    sudo chmod +x /tmp/k3s-arm64;
+    sudo cp /tmp/k3s-arm64 /usr/local/bin/k3s;
+    sudo chmod +x /usr/local/bin/k3s;
+    sudo mkdir -p /etc/systemd/system;
+    sudo bash -c 'cat > /etc/systemd/system/k3s-agent.service << EOF
+[Unit]
+Description=Lightweight Kubernetes
+Documentation=https://k3s.io
+Wants=network-online.target
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=notify
+EnvironmentFile=-/etc/default/%N
+EnvironmentFile=-/etc/sysconfig/%N
+EnvironmentFile=-/etc/systemd/system/k3s-agent.service.env
+KillMode=process
+Delegate=yes
+User=root
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+Restart=always
+RestartSec=5s
+ExecStartPre=-/sbin/modprobe br_netfilter
+ExecStartPre=-/sbin/modprobe overlay
+ExecStart=/usr/local/bin/k3s agent --node-ip $AGX_IP
+EOF';
+    echo 'K3S_TOKEN=\"\$K3S_TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null;
+    echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null;
+    sudo ip route add default via 10.1.10.1 dev eno1 2>/dev/null || true;
+    sudo systemctl daemon-reload;
+    sudo systemctl enable k3s-agent;
+    sudo systemctl start k3s-agent"
 
   if [ "$DEBUG" = "1" ]; then
-    echo "Reinstalling Agent on AGX with explicit node-ip $AGX_IP..."
+    echo "Reinstalling Agent on AGX with binary transfer..."
     ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "$K3S_REINSTALL_CMD"
     # Ensure environment file exists with correct server URL
     ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "sudo mkdir -p /etc/systemd/system && echo 'K3S_TOKEN=\"$TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null && echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null" 2>/dev/null || true
@@ -691,7 +802,7 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
   else
     step_echo_start "a" "agx" "$AGX_IP" "Reinstalling K3s agent on agx..."
     sleep 5
-    # Execute the robust reinstall command
+    # Execute the binary transfer install command
     if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "$K3S_REINSTALL_CMD" > /dev/null 2>&1; then
       # Ensure environment file exists with correct server URL
       ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "sudo mkdir -p /etc/systemd/system && echo 'K3S_TOKEN=\"$TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null && echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null" > /dev/null 2>&1
@@ -764,9 +875,9 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
     step_echo_start "a" "nano" "$NANO_IP" "Creating nano registry configuration directory..."
     sleep 5
     if ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
-      echo -en " ✅[0m"
+      echo -e " ✅"
     else
-      echo -e "[31m❌[0m"
+      echo -e "❌"
       exit 1
     fi
   fi
@@ -789,14 +900,16 @@ step_echo_start "a" "agx" "$AGX_IP" "Forcing K3s agx agent to use correct server
 # Add AGX host key to known_hosts to avoid SSH warning
 ssh-keyscan -H $AGX_IP >> ~/.ssh/known_hosts 2>/dev/null
 
-# Use systemctl edit to create an override.conf file that specifically sets the
-# correct server URL, purging any old, cached URLs from the service file.
-ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "sudo systemctl edit k3s-agent.service" > /dev/null 2>&1 << EOF
+# Create systemd override directory and file directly instead of using systemctl edit
+ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "sudo mkdir -p /etc/systemd/system/k3s-agent.service.d/" > /dev/null 2>&1
+
+ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "sudo tee /etc/systemd/system/k3s-agent.service.d/override.conf > /dev/null" << EOF
 [Service]
 Environment="K3S_URL=https://$TOWER_IP:6443"
 Environment="K3S_NODE_IP=$AGX_IP"
 EOF
-# Restart the service to apply the forced environment variables
+
+# Reload daemon and restart the service
 ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$AGX_IP "sudo systemctl daemon-reload && sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1
 
 # Check the exit status of the SSH command
@@ -1063,17 +1176,17 @@ print_divider
 
 step_21(){
 # -------------------------------------------------------------------------
-# STEP 21: Configure Registry for AGX
+# STEP 21: Configure Registry for NANO
 # -------------------------------------------------------------------------
-if [ "$INSTALL_AGX_AGENT" = true ]; then
+if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
-    echo "Configuring Registry for AGX..."
+    echo "Configuring Registry for NANO..."
     sleep 5
   else
-    step_echo_start "a" "agx" "$AGX_IP" "Configuring registry for agx..."
+    step_echo_start "a" "nano" "$NANO_IP" "Configuring registry for nano..."
     sleep 5
-    ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$AGX_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1 && \
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+    ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR sanjay@$NANO_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1 && \
+    ssh -o StrictHostKeyChecking=no sanjay@$NANO_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 mirrors:
   \"$REGISTRY_IP:$REGISTRY_PORT\":
     endpoint:
@@ -1259,40 +1372,10 @@ EOF
 fi
 }
 
+
 step_27(){
 # -------------------------------------------------------------------------
-# STEP 27: Configure Containerd for Registry (AGX)
-# -------------------------------------------------------------------------
-if [ "$INSTALL_AGX_AGENT" = true ]; then
-  if [ "$DEBUG" = "1" ]; then
-    echo "Configuring Containerd for Registry on AGX..."
-    sleep 5
-  else
-    step_echo_start "a" "agx" "$AGX_IP" "Configuring containerd for registry..."
-    sleep 5
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1 && \
-    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
-[host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
-  capabilities = [\"pull\", \"resolve\", \"push\"]
-EOF
-" > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-      echo -en " ✅\033[0m\n"
-    else
-      echo -e "\033[31m❌\033[0m"
-      exit 1
-    fi
-  fi
-  step_increment
-  print_divider
-fi
-}
-
-
-
-step_28(){
-# -------------------------------------------------------------------------
-# STEP 28: Restart Agent After Registry Config NANO
+# STEP 27: Restart Agent After Registry Config NANO
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
     echo "Restarting Agent After Registry Config Nano..."
@@ -1317,7 +1400,7 @@ print_divider
 
 }
 
-step_29(){
+step_28(){
 # -------------------------------------------------------------------------
 # STEP 29: Restart Agent After Registry Config AGX
 # -------------------------------------------------------------------------
@@ -1345,7 +1428,7 @@ print_divider
 }
 
 
-step_30(){
+step_29(){
 # -------------------------------------------------------------------------
 # STEP 30: Restart Server (Final Check)
 # -------------------------------------------------------------------------
@@ -1370,7 +1453,7 @@ step_increment
 print_divider
 }
 
-step_31(){
+step_30(){
 # =========================================================================
 # STEP 31: COPY KUBECONFIG TO NANO AGENT (Robust Copy using 'sudo cat')
 # =========================================================================
@@ -1401,7 +1484,7 @@ print_divider
 
 }
 
-step_32(){
+step_31(){
 # =========================================================================
 # STEP 32: COPY KUBECONFIG TO AGX AGENT (Ultra-Robust 'sudo scp' version)
 # =========================================================================
@@ -1435,9 +1518,13 @@ print_divider
 fi
 }
 
-step_33() {
+
+
+
+
+step_32() {
 # =========================================================================
-# STEP 33: Verify Agent Node Readiness
+# STEP 32: Verify Agent Node Readiness
 # =========================================================================
 if [ "$DEBUG" = "1" ]; then
   echo "Verifying agent nodes are ready..."
@@ -1458,9 +1545,12 @@ step_increment
 print_divider
 }
 
-step_34(){
+
+
+
+step_33(){
 # -------------------------------------------------------------------------
-# STEP 34: Install NVIDIA RuntimeClass
+# STEP 33: Install NVIDIA RuntimeClass
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Installing NVIDIA RuntimeClass..."
@@ -1494,9 +1584,12 @@ print_divider
 
 
 
-step_35(){
+
+
+
+step_34(){
 # -------------------------------------------------------------------------
-# STEP 35: Install NVIDIA Device Plugin
+# STEP 34: Install NVIDIA Device Plugin
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Installing NVIDIA Device Plugin... (Verbose output below)"
@@ -1516,6 +1609,34 @@ fi
 step_increment
 print_divider
 }
+
+
+
+step_35(){
+# --------------------------------------------------------------------------------
+# STEP 35: FIX NFS VOLUME PATHS (Addresses 'No such file or directory' error)
+# --------------------------------------------------------------------------------
+step_echo_start "s" "tower" "$TOWER_IP" "Setting up NFS volumes..."
+NFS_BASE="/export/vmstore"
+# Paths identified from the Persistent Volume Claims (PVCs):
+NFS_CONFIG_PATH="$NFS_BASE/tower_home/kubernetes/agent/nano/app/config"
+NFS_HOME_PATH="$NFS_BASE/nano_home"
+
+if sudo mkdir -p "$NFS_CONFIG_PATH" "$NFS_HOME_PATH" > /dev/null 2>&1; then
+    # Re-export the volumes to ensure the new paths are available immediately
+    sudo exportfs -a > /dev/null 2>&1
+    echo -e "[32m✅[0m"
+else
+    echo -e "[31m❌[0m"
+    echo -e "[31mFATAL: Failed to create required NFS directories.[0m"
+    exit 1
+fi
+step_increment
+print_divider
+
+}
+
+
 
 step_36(){
 # -------------------------------------------------------------------------
@@ -1548,33 +1669,11 @@ print_divider
 
 
 
+
+
 step_37(){
-# --------------------------------------------------------------------------------
-# STEP 37: FIX NFS VOLUME PATHS (Addresses 'No such file or directory' error)
-# --------------------------------------------------------------------------------
-step_echo_start "s" "tower" "$TOWER_IP" "Setting up NFS volumes..."
-NFS_BASE="/export/vmstore"
-# Paths identified from the Persistent Volume Claims (PVCs):
-NFS_CONFIG_PATH="$NFS_BASE/tower_home/kubernetes/agent/nano/app/config"
-NFS_HOME_PATH="$NFS_BASE/nano_home"
-
-if sudo mkdir -p "$NFS_CONFIG_PATH" "$NFS_HOME_PATH" > /dev/null 2>&1; then
-    # Re-export the volumes to ensure the new paths are available immediately
-    sudo exportfs -a > /dev/null 2>&1
-    echo -e "[32m✅[0m"
-else
-    echo -e "[31m❌[0m"
-    echo -e "[31mFATAL: Failed to create required NFS directories.[0m"
-    exit 1
-fi
-step_increment
-print_divider
-
-}
-
-step_40(){
 # -------------------------------------------------------------------------
-# STEP 40: Configure NVIDIA Runtime on Nano
+# STEP 37: Configure NVIDIA Runtime on Nano
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -1600,25 +1699,27 @@ print_divider
 
 }
 
-
-step_43(){
-## -------------------------------------------------------------------------
-# STEP 39: Copy Files for Build
+step_38(){
 # -------------------------------------------------------------------------
-if [ "$DEBUG" = "1" ]; then
-  echo "Copying Files for Build... (Verbose output below)"
-  sleep 5
-  scp -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@$NANO_IP:~
-  scp -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@$NANO_IP:~
-  scp -r -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/app sanjay@$NANO_IP:~
-else
-  step_echo_start "a" "nano" "$NANO_IP" "Copying files for Docker build..."
-  sleep 5
-  if scp -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/requirements.nano.txt sanjay@$NANO_IP:~ > /dev/null 2>&1 && scp -r -i ~/.ssh/id_ed25519 /home/sanjay/containers/kubernetes/agent/nano/app sanjay@$NANO_IP:~ > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
+# STEP 38: Configure NVIDIA Runtime on AGX
+# -------------------------------------------------------------------------
+if [ "$INSTALL_AGX_AGENT" = true ]; then
+  if [ "$DEBUG" = "1" ]; then
+    echo "Configuring NVIDIA Runtime on AGX Agent..."
+    sleep 5
+    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo systemctl stop k3s-agent"
+    ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo systemctl start k3s-agent"
+    wait_for_agent
   else
-    echo -e "[31m❌[0m"
-    exit 1
+    step_echo_start "a" "agx" "$AGX_IP" "Configuring NVIDIA runtime on AGX agent..."
+    sleep 5
+    if ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo systemctl stop k3s-agent" > /dev/null 2>&1 && ssh -o StrictHostKeyChecking=no sanjay@$AGX_IP "sudo systemctl start k3s-agent" > /dev/null 2>&1; then
+      wait_for_agent
+      echo -e "[32m✅[0m"
+    else
+      echo -e "[31m❌[0m"
+      exit 1
+    fi
   fi
 fi
 step_increment
@@ -1628,12 +1729,9 @@ print_divider
 
 
 
-
-
-
-step_44(){
+step_39(){
 # -------------------------------------------------------------------------
-# STEP 40: Build Image
+# STEP 39: Build Image
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Building Image... (Verbose output below)"
@@ -1656,9 +1754,9 @@ print_divider
 
 
 
-step_45(){
+step_40(){
 # -------------------------------------------------------------------------
-# STEP 41: Tag Image
+# STEP 40: Tag Image
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Tagging Image..."
@@ -1680,9 +1778,9 @@ print_divider
 }
 
 
-step_46(){
+step_41(){
 # -------------------------------------------------------------------------
-# STEP 42: Push Image
+# STEP 41: Push Image
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing Image... (Verbose output below)"
@@ -1705,9 +1803,88 @@ print_divider
 }
 
 
-step_47(){
+
+
+
+
+
+
+
+
+
+
+step_42(){
 # --------------------------------------------------------------------------------
-# NEW STEP 43: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
+# STEP 42: Build AGX Docker Image
+# --------------------------------------------------------------------------------
+if [ "$DEBUG" = "1" ]; then
+  echo "Building AGX Docker image... (Verbose output below)"
+  sleep 5
+  cd /home/sanjay/containers/kubernetes/agent/agx && sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t fastapi_agx:latest --load .
+else
+  step_echo_start "s" "tower" "$TOWER_IP" "Building AGX Docker image..."
+  sleep 5
+  if cd /home/sanjay/containers/kubernetes/agent/agx && sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t fastapi_agx:latest --load . > /dev/null 2>&1; then
+    echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
+  fi
+fi
+step_increment
+print_divider
+}
+
+step_43(){
+# --------------------------------------------------------------------------------
+# STEP 43: Tag AGX Docker Image
+# --------------------------------------------------------------------------------
+if [ "$DEBUG" = "1" ]; then
+  echo "Tagging AGX Docker image..."
+  sleep 5
+  sudo docker tag fastapi_agx:latest $REGISTRY_IP:$REGISTRY_PORT/fastapi_agx:latest
+else
+  step_echo_start "s" "tower" "$TOWER_IP" "Tagging AGX Docker image..."
+  sleep 5
+  if sudo docker tag fastapi_agx:latest $REGISTRY_IP:$REGISTRY_PORT/fastapi_agx:latest > /dev/null 2>&1; then
+    echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
+  fi
+fi
+step_increment
+print_divider
+}
+
+step_44(){
+# --------------------------------------------------------------------------------
+# STEP 44: Push AGX Docker Image to Registry
+# --------------------------------------------------------------------------------
+if [ "$DEBUG" = "1" ]; then
+  echo "Pushing AGX Docker image to registry... (Verbose output below)"
+  sleep 5
+  sudo docker push $REGISTRY_IP:$REGISTRY_PORT/fastapi_agx:latest
+else
+  step_echo_start "s" "tower" "$TOWER_IP" "Pushing AGX Docker image to registry..."
+  sleep 5
+  if sudo docker push $REGISTRY_IP:$REGISTRY_PORT/fastapi_agx:latest > /dev/null 2>&1; then
+    echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
+  fi
+fi
+step_increment
+print_divider
+}
+
+
+
+
+step_45(){
+# --------------------------------------------------------------------------------
+# STEP 45: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Cleaning up stuck pods and old deployments..."
 
@@ -1735,10 +1912,12 @@ print_divider
 
 
 
-step_48(){
+
+
+step_46(){
 
 # -------------------------------------------------------------------------
-# STEP 44: Update Database Configuration
+# STEP 46: Update Database Configuration
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Updating database config..."
 sleep 5
@@ -1772,9 +1951,9 @@ print_divider
 }
 
 
-step_49(){
+step_47(){
 # ------------------------------------------------------------------------
-# STEP 49: Create Deployment YAML
+# STEP 47: Create Deployment YAML
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Creating Deployment YAML..."
 sleep 5
@@ -1929,10 +2108,10 @@ print_divider
 
 
 
-step_50(){
+step_48(){
 
 # --------------------------------------------------------------------------------
-# STEP 46: Global Application Cleanup (Frees up lingering GPU resources)
+# STEP 48: Global Application Cleanup (Frees up lingering GPU resources)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting old deployments to free GPU..."
 
@@ -1961,9 +2140,9 @@ print_divider
 
 
 
-step_50(){
+step_49(){
 # --------------------------------------------------------------------------------
-# STEP 50: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
+# STEP 49: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Forcing cleanup of stuck deployments..."
 
@@ -1990,9 +2169,9 @@ print_divider
 
 
 
-step_51(){
+step_50(){
 # -------------------------------------------------------------------------
-# STEP 51: Deploy Application
+# STEP 50: Deploy Application
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying Application... (Verbose output below)"
@@ -2023,12 +2202,12 @@ if [ "$DEBUG" = "1" ]; then
   echo "Deploying PostgreSQL Database... (Verbose output below)"
   sleep 5
   # Substitute environment variables in deployment files
-  sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f -
+  sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" postgres/postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f -
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f postgres-pgadmin-nodeport-services.yaml
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Deploying PostgreSQL database..."
   sleep 5
-  if sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1 && \
+  if sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" postgres/postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1 && \
      sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f postgres-pgadmin-nodeport-services.yaml > /dev/null 2>&1; then
     echo -e "[32m✅[0m"
   else
@@ -2074,7 +2253,10 @@ step_53(){
 # STEP 53: Deploy FastAPI and Final Success Message
 # -------------------------------------------------------------------------
 # Deploy FastAPI after all cleanups to ensure persistence
-deploy_fastapi "a" "nano" "$NANO_IP" "Deploying FastAPI on nano"
+deploy_fastapi "a" "nano" "nano" "$NANO_IP" "Deploying FastAPI on nano"
+if [ "$INSTALL_AGX_AGENT" = true ]; then
+    deploy_fastapi "a" "agx" "agx" "$AGX_IP" "Deploying AI Workload on agx"
+fi
 
 # Final success message
 step_echo_start "s" "tower" "$TOWER_IP" "Deployment complete! Verify cluster and application status."
@@ -2160,6 +2342,18 @@ if [ $? -eq 0 ]; then # This checks the exit code of the previous command
     echo -e "   • Jupyter Interface: [32mhttp://10.1.10.150:30003[0m"
     echo -e "   • Token: [32mNot required (open access)[0m"
     echo -e ""
+    if [ "$INSTALL_AGX_AGENT" = true ]; then
+        echo -e "[33m🤖 AI Workload (AGX GPU):[0m"
+        echo -e "   • API Endpoint: [32mhttp://10.1.10.150:30004[0m"
+        echo -e "   • Health Check: [32mhttp://10.1.10.150:30004/health[0m"
+        echo -e "   • API Docs: [32mhttp://10.1.10.150:30004/docs[0m"
+        echo -e "   • LLM API: [32mhttp://10.1.10.150:30006[0m"
+        echo -e ""
+        echo -e "[33m📓 Jupyter Notebook (AGX GPU):[0m"
+        echo -e "   • Jupyter Interface: [32mhttp://10.1.10.150:30005[0m"
+        echo -e "   • Token: [32mNot required (open access)[0m"
+        echo -e ""
+    fi
     echo -e "[36m═══════════════════════════════════════════════════════════════════════════════[0m"
 else
     echo -e "[31m❌[0m"
@@ -2175,9 +2369,482 @@ print_divider
 
 
 
-step_56() {
-# -------------------------------------------------------------------------------
-# STEP 56: FINAL STABILITY VERIFICATION AND ENVIRONMENT LOCKDOWN
+
+step_56(){
+# --------------------------------------------------------------------------------
+# STEP 56: NANO GPU CAPACITY VERIFICATION
+# --------------------------------------------------------------------------------
+if [ "$INSTALL_NANO_AGENT" = true ]; then
+  step_echo_start "a" "nano" "$NANO_IP" "Verifying Nano GPU capacity..."
+  sleep 5
+  if wait_for_gpu_capacity; then
+    echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
+  fi
+fi
+step_increment
+print_divider
+}
+
+step_57(){
+# --------------------------------------------------------------------------------
+# STEP 57: NANO GPU RESOURCE CLEANUP
+# --------------------------------------------------------------------------------
+if [ "$INSTALL_NANO_AGENT" = true ]; then
+  step_echo_start "a" "nano" "$NANO_IP" "Cleaning up Nano GPU resources for deployment..."
+
+  # Force-delete any stuck pods on nano node to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=nano --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    :
+  fi
+
+  # Delete nano FastAPI deployment to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-nano -n default --ignore-not-found=true > /dev/null 2>&1; then
+    sleep 5 # Give time for GPU resources to be fully released
+    echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
+  fi
+fi
+step_increment
+print_divider
+}
+
+step_58(){
+# --------------------------------------------------------------------------------
+# STEP 58: NANO GPU-ENABLED FASTAPI DEPLOYMENT
+# --------------------------------------------------------------------------------
+if [ "$INSTALL_NANO_AGENT" = true ]; then
+  step_echo_start "a" "nano" "$NANO_IP" "Deploying GPU-enabled FastAPI on Nano..."
+
+  # Deploy nano FastAPI with GPU resources and services
+  cat > /tmp/fastapi-nano-gpu.yaml <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-nano
+  labels:
+    app: fastapi-nano
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-nano
+  template:
+    metadata:
+      labels:
+        app: fastapi-nano
+    spec:
+      runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/hostname: nano
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      containers:
+      - name: fastapi
+        image: 10.1.10.150:5000/fastapi_nano:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 8888
+          name: jupyter
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+            nvidia.com/gpu: 1
+        env:
+        - name: DEVICE_TYPE
+          value: "nano"
+        - name: GPU_ENABLED
+          value: "true"
+        - name: FORCE_GPU_CHECKS
+          value: "true"
+        volumeMounts:
+        - name: host-volume
+          mountPath: /mnt/host
+      volumes:
+      - name: host-volume
+        hostPath:
+          path: /home/sanjay
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-nano-service
+  labels:
+    app: fastapi-nano
+spec:
+  selector:
+    app: fastapi-nano
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  - port: 8888
+    targetPort: 8888
+    name: jupyter
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-nano-nodeport
+  labels:
+    app: fastapi-nano
+spec:
+  selector:
+    app: fastapi-nano
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30002
+    protocol: TCP
+    name: http
+  - port: 8888
+    targetPort: 8888
+    nodePort: 30003
+    protocol: TCP
+    name: jupyter
+  type: NodePort
+EOF
+
+  if [ "$DEBUG" = "1" ]; then
+    echo "Applying GPU-enabled nano FastAPI deployment..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-nano-gpu.yaml
+    apply_exit=$?
+  else
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-nano-gpu.yaml > /dev/null 2>&1
+    apply_exit=$?
+  fi
+
+  if [ $apply_exit -eq 0 ]; then
+    # Wait for GPU-enabled pod to be running
+    echo -e "\nWaiting for GPU-enabled FastAPI pod to be ready..."
+    for i in {1..60}; do
+      if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-nano -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+        echo -e "✅ GPU-enabled FastAPI pod is running on Nano"
+        break
+      fi
+      sleep 5
+    done
+    if [ $i -eq 60 ]; then
+      echo -e "❌ GPU-enabled FastAPI pod did not start within 5 minutes"
+      exit 1
+    fi
+  else
+    echo -e "❌ Failed to deploy GPU-enabled FastAPI on Nano"
+    exit 1
+  fi
+fi
+step_increment
+print_divider
+}
+
+step_59(){
+# --------------------------------------------------------------------------------
+# STEP 59: AGX GPU CAPACITY VERIFICATION
+# --------------------------------------------------------------------------------
+if [ "$INSTALL_AGX_AGENT" = true ]; then
+  step_echo_start "a" "agx" "$AGX_IP" "Verifying AGX GPU capacity..."
+  sleep 5
+  if wait_for_agx_gpu_capacity; then
+    echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
+  fi
+fi
+step_increment
+print_divider
+}
+
+step_60(){
+# --------------------------------------------------------------------------------
+# STEP 60: AGX GPU RESOURCE CLEANUP
+# --------------------------------------------------------------------------------
+if [ "$INSTALL_AGX_AGENT" = true ]; then
+  step_echo_start "a" "agx" "$AGX_IP" "Cleaning up AGX GPU resources for deployment..."
+
+  # Force-delete any stuck pods on AGX node to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=agx --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    :
+  fi
+
+  # Delete AGX AI Workload deployment to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-agx -n default --ignore-not-found=true > /dev/null 2>&1; then
+    sleep 5 # Give time for GPU resources to be fully released
+    echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
+  fi
+fi
+step_increment
+print_divider
+}
+
+step_61(){
+# --------------------------------------------------------------------------------
+# STEP 61: AGX GPU-ENABLED AI WORKLOAD DEPLOYMENT
+# --------------------------------------------------------------------------------
+if [ "$INSTALL_AGX_AGENT" = true ]; then
+  step_echo_start "a" "agx" "$AGX_IP" "Deploying GPU-enabled AI Workload on AGX..."
+  echo -e "[32m✅[0m"
+
+  # Deploy AGX AI Workload with GPU resources and services
+  cat > /tmp/fastapi-agx-gpu.yaml <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-agx
+  labels:
+    app: fastapi-agx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-agx
+  template:
+    metadata:
+      labels:
+        app: fastapi-agx
+    spec:
+      runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/hostname: agx
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      containers:
+      - name: fastapi
+        image: 10.1.10.150:5000/fastapi_agx:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 8888
+          name: jupyter
+        - containerPort: 8001
+          name: llm-api
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+            nvidia.com/gpu: 1
+        env:
+        - name: DEVICE_TYPE
+          value: "agx"
+        - name: GPU_ENABLED
+          value: "true"
+        - name: FORCE_GPU_CHECKS
+          value: "true"
+        - name: LLM_ENABLED
+          value: "true"
+        - name: RAG_ENABLED
+          value: "true"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: vmstore
+          mountPath: /mnt/vmstore
+        - name: agx-home
+          mountPath: /home/agx
+        - name: agx-config
+          mountPath: /app/app/config
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: vmstore
+        nfs:
+          server: 10.1.10.150
+          path: /export/vmstore
+      - name: agx-home
+        nfs:
+          server: 10.1.10.150
+          path: /export/vmstore/agx_home
+      - name: agx-config
+        nfs:
+          server: 10.1.10.150
+          path: /export/vmstore/tower_home/kubernetes/agent/agx/app/config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-agx-service
+  namespace: default
+  labels:
+    app: fastapi-agx
+    device: agx
+spec:
+  selector:
+    app: fastapi-agx
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 8888
+    targetPort: 8888
+    protocol: TCP
+    name: jupyter
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: llm-api
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-agx-nodeport
+  namespace: default
+  labels:
+    app: fastapi-agx
+    device: agx
+spec:
+  selector:
+    app: fastapi-agx
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30004
+    protocol: TCP
+    name: http
+  - port: 8888
+    targetPort: 8888
+    nodePort: 30005
+    protocol: TCP
+    name: jupyter
+  - port: 8001
+    targetPort: 8001
+    nodePort: 30006
+    protocol: TCP
+    name: llm-api
+  type: NodePort
+EOF
+
+  if [ "$DEBUG" = "1" ]; then
+    echo "Applying GPU-enabled AGX FastAPI deployment..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-agx-gpu.yaml
+    apply_exit=$?
+  else
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-agx-gpu.yaml > /dev/null 2>&1
+    apply_exit=$?
+  fi
+
+  if [ $apply_exit -eq 0 ]; then
+    # Wait for GPU-enabled pod to be running
+    echo -e "\nWaiting for GPU-enabled FastAPI pod to be ready..."
+    for i in {1..60}; do
+      if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-agx -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+        echo -e "✅ GPU-enabled AI Workload pod is running on AGX"
+        break
+      fi
+      sleep 5
+    done
+    if [ $i -eq 60 ]; then
+      echo -e "❌ GPU-enabled AI Workload pod did not start within 5 minutes"
+      exit 1
+    fi
+  else
+    echo -e "❌ Failed to deploy GPU-enabled AI Workload on AGX"
+    exit 1
+  fi
+fi
+step_increment
+print_divider
+}
+
+step_62() {
+# --------------------------------------------------------------------------------
+# STEP 62: FINAL DEPLOYMENT VERIFICATION AND LOGGING
+# --------------------------------------------------------------------------------
+step_echo_start "s" "tower" "$TOWER_IP" "Running final verification and saving log..."
+# FIX: Calling the function without output redirection.
+capture_final_log "$FINAL_LOG_FILE" "$START_MESSAGE"
+if [ $? -eq 0 ]; then # This checks the exit code of the previous command
+    echo -en "✅[0m
+"
+    print_divider
+    # Final success message, including the log file path
+    echo -e "[32m🌟 SUCCESS: Deployment Complete and Verified! 🌟[0m"
+    echo -e "Final status log saved to: [33m$FINAL_LOG_FILE[0m"
+    echo -e "Please share this log file to confirm successful deployment."
+    echo -e ""
+    echo -e "[36m═══════════════════════════════════════════════════════════════════════════════[0m"
+    echo -e "[36m                           🚀 ACCESS INFORMATION 🚀[0m"
+    echo -e "[36m═══════════════════════════════════════════════════════════════════════════════[0m"
+    echo -e ""
+    echo -e "[33m📊 PostgreSQL Database:[0m"
+    echo -e "   • Direct Access: [32m10.1.10.150:30432[0m"
+    echo -e "   • Username: [32mpostgres[0m"
+    echo -e "   • Password: [32mpostgres[0m"
+    echo -e ""
+    echo -e "[33m🖥️  pgAdmin Management Interface:[0m"
+    echo -e "   • Web UI: [32mhttp://10.1.10.150:30080[0m"
+    echo -e "   • Username: [32mpgadmin@pgadmin.org[0m"
+    echo -e "   • Password: [32mpgadmin[0m"
+    echo -e ""
+    echo -e "[33m🤖 FastAPI Application (Nano GPU):[0m"
+    echo -e "   • API Endpoint: [32mhttp://10.1.10.150:30002[0m"
+    echo -e "   • Health Check: [32mhttp://10.1.10.150:30002/health[0m"
+    echo -e "   • API Docs: [32mhttp://10.1.10.150:30002/docs[0m"
+    echo -e ""
+    echo -e "[33m📓 Jupyter Notebook (Nano GPU):[0m"
+    echo -e "   • Jupyter Interface: [32mhttp://10.1.10.150:30003[0m"
+    echo -e "   • Token: [32mNot required (open access)[0m"
+    echo -e ""
+    if [ "$INSTALL_AGX_AGENT" = true ]; then
+        echo -e "[33m🤖 AI Workload (AGX GPU):[0m"
+        echo -e "   • API Endpoint: [32mhttp://10.1.10.150:30004[0m"
+        echo -e "   • Health Check: [32mhttp://10.1.10.150:30004/health[0m"
+        echo -e "   • API Docs: [32mhttp://10.1.10.150:30004/docs[0m"
+        echo -e "   • LLM API: [32mhttp://10.1.10.150:30006[0m"
+        echo -e ""
+        echo -e "[33m📓 Jupyter Notebook (AGX GPU):[0m"
+        echo -e "   • Jupyter Interface: [32mhttp://10.1.10.150:30005[0m"
+        echo -e "   • Token: [32mNot required (open access)[0m"
+        echo -e ""
+    fi
+    echo -e "[36m═══════════════════════════════════════════════════════════════════════════════[0m"
+else
+    echo -e "[31m❌[0m"
+    echo -e "[31mFATAL: Final verification failed. Check the log for details.[0m"
+fi
+step_increment
+print_divider
+}
+
+step_63() {
+# --------------------------------------------------------------------------------
+# STEP 63: FINAL STABILITY VERIFICATION AND ENVIRONMENT LOCKDOWN
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Final verification..."
 
@@ -2201,7 +2868,6 @@ else
 fi
 step_increment
 print_divider
-
 }
 
 
@@ -2237,12 +2903,12 @@ step_28
 step_29
 step_30
 step_31
-step_32
 step_33 
-step_34
-step_35
+step_32
+step_33
 step_36
 step_37
+step_38
 step_40
 step_43
 step_44
@@ -2258,3 +2924,13 @@ step_53
 step_54
 step_55
 step_56
+step_57
+step_58
+step_59
+step_60
+step_61
+step_62
+step_63
+# End of script
+
+

@@ -28,7 +28,8 @@ echo
 
 # Test PostgreSQL connectivity
 echo "4. Testing PostgreSQL connectivity..."
-if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml exec deployment/postgres-db -- psql -U postgres -c "SELECT 1;" > /dev/null 2>&1; then
+POSTGRES_POD=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=postgres-db -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "$POSTGRES_POD" ] && sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml exec "$POSTGRES_POD" -- psql -U postgres -c "SELECT 1;" > /dev/null 2>&1; then
     echo "✅ PostgreSQL accessible internally"
 else
     echo "❌ PostgreSQL connection failed"
@@ -37,11 +38,16 @@ echo
 
 # Verify pgvector extension
 echo "5. Verifying pgvector extension..."
-VECTOR_VERSION=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml exec deployment/postgres-db -- psql -U postgres -t -c "SELECT extversion FROM pg_extension WHERE extname = 'vector';" 2>/dev/null | tr -d ' ')
-if [ -n "$VECTOR_VERSION" ]; then
-    echo "✅ pgvector extension active (version: $VECTOR_VERSION)"
+POSTGRES_POD=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=postgres-db -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "$POSTGRES_POD" ]; then
+    VECTOR_VERSION=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml exec "$POSTGRES_POD" -- psql -U postgres -t -c "SELECT extversion FROM pg_extension WHERE extname = 'vector';" 2>/dev/null | tr -d ' ')
+    if [ -n "$VECTOR_VERSION" ]; then
+        echo "✅ pgvector extension active (version: $VECTOR_VERSION)"
+    else
+        echo "❌ pgvector extension not found"
+    fi
 else
-    echo "❌ pgvector extension not found"
+    echo "❌ PostgreSQL pod not found"
 fi
 echo
 
