@@ -336,7 +336,41 @@ def get_fastapi_nano_app():
 
     @app.get("/health")
     async def health():
-        return {"status": "ok"}
+        """Comprehensive health check including all GPU modules and dependencies"""
+        import datetime
+
+        health_status = {
+            "status": "checking",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "device": "agx",
+            "gpu_enabled": True,
+            "modules": {}
+        }
+
+        # Run all module checks
+        try:
+            health_status["modules"]["libstdc++"] = load_libstdcxx()
+            health_status["modules"]["cusparselt"] = check_cusparselt()
+            health_status["modules"]["pytorch"] = check_torch()
+            health_status["modules"]["tensorflow"] = check_tensorflow()
+            health_status["modules"]["tensorrt"] = check_tensorrt()
+            health_status["modules"]["jupyter"] = check_jupyter()
+            health_status["modules"]["fastapi_deps"] = check_fastapi_nano_deps()
+            health_status["modules"]["database"] = connect_to_db()
+
+            # Determine overall status
+            all_modules_ok = all(health_status["modules"].values())
+            health_status["status"] = "healthy" if all_modules_ok else "unhealthy"
+
+        except Exception as e:
+            health_status["status"] = "error"
+            health_status["error"] = str(e)
+
+        return health_status
+
+    @app.get("/ready")
+    async def ready():
+        return {"status": "ready"}
 
     @app.get("/config")
     async def config():

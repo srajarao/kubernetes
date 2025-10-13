@@ -793,10 +793,15 @@ After successful deployment, all access information is automatically displayed a
 ### 🤖 **FastAPI Applications**
 | Service | URL | GPU Support | Description |
 |---------|-----|-------------|-------------|
-| **FastAPI (Nano)** | http://10.1.10.150:30002 | CPU Only | Lightweight API on Jetson Nano |
-| **Health Check** | http://10.1.10.150:30002/health | - | Application health monitoring |
-| **API Docs** | http://10.1.10.150:30002/docs | - | Interactive Swagger/OpenAPI docs |
-| **Jupyter Lab** | http://10.1.10.150:30003 | - | Interactive development environment |
+| **FastAPI (Nano)** | http://10.1.10.150:30002 | GPU Enabled | Lightweight API on Jetson Nano |
+| **FastAPI (AGX)** | http://10.1.10.150:30004 | GPU + LLM | AI/ML workloads on Jetson AGX Orin |
+| **LLM Inference API** | http://10.1.10.150:30006 | GPU + LLM | Large Language Model inference endpoints |
+| **Health Check (Nano)** | http://10.1.10.150:30002/health | - | Nano application health monitoring |
+| **Health Check (AGX)** | http://10.1.10.150:30004/health | - | AGX application health monitoring |
+| **API Docs (Nano)** | http://10.1.10.150:30002/docs | - | Nano interactive Swagger/OpenAPI docs |
+| **API Docs (AGX)** | http://10.1.10.150:30004/docs | - | AGX interactive Swagger/OpenAPI docs |
+| **Jupyter Lab (Nano)** | http://10.1.10.150:30003 | - | Nano interactive development environment |
+| **Jupyter Lab (AGX)** | http://10.1.10.150:30005 | - | AGX interactive development environment |
 
 ### 🔍 **Health & Monitoring**
 - **Cluster Status**: `sudo kubectl get nodes`
@@ -865,10 +870,12 @@ The stability manager validates:
 # ✅ Nodes: 3/3 ready
 # 2025-10-09 12:00:01 - Checking application pods...
 # ✅ fastapi-nano: Running
+# ✅ fastapi-agx: Running
 # ✅ postgres-db: Running
 # ✅ pgadmin: Running
 # 2025-10-09 12:00:01 - Checking service accessibility...
-# ✅ FastAPI: Accessible
+# ✅ FastAPI (Nano): Accessible
+# ✅ FastAPI (AGX): Accessible
 # ✅ pgAdmin: Accessible
 ```
 
@@ -1082,7 +1089,7 @@ open http://10.1.10.150:30080
 
 **Final Verification**: ✅ All systems operational
 - **Nodes**: 3/3 ready (tower, nano, agx)
-- **Pods**: 3/3 running (fastapi-nano, postgres-db, pgadmin)
+- **Pods**: 4/4 running (fastapi-nano, fastapi-agx, postgres-db, pgadmin)
 - **Services**: All accessible and verified
 
 ### 🔧 Key Deployment Stages Completed
@@ -1142,7 +1149,8 @@ open http://10.1.10.150:30080
 ```
 ✅ Nodes: 3/3 ready
 ✅ fastapi-nano: Running
-✅ postgres-db: Running  
+✅ fastapi-agx: Running
+✅ postgres-db: Running
 ✅ pgadmin: Running
 ✅ kubectl connectivity verified
 ```

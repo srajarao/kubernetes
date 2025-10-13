@@ -69,12 +69,15 @@ https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/torch-2.5.0a
 https://developer.download.nvidia.com/compute/redist/jp/v61/tensorflow/tensorflow-2.16.1+nv24.08-cp310-cp310-linux_aarch64.whl
 
 # FastAPI Project Dependencies
+transformers
+accelerate
+bitsandbytes
+sentencepiece
 psycopg2-binary
 python-dotenv
 fastapi
 uvicorn
 pydantic
-scip
 python-multipart
 pandas
 scikit-learn

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Backup /home/sanjay/containers to /mnt/vmstore/agx_home, excluding cache and temp directories
+# Backup /home/sanjay/containers to the appropriate vmstore location based on hostname, excluding cache and temp directories
 # Automatically re-executes with sudo if not run as root
 
 if [ "$EUID" -ne 0 ]; then
@@ -7,7 +7,33 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 SRC="/home/sanjay/containers"
-DEST="/export/vmstore/tower_home/containers"
+
+# Determine destination based on hostname
+HOSTNAME=$(hostname)
+case "$HOSTNAME" in
+    tower)
+        BASE_PATH="/export/vmstore"
+        ;;
+    *)
+        BASE_PATH="/mnt/vmstore"
+        ;;
+esac
+
+case "$HOSTNAME" in
+    tower)
+        DEST="$BASE_PATH/tower_home/containers"
+        ;;
+    nano)
+        DEST="$BASE_PATH/nano_home/containers"
+        ;;
+    agx)
+        DEST="$BASE_PATH/agx_home/containers"
+        ;;
+    *)
+        echo "Unknown hostname: $HOSTNAME. Defaulting to tower_home."
+        DEST="$BASE_PATH/tower_home/containers"
+        ;;
+esac
 
 
 # Add .git to the exclusion list
