@@ -31,14 +31,14 @@ resources:
 │   │   └── start-fastapi-nano.yaml     # Kubernetes deployment YAML
 │   ├── src/                            # Source code (matches pod /app/src/)
 │   │   ├── backup_home.sh              # Backup script
-│   │   ├── fastapi_app.py              # Main FastAPI application with ML support
+│   │   ├── nano_app.py                 # Main FastAPI application with ML support
 │   │   ├── init_db.sql                 # Database initialization
 │   │   ├── start-jupyter.sh            # Jupyter start script
 │   │   └── validate-nano-setup.sh      # Validation script
 │   ├── logs/                           # Application logs (runtime)
 │   └── data/                           # Application data (runtime)
 ├── usr/local/bin/                      # System executables (matches pod /usr/local/bin/)
-│   └── fastapi_app.py                  # Main executable copy
+│   └── nano_app.py                     # Main executable copy
 ├── mnt/vmstore/                        # NFS mount point (matches pod /mnt/vmstore/)
 ├── k3s-nano-agent-setup.sh            # Main k3s agent setup script
 ├── setup-nano-network.sh              # Network configuration script
@@ -55,14 +55,14 @@ resources:
 /app/                                # Working directory (matches pod /app/)
 ├── app/                             # Application files
 │   ├── src/                         # Source code
-│   │   ├── fastapi_app.py           # Main FastAPI app with configurable ports
+│   │   ├── nano_app.py              # Main FastAPI app with configurable ports
 │   │   └── validate-nano-setup.sh   # Validation script
 │   └── config/                      # Configuration files
 │       ├── postgres.env             # Database credentials
 │       └── nano-config.env          # Nano-specific config
 ├── requirements.nano.txt            # Python dependencies
 ```
-├── usr/local/bin/fastapi_app.py     # Main executable
+├── usr/local/bin/nano_app.py        # Main executable
 ├── mnt/vmstore/                     # NFS mount point (/home/sanjay mounted)
 └── opt/venv/                        # Python virtual environment
 ```
@@ -154,7 +154,7 @@ docker run --rm -it --runtime=nvidia --network=host \
   -e FORCE_GPU_CHECKS=true \
   -v /home/sanjay:/mnt/vmstore \
   fastapi_nano \
-  bash -c "cd /app && source /opt/venv/bin/activate && python app/src/fastapi_app.py"
+  bash -c "cd /app && source /opt/venv/bin/activate && python app/src/nano_app.py"
 ```
 
 ### Production Deployment
@@ -255,7 +255,7 @@ sudo ./setup-nano-network.sh
 ```bash
 # Build and test container locally
 docker build -f dockerfile.nano.req -t fastapi_nano .
-docker run --rm -it --runtime=nvidia --network=host -e FASTAPI_PORT=8000 -v /home/sanjay:/mnt/vmstore fastapi_nano bash -c "cd /app && source /opt/venv/bin/activate && python app/src/fastapi_app.py"
+docker run --rm -it --runtime=nvidia --network=host -e FASTAPI_PORT=8000 -v /home/sanjay:/mnt/vmstore fastapi_nano bash -c "cd /app && source /opt/venv/bin/activate && python app/src/nano_app.py"
 ```
 
 ### 5. Validate Setup
@@ -599,7 +599,7 @@ docker run --rm -it --runtime=nvidia --network=host \
 # Inside container
 cd /app
 source /opt/venv/bin/activate
-python app/src/fastapi_app.py
+python app/src/nano_app.py
 ```
 
 ### Testing Changes

@@ -72,7 +72,7 @@ RUN chmod +x /usr/local/bin/healthcheck.py /usr/local/bin/start-jupyter.sh
  
 # Set the default command for the container
 WORKDIR /workspace
-#COPY src/fastapi_app.py /workspace/fastapi_app.py
+#COPY src/nano_app.py /workspace/nano_app.py
 #CMD ["uvicorn", "fastapi_app:app", "--host", "0.0.0.0", "--port", "8000"]
 CMD ["bash"] 
 

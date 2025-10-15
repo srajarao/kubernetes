@@ -27,7 +27,7 @@ spec:
       containers:
       - name: fastapi-agx
         image: 10.1.10.150:5000/fastapi_agx:latest
-        command: ["python3", "/workspace/aiworkload_app.py"]
+        command: ["python3", "/workspace/agx_app.py"]
         ports:
         - containerPort: 8000
           name: http

@@ -496,7 +496,7 @@ kubernetes/
 │   │   ├── dockerfile.nano.req      # GPU-enabled Dockerfile
 │   │   ├── requirements.nano.txt    # Python dependencies for Nano
 │   │   ├── app/                     # FastAPI application source
-│   │   │   ├── src/fastapi_app.py   # Main FastAPI app
+│   │   │   ├── src/nano_app.py      # Main FastAPI app
 │   │   │   ├── config/              # Configuration files
 │   │   │   └── docs/                # API documentation
 │   │   ├── k3s-nano-agent-setup.sh  # Nano K3s agent setup
@@ -504,7 +504,7 @@ kubernetes/
 │   │   ├── cleanup-nano.sh          # Cleanup scripts
 │   │   └── README.md                # Nano-specific docs
 │   └── agx/                         # Jetson AGX Orin setup
-│       ├── aiworkload_app.py        # AGX FastAPI app (renamed for clarity)
+│       ├── agx_app.py               # AGX FastAPI app
 │       ├── k3s-agx-agent-setup.sh    # AGX K3s agent setup
 │       ├── validate-agx-setup.sh    # AGX validation
 │       ├── setup-agx-network.sh     # AGX network config

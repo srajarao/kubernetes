@@ -48,7 +48,7 @@ Tower (K3s Server) ←1G→ Jetson Nano (API Services)   FastAPI + Health Monito
 - **Services**:
   - FastAPI application with comprehensive GPU monitoring
   - PyTorch, TensorFlow, TensorRT, cuSPARSELt validation
-  - AI workload processing (aiworkload_app.py)
+  - AI workload processing (agx_app.py)
   - Health endpoints with detailed GPU status
   - Jupyter notebook server for development
 - **Network**: 10.1.10.244 (10G to Tower)
@@ -107,7 +107,7 @@ Tower (K3s Server) ←1G→ Jetson Nano (API Services)   FastAPI + Health Monito
 - [x] PostgreSQL with pgvector extension deployment
 - [x] pgAdmin web interface for database management
 - [x] FastAPI application on Nano with GPU monitoring
-- [x] Enhanced FastAPI application on AGX (aiworkload_app.py)
+- [x] Enhanced FastAPI application on AGX (agx_app.py)
 - [x] Comprehensive health check endpoints with GPU validation
 - [x] Jupyter notebook servers on both devices
 - [x] Service mesh configuration and ingress routing
@@ -175,7 +175,7 @@ Tower (Server):
 AGX Orin (Agent):
   IP: 10.1.10.244
   Role: GPU workloads, AI inference
-  Services: FastAPI (aiworkload_app.py), Jupyter, GPU monitoring
+  Services: FastAPI (agx_app.py), Jupyter, GPU monitoring
 
 Jetson Nano (Agent):
   IP: 10.1.10.181
@@ -200,7 +200,7 @@ GET  /docs                     # Interactive API documentation
 GET  /                        # Root endpoint
 ```
 
-#### FastAPI AGX Endpoints (aiworkload_app.py)
+#### FastAPI AGX Endpoints (agx_app.py)
 ```
 GET  /health                    # Comprehensive health check
 GET  /health/gpu               # Advanced GPU validation
@@ -284,11 +284,11 @@ Traefik Dashboard: http://10.1.10.150:9000
 │   ├── nano/                        # Jetson Nano setup
 │   │   ├── dockerfile.nano.req      # GPU-enabled Dockerfile
 │   │   ├── requirements.nano.txt    # Python dependencies
-│   │   ├── app/src/fastapi_app.py   # FastAPI application
+│   │   ├── app/src/nano_app.py       # FastAPI application
 │   │   ├── k3s-nano-agent-setup.sh  # Nano K3s agent setup
 │   │   └── validate-nano-setup.sh   # Nano validation
 │   └── agx/                         # Jetson AGX Orin setup
-│       ├── aiworkload_app.py        # Enhanced FastAPI app (renamed)
+│       ├── agx_app.py               # Enhanced FastAPI app
 │       ├── dockerfile.agx.req       # AGX GPU-enabled Dockerfile
 │       ├── requirements.agx.txt     # Python dependencies
 │       ├── k3s-agx-agent-setup.sh    # AGX K3s agent setup

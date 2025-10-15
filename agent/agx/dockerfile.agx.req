@@ -92,5 +92,5 @@ RUN chmod +x /usr/local/bin/start-jupyter.sh
 
 # Set the default command for the container
 WORKDIR /workspace
-COPY aiworkload_app.py /workspace/aiworkload_app.py
-CMD ["python3", "/workspace/aiworkload_app.py"]
+COPY agx_app.py /workspace/agx_app.py
+CMD ["python3", "/workspace/agx_app.py"]
