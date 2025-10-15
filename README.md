@@ -497,7 +497,6 @@ kubernetes/
 │   │   ├── requirements.nano.txt    # Python dependencies for Nano
 │   │   ├── app/                     # FastAPI application source
 │   │   │   ├── src/fastapi_app.py   # Main FastAPI app
-│   │   │   ├── src/health_checks.py # Auto-generated health endpoints
 │   │   │   ├── config/              # Configuration files
 │   │   │   └── docs/                # API documentation
 │   │   ├── k3s-nano-agent-setup.sh  # Nano K3s agent setup

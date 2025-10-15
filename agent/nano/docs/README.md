@@ -32,7 +32,6 @@ resources:
 │   ├── src/                            # Source code (matches pod /app/src/)
 │   │   ├── backup_home.sh              # Backup script
 │   │   ├── fastapi_app.py              # Main FastAPI application with ML support
-│   │   ├── health_checks.py            # Health check endpoints
 │   │   ├── init_db.sql                 # Database initialization
 │   │   ├── start-jupyter.sh            # Jupyter start script
 │   │   └── validate-nano-setup.sh      # Validation script
@@ -57,7 +56,6 @@ resources:
 ├── app/                             # Application files
 │   ├── src/                         # Source code
 │   │   ├── fastapi_app.py           # Main FastAPI app with configurable ports
-│   │   ├── health_checks.py         # Health check endpoints
 │   │   └── validate-nano-setup.sh   # Validation script
 │   └── config/                      # Configuration files
 │       ├── postgres.env             # Database credentials

@@ -131,9 +131,6 @@ RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir nvidia-ml-py
 COPY app/src/ /app/app/src/
 COPY app/config/ /app/app/config/
 
-# Copy auto-generated health checks
-COPY app/src/health_checks.py /app/app/src/health_checks.py
-
 # Create necessary directories
 RUN mkdir -p /app/app/logs /app/app/data /mnt/vmstore
 
