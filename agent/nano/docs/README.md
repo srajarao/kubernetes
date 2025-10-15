@@ -32,7 +32,7 @@ resources:
 │   ├── src/                            # Source code (matches pod /app/src/)
 │   │   ├── backup_home.sh              # Backup script
 │   │   ├── fastapi_app.py              # FastAPI application with ML support
-│   │   ├── fastapi_healthcheck.py      # Health check utilities
+│   │   ├── health_checks.py            # Health check endpoints
 │   │   ├── init_db.sql                 # Database initialization
 │   │   ├── main.py                     # Main FastAPI application
 │   │   ├── start-jupyter.sh            # Jupyter start script
@@ -53,16 +53,18 @@ resources:
 
 ## Container Structure (Pod Layout)
 ```
+```
 /app/                                # Working directory (matches pod /app/)
 ├── app/                             # Application files
 │   ├── src/                         # Source code
 │   │   ├── fastapi_app.py           # Main FastAPI app with configurable ports
-│   │   ├── fastapi_healthcheck.py   # Health check utilities
+│   │   ├── health_checks.py         # Health check endpoints
 │   │   └── validate-nano-setup.sh   # Validation script
 │   └── config/                      # Configuration files
 │       ├── postgres.env             # Database credentials
 │       └── nano-config.env          # Nano-specific config
 ├── requirements.nano.txt            # Python dependencies
+```
 ├── usr/local/bin/fastapi_app.py     # Main executable
 ├── mnt/vmstore/                     # NFS mount point (/home/sanjay mounted)
 └── opt/venv/                        # Python virtual environment
@@ -195,15 +197,17 @@ kubectl apply -f app/config/start-fastapi-nano.yaml
 ## Health Checks & Validation
 
 ### Automated Health Checks
-The container includes comprehensive health validation:
+The container includes comprehensive health validation via FastAPI endpoints:
 
 ```bash
-# Run all health checks
-python app/src/fastapi_healthcheck.py
+# Health check endpoints (available when container is running):
+# GET /health - Basic application health
+# GET /health/gpu - GPU status and memory usage
+# GET /health/comprehensive - All system components
 
-# Individual checks:
+# Individual checks include:
 # - libstdc++ compatibility
-# - GPU libraries (skipped on CPU-only)
+# - GPU libraries (when available)
 # - Jupyter Lab installation
 # - FastAPI dependencies
 # - Database connectivity
@@ -603,14 +607,16 @@ python app/src/fastapi_app.py
 
 ### Testing Changes
 ```bash
-# Test FastAPI changes
+# Test FastAPI health endpoints
 curl http://localhost:8000/health
+curl http://localhost:8000/health/gpu
+curl http://localhost:8000/health/comprehensive
 
 # Test ML functionality with GPU
 python -c "import torch; print('PyTorch GPU working:', torch.cuda.is_available())"
 
-# Validate database
-python app/src/fastapi_healthcheck.py
+# Validate database connectivity
+python -c "import psycopg2; conn = psycopg2.connect('host=postgres-db port=5432 user=postgres password=postgres dbname=postgres'); print('Database connected successfully')"
 ```
 
 ### Deployment Pipeline

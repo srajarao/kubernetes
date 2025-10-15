@@ -87,9 +87,8 @@ EXPOSE 8889
 EXPOSE 8000
 
 # --- Final Setup ---
-COPY fastapi_healthcheck.py /usr/local/bin/fastapi_healthcheck.py
 COPY start-jupyter.sh /usr/local/bin/start-jupyter.sh
-RUN chmod +x /usr/local/bin/fastapi_healthcheck.py /usr/local/bin/start-jupyter.sh
+RUN chmod +x /usr/local/bin/start-jupyter.sh
 
 # Set the default command for the container
 WORKDIR /workspace
