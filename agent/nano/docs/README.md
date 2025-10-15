@@ -31,10 +31,9 @@ resources:
 │   │   └── start-fastapi-nano.yaml     # Kubernetes deployment YAML
 │   ├── src/                            # Source code (matches pod /app/src/)
 │   │   ├── backup_home.sh              # Backup script
-│   │   ├── fastapi_app.py              # FastAPI application with ML support
+│   │   ├── fastapi_app.py              # Main FastAPI application with ML support
 │   │   ├── health_checks.py            # Health check endpoints
 │   │   ├── init_db.sql                 # Database initialization
-│   │   ├── main.py                     # Main FastAPI application
 │   │   ├── start-jupyter.sh            # Jupyter start script
 │   │   └── validate-nano-setup.sh      # Validation script
 │   ├── logs/                           # Application logs (runtime)
