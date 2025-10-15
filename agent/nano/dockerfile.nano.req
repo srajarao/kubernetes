@@ -118,8 +118,14 @@ RUN python3 -m venv $VIRTUAL_ENV && \
 
 
 # Install Python packages based on components
-# Install Python packages
-RUN $VIRTUAL_ENV/bin/pip install  fastapi uvicorn pydantic psycopg2-binary python-dotenv python-multipart nvidia-ml-py
+# Install Python packages one by one to avoid zlib issues
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir fastapi
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir uvicorn
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir pydantic
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir psycopg2-binary
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir python-dotenv
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir python-multipart
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir nvidia-ml-py
 
 # Copy application code
 COPY app/src/ /app/app/src/

@@ -67,7 +67,7 @@ fi
 CURRENT_STEP=1
 
 # NOTE: Total steps count is 60 (includes nano and AGX GPU enablement)
-TOTAL_STEPS=66
+TOTAL_STEPS=63
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.
@@ -2195,146 +2195,9 @@ print_divider
 
 
 step_51(){
-# --------------------------------------------------------------------------------
-# STEP 51: Build pgAdmin Docker Image
-# --------------------------------------------------------------------------------
-cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
-if [ "$DEBUG" = "1" ]; then
-  echo "Building pgAdmin Docker image... (Verbose output below)"
-  sleep 5
-  cd pgadmin && sudo docker build -f dockerfile.pgadmin -t pgadmin:latest .
-else
-  step_echo_start "s" "tower" "$TOWER_IP" "Building pgAdmin Docker image..."
-  sleep 5
-  if cd pgadmin && sudo docker build -f dockerfile.pgadmin -t pgadmin:latest . > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
-}
-
-step_52(){
-# --------------------------------------------------------------------------------
-# STEP 52: Tag pgAdmin Docker Image
-# --------------------------------------------------------------------------------
-if [ "$DEBUG" = "1" ]; then
-  echo "Tagging pgAdmin Docker image..."
-  sleep 5
-  sudo docker tag pgadmin:latest $REGISTRY_IP:$REGISTRY_PORT/pgadmin:latest
-else
-  step_echo_start "s" "tower" "$TOWER_IP" "Tagging pgAdmin Docker image..."
-  sleep 5
-  if sudo docker tag pgadmin:latest $REGISTRY_IP:$REGISTRY_PORT/pgadmin:latest > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
-}
-
-step_53(){
-# --------------------------------------------------------------------------------
-# STEP 53: Push pgAdmin Docker Image to Registry
-# --------------------------------------------------------------------------------
-if [ "$DEBUG" = "1" ]; then
-  echo "Pushing pgAdmin Docker image to registry... (Verbose output below)"
-  sleep 5
-  sudo docker push $REGISTRY_IP:$REGISTRY_PORT/pgadmin:latest
-else
-  step_echo_start "s" "tower" "$TOWER_IP" "Pushing pgAdmin Docker image to registry..."
-  sleep 5
-  if sudo docker push $REGISTRY_IP:$REGISTRY_PORT/pgadmin:latest > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
-}
-
-step_54(){
-# --------------------------------------------------------------------------------
-# STEP 54: Build PostgreSQL Docker Image
-# --------------------------------------------------------------------------------
-cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
-if [ "$DEBUG" = "1" ]; then
-  echo "Building PostgreSQL Docker image... (Verbose output below)"
-  sleep 5
-  cd postgres && sudo docker build -f dockerfile.postgres -t postgres:latest --build-arg OFFLINE_MODE=true .
-else
-  step_echo_start "s" "tower" "$TOWER_IP" "Building PostgreSQL Docker image..."
-  sleep 5
-  if cd postgres && sudo docker build -f dockerfile.postgres -t postgres:latest --build-arg OFFLINE_MODE=true . > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
-}
-
-step_55(){
-# --------------------------------------------------------------------------------
-# STEP 55: Tag PostgreSQL Docker Image
-# --------------------------------------------------------------------------------
-cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
-if [ "$DEBUG" = "1" ]; then
-  echo "Tagging PostgreSQL Docker image... (Verbose output below)"
-  sleep 5
-  sudo docker tag postgres:latest $REGISTRY_IP:$REGISTRY_PORT/postgres:latest
-else
-  step_echo_start "s" "tower" "$TOWER_IP" "Tagging PostgreSQL Docker image..."
-  sleep 5
-  if sudo docker tag postgres:latest $REGISTRY_IP:$REGISTRY_PORT/postgres:latest > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
-}
-
-step_56(){
-# --------------------------------------------------------------------------------
-# STEP 56: Push PostgreSQL Docker Image to Registry
-# --------------------------------------------------------------------------------
-cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
-if [ "$DEBUG" = "1" ]; then
-  echo "Pushing PostgreSQL Docker image to registry... (Verbose output below)"
-  sleep 5
-  sudo docker push $REGISTRY_IP:$REGISTRY_PORT/postgres:latest
-else
-  step_echo_start "s" "tower" "$TOWER_IP" "Pushing PostgreSQL Docker image to registry..."
-  sleep 5
-  if sudo docker push $REGISTRY_IP:$REGISTRY_PORT/postgres:latest > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    echo -e "[31m❌[0m"
-    exit 1
-  fi
-fi
-step_increment
-print_divider
-}
-
-step_57(){
 # -------------------------------------------------------------------------
-# STEP 57: Deploy PostgreSQL Database
+# STEP 51: Deploy PostgreSQL Database
 # -------------------------------------------------------------------------
-cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying PostgreSQL Database... (Verbose output below)"
   sleep 5
@@ -2356,9 +2219,9 @@ step_increment
 print_divider
 }
 
-step_58(){
+step_52(){
 # -------------------------------------------------------------------------
-# STEP 58: Deploy pgAdmin
+# STEP 52: Deploy pgAdmin
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying pgAdmin... (Verbose output below)"
@@ -2385,9 +2248,9 @@ print_divider
 
 
 
-step_59(){
+step_53(){
 # ------------------------------------------------------------------------
-# STEP 59: Deploy FastAPI and Final Success Message
+# STEP 53: Deploy FastAPI and Final Success Message
 # -------------------------------------------------------------------------
 # Deploy FastAPI after all cleanups to ensure persistence
 deploy_fastapi "a" "nano" "nano" "$NANO_IP" "Deploying FastAPI on nano"
@@ -2412,9 +2275,9 @@ print_divider
 
 
 
-step_60(){
+step_54(){
   # --------------------------------------------------------------------------------
-  # STEP 60: Verify PostgreSQL and pgAdmin Deployment
+  # STEP 54: Verify PostgreSQL and pgAdmin Deployment
   # --------------------------------------------------------------------------------
   step_echo_start "s" "tower" "$TOWER_IP" "Verifying PostgreSQL and pgAdmin..."
 
@@ -2440,9 +2303,9 @@ step_60(){
 
 
 
-step_61() {
+step_55() {
 # --------------------------------------------------------------------------------
-# STEP 61: FINAL DEPLOYMENT VERIFICATION AND LOGGING
+# STEP 55: FINAL DEPLOYMENT VERIFICATION AND LOGGING
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Running final verification and saving log..."
 # FIX: Calling the function without output redirection.
@@ -2507,9 +2370,9 @@ print_divider
 
 
 
-step_62(){
+step_56(){
 # --------------------------------------------------------------------------------
-# STEP 62: NANO GPU CAPACITY VERIFICATION
+# STEP 56: NANO GPU CAPACITY VERIFICATION
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   step_echo_start "a" "nano" "$NANO_IP" "Verifying Nano GPU capacity..."
@@ -2525,9 +2388,9 @@ step_increment
 print_divider
 }
 
-step_63(){
+step_57(){
 # --------------------------------------------------------------------------------
-# STEP 63: NANO GPU RESOURCE CLEANUP
+# STEP 57: NANO GPU RESOURCE CLEANUP
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   step_echo_start "a" "nano" "$NANO_IP" "Cleaning up Nano GPU resources for deployment..."
@@ -2550,9 +2413,9 @@ step_increment
 print_divider
 }
 
-step_64(){
+step_58(){
 # --------------------------------------------------------------------------------
-# STEP 64: NANO GPU-ENABLED FASTAPI DEPLOYMENT
+# STEP 58: NANO GPU-ENABLED FASTAPI DEPLOYMENT
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   step_echo_start "a" "nano" "$NANO_IP" "Deploying GPU-enabled FastAPI on Nano..."
@@ -2688,9 +2551,9 @@ step_increment
 print_divider
 }
 
-step_65(){
+step_59(){
 # --------------------------------------------------------------------------------
-# STEP 65: AGX GPU CAPACITY VERIFICATION
+# STEP 59: AGX GPU CAPACITY VERIFICATION
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "a" "agx" "$AGX_IP" "Verifying AGX GPU capacity..."
@@ -2706,9 +2569,9 @@ step_increment
 print_divider
 }
 
-step_66(){
+step_60(){
 # --------------------------------------------------------------------------------
-# STEP 66: AGX GPU RESOURCE CLEANUP
+# STEP 60: AGX GPU RESOURCE CLEANUP
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "a" "agx" "$AGX_IP" "Cleaning up AGX GPU resources for deployment..."
@@ -2731,9 +2594,9 @@ step_increment
 print_divider
 }
 
-step_67(){
+step_61(){
 # --------------------------------------------------------------------------------
-# STEP 67: AGX GPU-ENABLED AI WORKLOAD DEPLOYMENT
+# STEP 61: AGX GPU-ENABLED AI WORKLOAD DEPLOYMENT
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "a" "agx" "$AGX_IP" "Deploying GPU-enabled AI Workload on AGX..."
@@ -2919,9 +2782,9 @@ step_increment
 print_divider
 }
 
-step_68() {
+step_62() {
 # --------------------------------------------------------------------------------
-# STEP 68: FINAL DEPLOYMENT VERIFICATION AND LOGGING
+# STEP 62: FINAL DEPLOYMENT VERIFICATION AND LOGGING
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Running final verification and saving log..."
 # FIX: Calling the function without output redirection.
@@ -2979,9 +2842,9 @@ step_increment
 print_divider
 }
 
-step_69() {
+step_63() {
 # --------------------------------------------------------------------------------
-# STEP 69: FINAL STABILITY VERIFICATION AND ENVIRONMENT LOCKDOWN
+# STEP 63: FINAL STABILITY VERIFICATION AND ENVIRONMENT LOCKDOWN
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Final verification..."
 
@@ -3040,18 +2903,14 @@ step_28
 step_29
 step_30
 step_31
+step_33 
 step_32
 step_33
-step_34
-step_35
 step_36
 step_37
 step_38
-step_39
 step_40
-step_41
-step_42
-step_43 
+step_43
 step_44
 step_45
 step_46
@@ -3072,13 +2931,6 @@ step_60
 step_61
 step_62
 step_63
-step_64
-step_65
-step_66
-step_67
-step_68
-step_69
-
 # End of script
 
 

@@ -11,13 +11,15 @@ RUN apt-get update && apt-get install -y \
 # Use a build argument to determine the mode.
 ARG OFFLINE_MODE=false
 
+# Copy the local pgvector repository if in offline mode
+COPY pgvector_repo /pgvector
+
 # This single RUN command handles both online and offline modes.
 RUN if [ "$OFFLINE_MODE" = "true" ]; then \
-        echo "Building in offline mode: Copying local repository..."; \
-        cp -R ./pgvector_repo /pgvector; \
+        echo "Building in offline mode: Using copied local repository..."; \
     else \
         echo "Building in online mode: Cloning from GitHub..."; \
-        git clone --depth 1 https://github.com/pgvector/pgvector.git /pgvector; \
+        rm -rf /pgvector && git clone --depth 1 https://github.com/pgvector/pgvector.git /pgvector; \
     fi
 
 # Now, regardless of how the files got here, perform the installation.

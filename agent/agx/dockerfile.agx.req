@@ -3,6 +3,8 @@ FROM nvcr.io/nvidia/l4t-jetpack:r36.4.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
      PIP_NO_CACHE_DIR=1 \
+     PIP_INDEX_URL=https://pypi.python.org/simple \
+     PIP_TRUSTED_HOST=pypi.python.org \
      PYTHONUNBUFFERED=1 \
      VIRTUAL_ENV=/opt/venv \
      PATH="/opt/venv/bin:$PATH"
@@ -45,9 +47,40 @@ RUN $VIRTUAL_ENV/bin/pip install \
     https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl \
     https://developer.download.nvidia.com/compute/redist/jp/v61/tensorflow/tensorflow-2.16.1+nv24.08-cp310-cp310-linux_aarch64.whl
 
-# 2. Install all other packages from requirements.txt
+# 2. Install all other packages from requirements.txt individually to avoid corruption
 #    This command ignores torch and tensorflow which are already installed.
-RUN $VIRTUAL_ENV/bin/pip install -r /workspace/requirements.agx.txt
+RUN $VIRTUAL_ENV/bin/pip install tensorflow-io-gcs-filesystem==0.37.1
+RUN $VIRTUAL_ENV/bin/pip install notebook==7.1.3
+RUN $VIRTUAL_ENV/bin/pip install jupyterlab==4.1.5
+RUN $VIRTUAL_ENV/bin/pip install ipykernel==6.30.1
+RUN $VIRTUAL_ENV/bin/pip install numpy==1.26.4
+RUN $VIRTUAL_ENV/bin/pip install tensorboard==2.16.2
+RUN $VIRTUAL_ENV/bin/pip install google-auth==2.29.0
+RUN $VIRTUAL_ENV/bin/pip install google-auth-oauthlib==1.2.0
+RUN $VIRTUAL_ENV/bin/pip install ml-dtypes==0.3.1
+RUN $VIRTUAL_ENV/bin/pip install typing_extensions==4.15.0
+RUN $VIRTUAL_ENV/bin/pip install jinja2==3.1.6
+RUN $VIRTUAL_ENV/bin/pip install MarkupSafe==2.1.5
+RUN $VIRTUAL_ENV/bin/pip install filelock==3.13.4
+RUN $VIRTUAL_ENV/bin/pip install fsspec==2024.6.1
+RUN $VIRTUAL_ENV/bin/pip install packaging==25.0
+RUN $VIRTUAL_ENV/bin/pip install Markdown==3.5.2
+RUN $VIRTUAL_ENV/bin/pip install werkzeug==3.0.3
+RUN $VIRTUAL_ENV/bin/pip install requests==2.32.5
+RUN $VIRTUAL_ENV/bin/pip install oauthlib==3.3.1
+RUN $VIRTUAL_ENV/bin/pip install urllib3==2.5.0
+RUN $VIRTUAL_ENV/bin/pip install rsa==4.9.1
+RUN $VIRTUAL_ENV/bin/pip install cachetools==5.5.2
+RUN $VIRTUAL_ENV/bin/pip install charset-normalizer==3.3.2
+RUN $VIRTUAL_ENV/bin/pip install idna==3.10
+RUN $VIRTUAL_ENV/bin/pip install certifi==2025.8.3
+RUN $VIRTUAL_ENV/bin/pip install tensorboard-data-server==0.7.2
+RUN $VIRTUAL_ENV/bin/pip install --no-binary :all: fastapi
+RUN $VIRTUAL_ENV/bin/pip install uvicorn
+RUN $VIRTUAL_ENV/bin/pip install pydantic
+RUN $VIRTUAL_ENV/bin/pip install python-multipart
+RUN $VIRTUAL_ENV/bin/pip install psycopg2-binary
+RUN $VIRTUAL_ENV/bin/pip install python-dotenv
 
 # Expose ports
 EXPOSE 8889
@@ -61,4 +94,4 @@ RUN chmod +x /usr/local/bin/fastapi_healthcheck.py /usr/local/bin/start-jupyter.
 # Set the default command for the container
 WORKDIR /workspace
 COPY aiworkload_app.py /workspace/aiworkload_app.py
-CMD ["python3", "/usr/local/bin/fastapi_healthcheck.py"]
+CMD ["python3", "/workspace/aiworkload_app.py"]
