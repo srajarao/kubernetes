@@ -15,6 +15,7 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **🆕 Config Change Detection**: Intelligent caching prevents unnecessary rebuilds
 - **🆕 Parameterized Configuration**: Flexible Docker image variants for nano/AGX hardware
 - **🆕 Flexible Image Management**: 4 Docker deployment modes for online/offline environments
+- **🔥 Hot Reload Development**: Real-time code updates without container rebuilds
 
 ## 🆕 New Features: Component-Based Architecture
 
@@ -819,6 +820,38 @@ After successful deployment, all access information is automatically displayed a
 | **API Docs (AGX)** | http://10.1.10.150:30004/docs | - | AGX interactive Swagger/OpenAPI docs |
 | **Jupyter Lab (Nano)** | http://10.1.10.150:30003 | - | Nano interactive development environment |
 | **Jupyter Lab (AGX)** | http://10.1.10.150:30005 | - | AGX interactive development environment |
+
+### 🔥 **Hot Reload Development**
+**Status**: ✅ **ENABLED** - Real-time code updates without container rebuilds
+
+#### Bind Mount Configuration
+- **Source**: NFS-mounted application directories from tower
+- **Target**: `/workspace` in both Nano and AGX containers
+- **Technology**: Kubernetes persistent volume mounts with NFS backend
+
+#### Hot Reload Features
+- **Automatic Detection**: File changes trigger immediate application restart
+- **No Rebuild Required**: Edit code on host, see changes instantly in pods
+- **Development Workflow**: Modify `nano_app.py` or `agx_app.py` → Auto-reload in 1-2 seconds
+- **Volume Mounts**:
+  - **Nano**: `/workspace` ← `tower:/export/vmstore/tower_home/kubernetes/agent/nano`
+  - **AGX**: `/workspace` ← `tower:/export/vmstore/tower_home/kubernetes/agent/agx`
+
+#### Implementation Details
+- **Uvicorn**: `--reload --reload-dir /workspace` flags enabled
+- **FastAPI Apps**: Exposed at module level for uvicorn import
+- **File Monitoring**: Watches entire `/workspace` directory for changes
+- **Zero Downtime**: Graceful restart maintains service availability
+
+#### Usage
+```bash
+# Edit application files on tower
+vim agent/nano/app/src/nano_app.py
+vim agent/agx/agx_app.py
+
+# Changes automatically reflected in running pods
+# No need to rebuild containers or restart deployments
+```
 
 ### 🔍 **Health & Monitoring**
 - **Cluster Status**: `sudo kubectl get nodes`
