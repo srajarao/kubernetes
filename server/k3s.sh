@@ -2019,9 +2019,9 @@ spec:
         - name: nano-home
           mountPath: /home/nano
         - name: nano-config
-          mountPath: /app/app/config
-        - name: nano-src
-          mountPath: /app/app/src
+          mountPath: /workspace/config
+        - name: nano-workspace
+          mountPath: /workspace
         livenessProbe:
           httpGet:
             path: /health
@@ -2047,10 +2047,10 @@ spec:
         nfs:
           server: $TOWER_IP
           path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
-      - name: nano-src
+      - name: nano-workspace
         nfs:
           server: $TOWER_IP
-          path: /export/vmstore/tower_home/kubernetes/agent/nano/app/src
+          path: /export/vmstore/tower_home/kubernetes/agent/nano
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"

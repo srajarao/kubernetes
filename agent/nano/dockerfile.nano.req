@@ -39,10 +39,10 @@ RUN wget https://developer.download.nvidia.com/compute/cusparselt/0.8.0/local_in
 RUN mkdir -p \
     /home/sanjay/kubernetes/agent \
     /mnt/vmstore \
-    /app/logs \
-    /app/data \
-    /app/config \
-    /app/models \
+    /workspace/logs \
+    /workspace/data \
+    /workspace/config \
+    /workspace/models \
     /var/log/kubernetes \
     /root/.ssh && \
     chmod 755 /home/sanjay && \
@@ -90,9 +90,9 @@ ENV NODE_IP=10.1.10.181 \
     HOME=/home/sanjay \
     KUBERNETES_DIR=/home/sanjay/kubernetes/agent \
     VMSTORE_DIR=/mnt/vmstore \
-    LOG_DIR=/app/logs \
-    DATA_DIR=/app/data \
-    CONFIG_DIR=/app/config
+    LOG_DIR=/workspace/logs \
+    DATA_DIR=/workspace/data \
+    CONFIG_DIR=/workspace/config
 
 # Configure user and permissions
 # Configure user environment
@@ -128,19 +128,19 @@ RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir python-multipart
 RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir nvidia-ml-py
 
 # Copy application code
-COPY app/src/ /app/app/src/
-COPY app/config/ /app/app/config/
+COPY app/src/ /workspace/
+COPY app/config/ /workspace/config/
 
 # Create necessary directories
-RUN mkdir -p /app/app/logs /app/app/data /mnt/vmstore
+RUN mkdir -p /workspace/logs /workspace/data /mnt/vmstore
 
 # Expose ports (SSH + application ports)
 EXPOSE 22 8888 8000
 
 # Create startup script
 # Create startup script
-RUN echo '#!/bin/bash' > /usr/local/bin/start-node.sh &&     echo 'set -e' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Set environment variables based on components' >> /usr/local/bin/start-node.sh &&     echo 'export SKIP_DB_CHECK=true\nexport SKIP_JUPYTER_CHECK=true\nexport SKIP_GPU_CHECKS=true\n' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Configure network' >> /usr/local/bin/start-node.sh &&     echo '/usr/local/bin/configure-network.sh' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Start SSH service' >> /usr/local/bin/start-node.sh &&     echo 'service ssh start' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Mount NFS if configured' >> /usr/local/bin/start-node.sh &&     echo '/usr/local/bin/mount-nfs.sh' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Start the application' >> /usr/local/bin/start-node.sh &&     echo 'exec uvicorn nano_app:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app/src' >> /usr/local/bin/start-node.sh &&     chmod +x /usr/local/bin/start-node.sh
+RUN echo '#!/bin/bash' > /usr/local/bin/start-node.sh &&     echo 'set -e' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Set environment variables based on components' >> /usr/local/bin/start-node.sh &&     echo 'export SKIP_DB_CHECK=true\nexport SKIP_JUPYTER_CHECK=true\nexport SKIP_GPU_CHECKS=true\n' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Configure network' >> /usr/local/bin/start-node.sh &&     echo '/usr/local/bin/configure-network.sh' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Start SSH service' >> /usr/local/bin/start-node.sh &&     echo 'service ssh start' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Mount NFS if configured' >> /usr/local/bin/start-node.sh &&     echo '/usr/local/bin/mount-nfs.sh' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Start the application' >> /usr/local/bin/start-node.sh &&     echo 'exec uvicorn nano_app:app --host 0.0.0.0 --port 8000 --reload --reload-dir /workspace' >> /usr/local/bin/start-node.sh &&     chmod +x /usr/local/bin/start-node.sh
 
 # Set the default command for the container
-WORKDIR /app
+WORKDIR /workspace
 CMD ["/usr/local/bin/start-node.sh"]

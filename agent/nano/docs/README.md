@@ -23,13 +23,13 @@ resources:
     nvidia.com/gpu: 1
 ```
 **Note**: Jetson Nano now has full GPU acceleration enabled with NVIDIA Maxwell GPU (128 CUDA cores).e/sanjay/containers/kubernetes/agent/nano/
-├── app/                                # Application directory (matches pod /app/)
-│   ├── config/                         # Configuration files (matches pod /app/config/)
+├── app/                                # Application directory (matches pod /workspace/)
+│   ├── config/                         # Configuration files (matches pod /workspace/config/)
 │   │   ├── .token/                     # Authentication tokens for k3s
 │   │   ├── nano-config.env             # Nano-specific configuration
 │   │   ├── postgres.env                # PostgreSQL configuration
 │   │   └── start-fastapi-nano.yaml     # Kubernetes deployment YAML
-│   ├── src/                            # Source code (matches pod /app/src/)
+│   ├── src/                            # Source code (matches pod /workspace/)
 │   │   ├── backup_home.sh              # Backup script
 │   │   ├── nano_app.py                 # Main FastAPI application with ML support
 │   │   ├── init_db.sql                 # Database initialization
@@ -52,19 +52,18 @@ resources:
 ## Container Structure (Pod Layout)
 ```
 ```
-/app/                                # Working directory (matches pod /app/)
-├── app/                             # Application files
-│   ├── src/                         # Source code
-│   │   ├── nano_app.py              # Main FastAPI app with configurable ports
-│   │   └── validate-nano-setup.sh   # Validation script
-│   └── config/                      # Configuration files
-│       ├── postgres.env             # Database credentials
-│       └── nano-config.env          # Nano-specific config
-├── requirements.nano.txt            # Python dependencies
+/workspace/                           # Working directory (matches pod /workspace/)
+├── nano_app.py                       # Main FastAPI application
+├── config/                           # Configuration files
+│   ├── postgres.env                  # Database credentials
+│   └── nano-config.env               # Nano-specific config
+├── logs/                             # Application logs
+├── data/                             # Application data
+├── requirements.nano.txt             # Python dependencies
 ```
-├── usr/local/bin/nano_app.py        # Main executable
-├── mnt/vmstore/                     # NFS mount point (/home/sanjay mounted)
-└── opt/venv/                        # Python virtual environment
+├── usr/local/bin/nano_app.py         # Main executable
+├── mnt/vmstore/                      # NFS mount point (/home/sanjay mounted)
+└── opt/venv/                         # Python virtual environment
 ```
 
 ## Hardware Specifications
