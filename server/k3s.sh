@@ -277,7 +277,244 @@ run_network_check() {
 
 
 
-# Function to deploy FastAPI on specified device
+# ============================================================================
+# ROBUST DEPLOYMENT FUNCTIONS - Enhanced Error Handling & Recovery
+# ============================================================================
+
+# Function to diagnose pod health issues
+diagnose_pod_health() {
+    local pod_name="$1"
+    local namespace="${2:-default}"
+    local max_retries="${3:-3}"
+
+    echo "🔍 Diagnosing pod health for: $pod_name"
+
+    for attempt in $(seq 1 $max_retries); do
+        echo "  Attempt $attempt/$max_retries: Checking pod status..."
+
+        # Get pod status
+        local pod_status=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pod "$pod_name" -n "$namespace" -o jsonpath='{.status.phase}' 2>/dev/null)
+
+        if [ -z "$pod_status" ]; then
+            echo "  ❌ Pod '$pod_name' not found"
+            return 1
+        fi
+
+        case "$pod_status" in
+            "Running")
+                echo "  ✅ Pod is running successfully"
+                # Check container readiness
+                local ready_containers=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pod "$pod_name" -n "$namespace" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null)
+                if [ "$ready_containers" = "true" ]; then
+                    echo "  ✅ Container is ready"
+                    return 0
+                else
+                    echo "  ⚠️  Pod running but container not ready"
+                    return 2
+                fi
+                ;;
+            "Pending")
+                echo "  ⏳ Pod is pending - checking events..."
+                sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe pod "$pod_name" -n "$namespace" | grep -A 10 "Events:" | tail -10
+                if [ $attempt -lt $max_retries ]; then
+                    sleep 10
+                    continue
+                fi
+                return 3
+                ;;
+            "CrashLoopBackOff")
+                echo "  ❌ Pod in CrashLoopBackOff - checking logs..."
+                local container_logs=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml logs "$pod_name" -n "$namespace" --previous 2>/dev/null | head -20)
+                echo "  📋 Recent error logs:"
+                echo "$container_logs" | sed 's/^/    /'
+                return 4
+                ;;
+            "ImagePullBackOff")
+                echo "  ❌ Pod in ImagePullBackOff - image pull failed"
+                sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe pod "$pod_name" -n "$namespace" | grep -A 5 "Failed to pull image"
+                return 5
+                ;;
+            "ErrImagePull")
+                echo "  ❌ Pod in ErrImagePull - image pull error"
+                return 6
+                ;;
+            *)
+                echo "  ❓ Unknown pod status: $pod_status"
+                sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pod "$pod_name" -n "$namespace"
+                return 7
+                ;;
+        esac
+    done
+
+    echo "  ❌ Max retries exceeded"
+    return 8
+}
+
+# Function to rebuild Docker image if pod fails due to image issues
+rebuild_image_on_failure() {
+    local image_name="$1"
+    local dockerfile_path="$2"
+    local build_context="$3"
+    local build_args="${4:-}"
+
+    echo "🔧 Rebuilding image: $image_name"
+
+    # Remove old image
+    sudo docker rmi "$image_name" 2>/dev/null || true
+
+    # Rebuild image
+    local build_cmd="sudo docker build -f $dockerfile_path"
+    if [ -n "$build_args" ]; then
+        build_cmd="$build_cmd $build_args"
+    fi
+    build_cmd="$build_cmd -t $image_name $build_context"
+
+    echo "  Building with: $build_cmd"
+    if eval "$build_cmd"; then
+        echo "  ✅ Image rebuilt successfully"
+
+        # Push to registry
+        if sudo docker push "$image_name"; then
+            echo "  ✅ Image pushed to registry"
+            return 0
+        else
+            echo "  ❌ Failed to push image to registry"
+            return 1
+        fi
+    else
+        echo "  ❌ Failed to rebuild image"
+        return 1
+    fi
+}
+
+# Function to retry deployment with recovery mechanisms
+retry_deployment_with_recovery() {
+    local deployment_name="$1"
+    local yaml_file="$2"
+    local image_name="$3"
+    local dockerfile_path="$4"
+    local build_context="$5"
+    local build_args="${6:-}"
+    local max_retries="${7:-2}"
+
+    for attempt in $(seq 1 $max_retries); do
+        echo "🚀 Deployment attempt $attempt/$max_retries for: $deployment_name"
+
+        # Apply deployment
+        if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f "$yaml_file" > /dev/null 2>&1; then
+            echo "  ✅ Deployment applied successfully"
+
+            # Wait for pod to be created
+            sleep 5
+
+            # Get pod name
+            local pod_name=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app="$deployment_name" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+
+            if [ -n "$pod_name" ]; then
+                echo "  📦 Pod created: $pod_name"
+
+                # Wait for pod to be ready
+                local ready=false
+                for wait_attempt in {1..24}; do  # Wait up to 2 minutes
+                    if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pod "$pod_name" -o jsonpath='{.status.phase}' 2>/dev/null | grep -q "Running"; then
+                        local ready_containers=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pod "$pod_name" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null)
+                        if [ "$ready_containers" = "true" ]; then
+                            echo "  ✅ Pod is running and ready"
+                            ready=true
+                            break
+                        fi
+                    fi
+                    sleep 5
+                done
+
+                if [ "$ready" = true ]; then
+                    return 0
+                else
+                    echo "  ❌ Pod failed to become ready - diagnosing..."
+
+                    # Diagnose the issue
+                    diagnose_pod_health "$pod_name"
+
+                    # Check for image-related errors
+                    local pod_status=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pod "$pod_name" -o jsonpath='{.status.phase}' 2>/dev/null)
+
+                    if [[ "$pod_status" == "CrashLoopBackOff" ]] || [[ "$pod_status" == "ErrImagePull" ]] || [[ "$pod_status" == "ImagePullBackOff" ]]; then
+                        echo "  🔧 Detected image-related failure, attempting rebuild..."
+
+                        # Delete failed pod
+                        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod "$pod_name" --grace-period=0 --force > /dev/null 2>&1
+
+                        # Rebuild image
+                        if rebuild_image_on_failure "$image_name" "$dockerfile_path" "$build_context" "$build_args"; then
+                            echo "  🔄 Retrying deployment with rebuilt image..."
+                            continue
+                        else
+                            echo "  ❌ Image rebuild failed"
+                        fi
+                    fi
+                fi
+            else
+                echo "  ❌ Pod not found after deployment"
+            fi
+        else
+            echo "  ❌ Failed to apply deployment"
+        fi
+
+        # If we get here, the attempt failed
+        if [ $attempt -lt $max_retries ]; then
+            echo "  ⏳ Waiting before retry..."
+            sleep $((attempt * 10))  # Exponential backoff
+        fi
+    done
+
+    echo "  ❌ All deployment attempts failed"
+    return 1
+}
+
+# Enhanced post-deployment verification with automatic fixes
+verify_deployment_health() {
+    local deployment_name="$1"
+    local expected_pods="${2:-1}"
+    local health_check_url="${3:-}"
+
+    echo "🔍 Verifying deployment health: $deployment_name"
+
+    # Check pod count and status
+    local pod_count=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app="$deployment_name" --no-headers 2>/dev/null | wc -l)
+    local running_pods=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app="$deployment_name" --no-headers 2>/dev/null | grep Running | wc -l)
+
+    echo "  📊 Pod status: $running_pods/$pod_count running (expected: $expected_pods)"
+
+    if [ "$running_pods" -lt "$expected_pods" ]; then
+        echo "  ❌ Not enough pods running"
+
+        # Get failed pods
+        local failed_pods=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app="$deployment_name" --no-headers | grep -v Running | awk '{print $1}')
+
+        for pod in $failed_pods; do
+            echo "  🔍 Diagnosing failed pod: $pod"
+            diagnose_pod_health "$pod"
+        done
+
+        return 1
+    fi
+
+    # Test health endpoint if provided
+    if [ -n "$health_check_url" ]; then
+        echo "  🩺 Testing health endpoint: $health_check_url"
+        if curl -f -s "$health_check_url" > /dev/null 2>&1; then
+            echo "  ✅ Health check passed"
+        else
+            echo "  ❌ Health check failed"
+            return 1
+        fi
+    fi
+
+    echo "  ✅ Deployment health verification passed"
+    return 0
+}
+
+# Function to deploy FastAPI on specified device with robust error handling
 deploy_fastapi() {
     local step_num="$1"
     local device="$2"
@@ -287,20 +524,12 @@ deploy_fastapi() {
 
     step_echo_start "$step_num" "$node" "$ip" "$msg"
 
-# 1. Force-delete ALL stuck pods (addresses the persistent 'Terminating' issue)
-if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods --all --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
-    :
-fi
+    # Clean up old deployments
+    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-${device} -n default --ignore-not-found=true > /dev/null 2>&1; then
+        sleep 5 # Give time for resources to be released
+    fi
 
-# 2. Delete only the FastAPI deployment to avoid conflicts
-if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-${device} -n default --ignore-not-found=true > /dev/null 2>&1; then
-  sleep 5 # Give 5 seconds for resources to be fully released before the next deployment
-  echo -e "[32m✅[0m"
-else
-  echo -e "[31m❌[0m"
-  echo -e "[31mFATAL: Failed to clean up old deployments.[0m"
-  return 1
-fi    # 3. Deploy FastAPI on specified device
+    # Create deployment YAML
     cat > /tmp/fastapi-deployment.yaml <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -337,34 +566,42 @@ spec:
         - name: SKIP_DB_CHECK
           value: "true"
 EOF
-    if [ "$DEBUG" = "1" ]; then
-        echo "Applying FastAPI deployment YAML..."
-        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-deployment.yaml
-        apply_exit=$?
-    else
-        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-deployment.yaml > /dev/null 2>&1
-        apply_exit=$?
-    fi
-    if [ $apply_exit -eq 0 ]; then
+
+    # Use robust deployment with recovery
+    local image_name="10.1.10.150:5000/fastapi_${device}:latest"
+    local dockerfile_path=""
+    local build_context=""
+
+    # Determine build parameters based on device
+    case "$device" in
+        "nano")
+            dockerfile_path="/home/sanjay/containers/kubernetes/agent/nano/dockerfile.nano.req"
+            build_context="/home/sanjay/containers/kubernetes/agent/nano"
+            ;;
+        "agx")
+            dockerfile_path="/home/sanjay/containers/kubernetes/agent/agx/dockerfile.agx.req"
+            build_context="/home/sanjay/containers/kubernetes/agent/agx"
+            ;;
+        *)
+            echo -e "❌ Unknown device type: $device"
+            return 1
+            ;;
+    esac
+
+    if retry_deployment_with_recovery "fastapi-${device}" "/tmp/fastapi-deployment.yaml" "$image_name" "$dockerfile_path" "$build_context"; then
         echo -e "✅ FastAPI deployed on ${device}"
-        # Wait for the pod to be running
-        echo "Waiting for FastAPI pod to be ready..."
-        for i in {1..30}; do
-            if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-${device} -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
-                echo -e "✅ FastAPI pod is running"
-                break
-            fi
-            sleep 5
-        done
-        if [ $i -eq 30 ]; then
-            echo -e "❌ FastAPI pod did not start within 2.5 minutes"
+
+        # Verify deployment health
+        if verify_deployment_health "fastapi-${device}" 1; then
+            step_increment
+            print_divider
+            return 0
+        else
+            echo -e "❌ Deployment health check failed for ${device}"
             return 1
         fi
-        step_increment
-        print_divider
-        return 0
     else
-        echo -e "❌ Failed to deploy FastAPI on ${device}"
+        echo -e "❌ Failed to deploy FastAPI on ${device} after retries"
         return 1
     fi
 }
@@ -2338,26 +2575,47 @@ print_divider
 
 step_57(){
 # -------------------------------------------------------------------------
-# STEP 57: Deploy PostgreSQL Database
+# STEP 57: Deploy PostgreSQL Database with Robust Error Handling
 # -------------------------------------------------------------------------
 cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
-if [ "$DEBUG" = "1" ]; then
-  echo "Deploying PostgreSQL Database... (Verbose output below)"
-  sleep 5
-  # Substitute environment variables in deployment files
-  sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" postgres/postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f -
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f postgres-pgadmin-nodeport-services.yaml
+
+step_echo_start "s" "tower" "$TOWER_IP" "Deploying PostgreSQL database..."
+
+# Create deployment YAML with environment variables substituted
+sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" postgres/postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" > /tmp/postgres-deployment-processed.yaml
+
+# Apply services first
+if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f postgres-pgadmin-nodeport-services.yaml > /dev/null 2>&1; then
+    echo "  ✅ PostgreSQL services deployed"
 else
-  step_echo_start "s" "tower" "$TOWER_IP" "Deploying PostgreSQL database..."
-  sleep 5
-  if sed "s/localhost:5000/$REGISTRY_IP:$REGISTRY_PORT/g" postgres/postgres-db-deployment.yaml | sed "s/\$POSTGRES_PASSWORD/$POSTGRES_PASSWORD/g" | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1 && \
-     sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f postgres-pgadmin-nodeport-services.yaml > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
+    echo "  ❌ Failed to deploy PostgreSQL services"
     echo -e "[31m❌[0m"
     exit 1
-  fi
 fi
+
+# Use robust deployment for PostgreSQL
+local image_name="$REGISTRY_IP:$REGISTRY_PORT/postgres:latest"
+local dockerfile_path="$SCRIPT_DIR/postgres/dockerfile.postgres"
+local build_context="$SCRIPT_DIR/postgres"
+local build_args="--build-arg OFFLINE_MODE=true"
+
+if retry_deployment_with_recovery "postgres-db" "/tmp/postgres-deployment-processed.yaml" "$image_name" "$dockerfile_path" "$build_context" "$build_args"; then
+    echo -e "[32m✅[0m"
+
+    # Verify PostgreSQL deployment health
+    if verify_deployment_health "postgres-db" 1; then
+        echo "  ✅ PostgreSQL health check passed"
+    else
+        echo "  ❌ PostgreSQL health check failed"
+        echo -e "[31m❌[0m"
+        exit 1
+    fi
+else
+    echo "  ❌ PostgreSQL deployment failed after retries"
+    echo -e "[31m❌[0m"
+    exit 1
+fi
+
 step_increment
 print_divider
 }
@@ -2946,7 +3204,7 @@ print_divider
 
 step_69() {
 # --------------------------------------------------------------------------------
-# STEP 69: FINAL STABILITY VERIFICATION AND ENVIRONMENT LOCKDOWN
+# STEP 69: COMPREHENSIVE FINAL HEALTH VERIFICATION
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Final verification..."
 
@@ -2958,18 +3216,102 @@ else
   echo -e "❌ kubectl connectivity failed - cluster may not be accessible"
   exit 1
 fi
-# Run comprehensive stability check
-echo -e "🔍 Running comprehensive stability verification..."
-echo -e "⏳ Waiting for FastAPI to fully initialize..."
-sleep 60
-if "./stability-manager.sh" check; then
-  echo -e "✅ Stability verification passed - all systems operational"
+
+# Run comprehensive health check
+echo -e "🔍 Running comprehensive final health verification..."
+if final_health_check; then
+  echo -e "✅ Comprehensive health verification passed - all systems operational"
 else
-  echo -e "❌ Stability verification failed - check stability.log for details"
+  echo -e "❌ Comprehensive health verification failed - check logs above for details"
   exit 1
 fi
+
 step_increment
 print_divider
+}
+
+
+# ============================================================================
+# COMPREHENSIVE FINAL HEALTH CHECK
+# ============================================================================
+
+# Function to perform comprehensive final health verification
+final_health_check() {
+    echo "🔍 Performing comprehensive final health check..."
+
+    local all_healthy=true
+
+    # Check cluster nodes
+    echo "  📊 Checking cluster nodes..."
+    local node_count=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes --no-headers 2>/dev/null | wc -l)
+    local ready_nodes=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes --no-headers 2>/dev/null | grep -c "Ready")
+
+    if [ "$ready_nodes" -eq "$node_count" ] && [ "$node_count" -gt 0 ]; then
+        echo "  ✅ All $ready_nodes/$node_count nodes ready"
+    else
+        echo "  ❌ Node health issue: $ready_nodes/$node_count nodes ready"
+        all_healthy=false
+    fi
+
+    # Check core services
+    local services=("postgres-db" "pgadmin")
+    for service in "${services[@]}"; do
+        echo "  🏥 Checking $service health..."
+        if verify_deployment_health "$service" 1; then
+            echo "  ✅ $service healthy"
+        else
+            echo "  ❌ $service health check failed"
+            all_healthy=false
+        fi
+    done
+
+    # Check FastAPI services if agents are enabled
+    if [ "$INSTALL_NANO_AGENT" = true ]; then
+        echo "  🤖 Checking FastAPI Nano health..."
+        if verify_deployment_health "fastapi-nano" 1 "http://10.1.10.150:30002/health"; then
+            echo "  ✅ FastAPI Nano healthy"
+        else
+            echo "  ❌ FastAPI Nano health check failed"
+            all_healthy=false
+        fi
+    fi
+
+    if [ "$INSTALL_AGX_AGENT" = true ]; then
+        echo "  🤖 Checking FastAPI AGX health..."
+        if verify_deployment_health "fastapi-agx" 1 "http://10.1.10.150:30004/health"; then
+            echo "  ✅ FastAPI AGX healthy"
+        else
+            echo "  ❌ FastAPI AGX health check failed"
+            all_healthy=false
+        fi
+    fi
+
+    # Test database connectivity
+    echo "  🗄️  Testing PostgreSQL connectivity..."
+    if timeout 10 bash -c 'until echo > /dev/tcp/10.1.10.150/30432; do sleep 1; done' 2>/dev/null; then
+        echo "  ✅ PostgreSQL port accessible"
+    else
+        echo "  ❌ PostgreSQL port not accessible"
+        all_healthy=false
+    fi
+
+    # Test pgAdmin accessibility
+    echo "  🖥️  Testing pgAdmin accessibility..."
+    if curl -f -s --max-time 10 "http://10.1.10.150:30080" > /dev/null 2>&1; then
+        echo "  ✅ pgAdmin web interface accessible"
+    else
+        echo "  ❌ pgAdmin web interface not accessible"
+        all_healthy=false
+    fi
+
+    if [ "$all_healthy" = true ]; then
+        echo "🎉 COMPREHENSIVE HEALTH CHECK PASSED - All systems operational!"
+        return 0
+    else
+        echo "❌ COMPREHENSIVE HEALTH CHECK FAILED - Some systems have issues"
+        echo "   📋 Check the logs above for specific failure details"
+        return 1
+    fi
 }
 
 
