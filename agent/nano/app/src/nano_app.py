@@ -317,6 +317,9 @@ def connect_to_db():
 
 # === 2. FASTAPI NANO APPLICATION ===
 
+# Create the FastAPI app instance at module level for uvicorn
+app = get_fastapi_nano_app()
+
 
 def get_fastapi_nano_app():
     app = FastAPI()
@@ -816,7 +819,6 @@ def main():
         
         print("\nStarting FastAPI Nano server...")
         try:
-            app = get_fastapi_nano_app()
             port = int(os.getenv("FASTAPI_PORT", "8000"))
             print(f"Starting FastAPI on port {port}...")
             uvicorn.run(app, host="0.0.0.0", port=port)

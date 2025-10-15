@@ -93,4 +93,4 @@ RUN chmod +x /usr/local/bin/start-jupyter.sh
 # Set the default command for the container
 WORKDIR /workspace
 COPY agx_app.py /workspace/agx_app.py
-CMD ["python3", "/workspace/agx_app.py"]
+CMD ["uvicorn", "agx_app:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/workspace"]

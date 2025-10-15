@@ -58,6 +58,8 @@ spec:
           mountPath: /home/agx
         - name: agx-config
           mountPath: /app/app/config
+        - name: agx-workspace
+          mountPath: /workspace
         livenessProbe:
           httpGet:
             path: /health
@@ -83,6 +85,10 @@ spec:
         nfs:
           server: 10.1.10.150
           path: /export/vmstore/tower_home/kubernetes/agent/agx/app/config
+      - name: agx-workspace
+        nfs:
+          server: 10.1.10.150
+          path: /export/vmstore/tower_home/kubernetes/agent/agx
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"

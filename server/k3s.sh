@@ -2020,6 +2020,8 @@ spec:
           mountPath: /home/nano
         - name: nano-config
           mountPath: /app/app/config
+        - name: nano-src
+          mountPath: /app/app/src
         livenessProbe:
           httpGet:
             path: /health
@@ -2045,6 +2047,10 @@ spec:
         nfs:
           server: $TOWER_IP
           path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
+      - name: nano-src
+        nfs:
+          server: $TOWER_IP
+          path: /export/vmstore/tower_home/kubernetes/agent/nano/app/src
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"

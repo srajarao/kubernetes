@@ -248,6 +248,9 @@ def connect_to_db():
 
 # === 2. FASTAPI NANO APPLICATION ===
 
+# Create the FastAPI app instance at module level for uvicorn
+app = get_fastapi_nano_app()
+
 
 def get_fastapi_nano_app():
     app = FastAPI()
@@ -788,7 +791,6 @@ def main():
         print("\n✅✅✅ ALL HEALTH CHECKS PASSED ✅✅✅")
         print("\nStarting FastAPI Nano server...")
         try:
-            app = get_fastapi_nano_app()
             uvicorn.run(app, host="0.0.0.0", port=8000)
         except Exception as e:
             print(f"❌❌❌ FAILED TO START FASTAPI NANO SERVER: {e} ❌❌❌")
