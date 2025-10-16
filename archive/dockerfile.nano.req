@@ -1,0 +1,146 @@
+# Auto-generated Dockerfile for nano node
+# Architecture: arm64
+# Base Image: nvcr.io/nvidia/l4t-jetpack:r36.4.0
+# Components: python,cuda,tensorrt,fastapi,gpu-monitoring
+# Generated: Sat 11 Oct 2025 04:12:12 PM PDT
+
+FROM nvcr.io/nvidia/l4t-jetpack:r36.4.0
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
+
+USER root
+
+# Install system dependencies based on components
+# Install system dependencies
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.10 python3.10-venv python3-pip ca-certificates curl wget git build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+# --- Install cuSPARSELt (Mandatory for Jetson devices) ---
+RUN wget https://developer.download.nvidia.com/compute/cusparselt/0.8.0/local_installers/cusparselt-local-tegra-repo-ubuntu2204-0.8.0_0.8.0-1_arm64.deb -O /tmp/cusparselt.deb && \
+    dpkg -i /tmp/cusparselt.deb && \
+    cp /var/cusparselt-local-tegra-repo-ubuntu2204-0.8.0/cusparselt-*-keyring.gpg /usr/share/keyrings/ && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends cusparselt && \
+    rm -f /tmp/cusparselt.deb && ldconfig
+
+# ==========================================
+# COMMON INFRASTRUCTURE SETUP
+# ==========================================
+
+# Create standard directory structure
+# Create standard directory structure
+RUN mkdir -p \
+    /home/sanjay/kubernetes/agent \
+    /mnt/vmstore \
+    /workspace/logs \
+    /workspace/data \
+    /workspace/config \
+    /workspace/models \
+    /var/log/kubernetes \
+    /root/.ssh && \
+    chmod 755 /home/sanjay && \
+    chmod 755 /home/sanjay/kubernetes && \
+    chmod 755 /home/sanjay/kubernetes/agent
+
+# Configure SSH for passwordless access
+# Configure SSH for passwordless access between nodes
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client openssh-server && \
+    mkdir -p /etc/ssh && \
+    echo "StrictHostKeyChecking no" >> /etc/ssh/ssh_config && \
+    echo "UserKnownHostsFile /dev/null" >> /etc/ssh/ssh_config && \
+    echo "LogLevel ERROR" >> /etc/ssh/ssh_config
+
+# Generate SSH keys if they don't exist
+RUN if [ ! -f /root/.ssh/id_rsa ]; then \
+        ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N ""; \
+    fi
+
+# Copy SSH keys from host if available (will be mounted at runtime)
+RUN mkdir -p /host-ssh && \
+    if [ -f /host-ssh/id_rsa ]; then cp /host-ssh/id_rsa* /root/.ssh/; fi && \
+    if [ -f /host-ssh/authorized_keys ]; then cp /host-ssh/authorized_keys /root/.ssh/; fi
+
+# Configure networking and DNS
+# Configure networking and DNS resolution
+RUN mkdir -p /usr/local/bin &&     echo '#!/bin/bash' > /usr/local/bin/configure-network.sh &&     echo 'echo "10.1.10.181 nano" >> /etc/hosts' >> /usr/local/bin/configure-network.sh &&     echo 'echo "127.0.0.1 localhost" >> /etc/hosts' >> /usr/local/bin/configure-network.sh &&     echo 'if [ -f /host-config/cluster-hosts ]; then cat /host-config/cluster-hosts >> /etc/hosts; fi' >> /usr/local/bin/configure-network.sh &&     chmod +x /usr/local/bin/configure-network.sh
+
+# Configure NFS storage
+# Configure NFS client
+RUN mkdir -p /mnt/vmstore && \
+    echo "# NFS mount will be configured at runtime" > /etc/fstab.nfs
+
+# NFS mount script
+RUN echo '#!/bin/bash' > /usr/local/bin/mount-nfs.sh && \
+    echo 'if [ -n "$NFS_SERVER" ] && [ -n "$NFS_SHARE" ]; then' >> /usr/local/bin/mount-nfs.sh && \
+    echo '    mount -t nfs $NFS_SERVER:$NFS_SHARE /mnt/vmstore' >> /usr/local/bin/mount-nfs.sh && \
+    echo 'fi' >> /usr/local/bin/mount-nfs.sh && \
+    chmod +x /usr/local/bin/mount-nfs.sh
+
+# Set common environment variables
+# Set common environment variables
+ENV NODE_IP=10.1.10.181 \
+    NODE_NAME=nano \
+    HOME=/home/sanjay \
+    KUBERNETES_DIR=/home/sanjay/kubernetes/agent \
+    VMSTORE_DIR=/mnt/vmstore \
+    LOG_DIR=/workspace/logs \
+    DATA_DIR=/workspace/data \
+    CONFIG_DIR=/workspace/config
+
+# Configure user and permissions
+# Configure user environment
+RUN useradd -m -s /bin/bash sanjay || true && \
+    usermod -aG sudo sanjay || true && \
+    echo 'sanjay ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
+    mkdir -p /home/sanjay/.ssh && \
+    chmod 700 /home/sanjay/.ssh && \
+    chown -R sanjay:sanjay /home/sanjay
+
+# Copy user SSH keys if available
+USER sanjay
+RUN mkdir -p /home/sanjay/kubernetes/agent && \
+    mkdir -p /home/sanjay/.ssh
+
+USER root
+RUN if [ -f /host-ssh/id_rsa ]; then cp /host-ssh/id_rsa* /home/sanjay/.ssh/ && chown sanjay:sanjay /home/sanjay/.ssh/*; fi && \
+    if [ -f /host-ssh/authorized_keys ]; then cp /host-ssh/authorized_keys /home/sanjay/.ssh/ && chown sanjay:sanjay /home/sanjay/.ssh/authorized_keys; fi
+
+# Setup Python virtual environment
+RUN python3.10 -m venv --system-site-packages $VIRTUAL_ENV && \
+    $VIRTUAL_ENV/bin/pip install --upgrade pip setuptools wheel
+
+
+# Install Python packages based on components
+# Install Python packages one by one to avoid zlib issues
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir fastapi
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir uvicorn
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir pydantic
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir psycopg2-binary
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir python-dotenv
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir python-multipart
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir nvidia-ml-py
+
+# Copy application code
+COPY app/src/ /workspace/
+COPY app/config/ /workspace/config/
+
+# Create necessary directories
+RUN mkdir -p /workspace/logs /workspace/data /mnt/vmstore
+
+# Expose ports (SSH + application ports)
+EXPOSE 22 8888 8000
+
+# Create startup script
+# Create startup script
+RUN echo '#!/bin/bash' > /usr/local/bin/start-node.sh &&     echo 'set -e' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Set environment variables based on components' >> /usr/local/bin/start-node.sh &&     echo 'export SKIP_DB_CHECK=true\nexport SKIP_JUPYTER_CHECK=true\nexport SKIP_GPU_CHECKS=true\n' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Configure network' >> /usr/local/bin/start-node.sh &&     echo '/usr/local/bin/configure-network.sh' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Start SSH service' >> /usr/local/bin/start-node.sh &&     echo 'service ssh start' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Mount NFS if configured' >> /usr/local/bin/start-node.sh &&     echo '/usr/local/bin/mount-nfs.sh' >> /usr/local/bin/start-node.sh &&     echo '' >> /usr/local/bin/start-node.sh &&     echo '# Start the application' >> /usr/local/bin/start-node.sh &&     echo 'exec uvicorn nano_app:app --host 0.0.0.0 --port 8000 --reload --reload-dir /workspace' >> /usr/local/bin/start-node.sh &&     chmod +x /usr/local/bin/start-node.sh
+
+# Set the default command for the container
+WORKDIR /workspace
+CMD ["/usr/local/bin/start-node.sh"]

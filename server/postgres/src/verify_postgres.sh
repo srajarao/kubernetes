@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Set your PostgreSQL password here for non-interactive authentication
-export PGPASSWORD='AspenHills123!'
+export PGPASSWORD='postgres'
 
 PGUSER=${PGUSER:-postgres}
 PGHOST=${PGHOST:-192.168.5.1}

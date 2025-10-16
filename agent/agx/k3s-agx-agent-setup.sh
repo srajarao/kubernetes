@@ -324,46 +324,46 @@ function build_and_save_fastapi_image() {
             BUILT_IMAGE=true
         fi
         # Build if not loaded from cache or load failed
-        if ! docker images fastapi_agx:latest | grep -q fastapi_agx; then
+        if ! docker images fastapi-agx:latest | grep -q fastapi-agx; then
             debug_msg "Building image from Dockerfile"
-            BUILD_OUTPUT=$(DOCKER_BUILDKIT=1 docker build -f "$PROJECT_DIR/dockerfile.online.req" -t fastapi_agx:latest "$PROJECT_DIR" 2>&1)
+            BUILD_OUTPUT=$(DOCKER_BUILDKIT=1 docker build -f "$PROJECT_DIR/dockerfile.online.req" -t fastapi-agx:latest "$PROJECT_DIR" 2>&1)
             # Check if build was successful
             if echo "$BUILD_OUTPUT" | grep -q "Successfully built"; then
                 # Check if cache was used
                 if echo "$BUILD_OUTPUT" | grep -q "Using cache"; then
-                    print_result 0 "  Built fastapi_agx:latest image from cache"
+                    print_result 0 "  Built fastapi-agx:latest image from cache"
                 else
-                    print_result 0 "  Built fastapi_agx:latest image from scratch"
+                    print_result 0 "  Built fastapi-agx:latest image from scratch"
                 fi
                 BUILT_IMAGE=true
             else
                 # Build failed
                 debug_msg "Build failed"
-                print_result 1 "  Failed to build fastapi_agx:latest image"
+                print_result 1 "  Failed to build fastapi-agx:latest image"
                 echo "$BUILD_OUTPUT"  # Show build errors
                 return 1
             fi
         else
             debug_msg "Image already available"
-            print_result 0 "  fastapi_agx:latest image already available"
+            print_result 0 "  fastapi-agx:latest image already available"
         fi
         # Tag and push to local registry only if we built/rebuild the image
         if [ "$BUILT_IMAGE" = true ]; then
             debug_msg "Tagging image for registry"
-            docker tag fastapi_agx:latest ${TOWER_IP}:5000/fastapi_agx:latest
+            docker tag fastapi-agx:latest ${TOWER_IP}:5000/fastapi-agx:latest
             print_result $? "  Tagged image for local registry"
             debug_msg "Pushing image to registry"
-            docker push ${TOWER_IP}:5000/fastapi_agx:latest
+            docker push ${TOWER_IP}:5000/fastapi-agx:latest
             PUSH_STATUS=$?
             print_result $PUSH_STATUS "  Pushed image to local registry ${TOWER_IP}:5000"
         fi
         
         # Save to tar as backup only if we built/re-built the image or tar doesn't exist
         if [ "$BUILT_IMAGE" = true ] || [ ! -f "$TAR_FILE" ]; then
-            if docker images fastapi_agx:latest | grep -q fastapi_agx; then
+            if docker images fastapi-agx:latest | grep -q fastapi-agx; then
                 debug_msg "Saving image to tar as backup"
                 mkdir -p "$IMAGE_DIR"  # Ensure directory exists
-                docker save -o "$TAR_FILE" fastapi_agx:latest >/dev/null 2>&1
+                docker save -o "$TAR_FILE" fastapi-agx:latest >/dev/null 2>&1
                 SAVE_STATUS=$?
                 if [ $SAVE_STATUS -eq 0 ]; then
                     chmod 644 "$TAR_FILE"  # Make readable by all

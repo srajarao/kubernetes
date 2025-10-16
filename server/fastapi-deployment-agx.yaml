@@ -21,13 +21,14 @@ spec:
         device: agx
         tier: agent
     spec:
-      # runtimeClassName: nvidia
+      runtimeClassName: nvidia
       nodeSelector:
         kubernetes.io/hostname: agx
       containers:
       - name: fastapi-agx
-        image: 10.1.10.150:5000/fastapi_agx:latest
-        command: ["python3", "/workspace/agx_app.py"]
+        image: 10.1.10.150:5000/fastapi-agx:latest
+        imagePullPolicy: Always
+        command: ["python", "agx_app.py"]
         ports:
         - containerPort: 8000
           name: http
@@ -35,14 +36,18 @@ spec:
           name: jupyter
         - containerPort: 8001
           name: llm-api
-        resources: {}
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+          requests:
+            nvidia.com/gpu: 1
         env:
         - name: DEVICE_TYPE
           value: "agx"
         - name: GPU_ENABLED
-          value: "false"
+          value: "true"
         - name: FORCE_GPU_CHECKS
-          value: "false"
+          value: "true"
         - name: LLM_ENABLED
           value: "false"
         - name: RAG_ENABLED
@@ -58,8 +63,6 @@ spec:
           mountPath: /home/agx
         - name: agx-config
           mountPath: /app/app/config
-        - name: agx-workspace
-          mountPath: /workspace
         livenessProbe:
           httpGet:
             path: /health
@@ -85,10 +88,6 @@ spec:
         nfs:
           server: 10.1.10.150
           path: /export/vmstore/tower_home/kubernetes/agent/agx/app/config
-      - name: agx-workspace
-        nfs:
-          server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/agx
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"

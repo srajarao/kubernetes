@@ -62,8 +62,8 @@ sudo docker image prune -f
 echo -e "  Removed dangling images: $TICK"
 
 # Remove FastAPI images
-docker rmi fastapi_nano:latest 2>/dev/null || true
-docker rmi 192.168.5.1:5000/fastapi_nano:latest 2>/dev/null || true
+docker rmi fastapi-nano:latest 2>/dev/null || true
+docker rmi 192.168.5.1:5000/fastapi-nano:latest 2>/dev/null || true
 echo -e "  Removed FastAPI images: $TICK"
 
 # Clean up logs

@@ -19,15 +19,10 @@ COPY postgres.env /workspace/postgres.env
 RUN --mount=type=cache,target=/var/cache/apt \
         apt-get update && \
         apt-get install -y --no-install-recommends \
-            python3.10 python3.10-venv  \
+            python3.10 python3.10-venv python3-pip \
             ca-certificates curl wget git build-essential \
             libopenblas0 libgomp1 postgresql-client && \
     rm -rf /var/lib/apt/lists/*
-
-# Install pip for Python 3.10
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python3.10 get-pip.py && \
-    rm get-pip.py
 
 # --- Install cuSPARSELt (Online) ---
 RUN wget https://developer.download.nvidia.com/compute/cusparselt/0.8.0/local_installers/cusparselt-local-tegra-repo-ubuntu2204-0.8.0_0.8.0-1_arm64.deb -O /tmp/cusparselt.deb && \
@@ -47,40 +42,9 @@ RUN $VIRTUAL_ENV/bin/pip install \
     https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl \
     https://developer.download.nvidia.com/compute/redist/jp/v61/tensorflow/tensorflow-2.16.1+nv24.08-cp310-cp310-linux_aarch64.whl
 
-# 2. Install all other packages from requirements.txt individually to avoid corruption
-#    This command ignores torch and tensorflow which are already installed.
-RUN $VIRTUAL_ENV/bin/pip install tensorflow-io-gcs-filesystem==0.37.1
-RUN $VIRTUAL_ENV/bin/pip install notebook==7.1.3
-RUN $VIRTUAL_ENV/bin/pip install jupyterlab==4.1.5
-RUN $VIRTUAL_ENV/bin/pip install ipykernel==6.30.1
-RUN $VIRTUAL_ENV/bin/pip install numpy==1.26.4
-RUN $VIRTUAL_ENV/bin/pip install tensorboard==2.16.2
-RUN $VIRTUAL_ENV/bin/pip install google-auth==2.29.0
-RUN $VIRTUAL_ENV/bin/pip install google-auth-oauthlib==1.2.0
-RUN $VIRTUAL_ENV/bin/pip install ml-dtypes==0.3.1
-RUN $VIRTUAL_ENV/bin/pip install typing_extensions==4.15.0
-RUN $VIRTUAL_ENV/bin/pip install jinja2==3.1.6
-RUN $VIRTUAL_ENV/bin/pip install MarkupSafe==2.1.5
-RUN $VIRTUAL_ENV/bin/pip install filelock==3.13.4
-RUN $VIRTUAL_ENV/bin/pip install fsspec==2024.6.1
-RUN $VIRTUAL_ENV/bin/pip install packaging==25.0
-RUN $VIRTUAL_ENV/bin/pip install Markdown==3.5.2
-RUN $VIRTUAL_ENV/bin/pip install werkzeug==3.0.3
-RUN $VIRTUAL_ENV/bin/pip install requests==2.32.5
-RUN $VIRTUAL_ENV/bin/pip install oauthlib==3.3.1
-RUN $VIRTUAL_ENV/bin/pip install urllib3==2.5.0
-RUN $VIRTUAL_ENV/bin/pip install rsa==4.9.1
-RUN $VIRTUAL_ENV/bin/pip install cachetools==5.5.2
-RUN $VIRTUAL_ENV/bin/pip install charset-normalizer==3.3.2
-RUN $VIRTUAL_ENV/bin/pip install idna==3.10
-RUN $VIRTUAL_ENV/bin/pip install certifi==2025.8.3
-RUN $VIRTUAL_ENV/bin/pip install tensorboard-data-server==0.7.2
-RUN $VIRTUAL_ENV/bin/pip install --no-binary :all: fastapi
-RUN $VIRTUAL_ENV/bin/pip install uvicorn
-RUN $VIRTUAL_ENV/bin/pip install pydantic
-RUN $VIRTUAL_ENV/bin/pip install python-multipart
-RUN $VIRTUAL_ENV/bin/pip install psycopg2-binary
-RUN $VIRTUAL_ENV/bin/pip install python-dotenv
+# 2. Install all other packages from requirements.txt efficiently
+#    Use binary packages where possible to avoid compilation delays
+RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /workspace/requirements.agx.txt
 
 # Expose ports
 EXPOSE 8889
@@ -93,4 +57,4 @@ RUN chmod +x /usr/local/bin/start-jupyter.sh
 # Set the default command for the container
 WORKDIR /workspace
 COPY agx_app.py /workspace/agx_app.py
-CMD ["uvicorn", "agx_app:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/workspace"]
+CMD ["python", "agx_app.py"]

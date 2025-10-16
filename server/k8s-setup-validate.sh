@@ -482,7 +482,7 @@ IMAGE_DIR="/home/sanjay/containers"
 
 # Docker settings
 REGISTRY_URL="192.168.5.1:5000"
-FASTAPI_IMAGE="192.168.5.1:5000/fastapi_nano:latest"
+FASTAPI_IMAGE="192.168.5.1:5000/fastapi-nano:latest"
 
 # K3s settings
 K3S_URL="https://192.168.5.1:6443"
@@ -503,7 +503,7 @@ POSTGRES_HOST=192.168.5.1
 POSTGRES_PORT=5432
 POSTGRES_DB=postgres
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=mysecretpassword
+POSTGRES_PASSWORD=postgres
 EOF
         print_result $? "  Created postgres.env for nano"
     else
@@ -542,7 +542,7 @@ IMAGE_DIR="/home/sanjay/containers"
 
 # Docker settings
 REGISTRY_URL="192.168.5.1:5000"
-FASTAPI_IMAGE="192.168.5.1:5000/fastapi_agx:latest"
+FASTAPI_IMAGE="192.168.5.1:5000/fastapi-agx:latest"
 
 # K3s settings
 K3S_URL="https://192.168.5.1:6443"
@@ -562,7 +562,7 @@ POSTGRES_HOST=192.168.5.1
 POSTGRES_PORT=5432
 POSTGRES_DB=postgres
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=mysecretpassword
+POSTGRES_PASSWORD=postgres
 EOF
             print_result $? "  Created postgres.env for agx"
         else

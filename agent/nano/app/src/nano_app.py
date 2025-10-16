@@ -62,9 +62,6 @@ class Item(BaseModel):
 # A simple in-memory "database"
 items_db: Dict[int, Item] = {}
 
-# Initialize OpenAI client
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 # === 1. HEALTH CHECK FUNCTIONS ===
 
 
@@ -317,10 +314,6 @@ def connect_to_db():
 
 # === 2. FASTAPI NANO APPLICATION ===
 
-# Create the FastAPI app instance at module level for uvicorn
-app = get_fastapi_nano_app()
-
-
 def get_fastapi_nano_app():
     app = FastAPI()
 
@@ -336,6 +329,9 @@ def get_fastapi_nano_app():
     ):
         if not query:
             return {"results": []}
+        
+        if openai_client is None:
+            raise HTTPException(status_code=503, detail="OpenAI client not configured")
         
         try:
             # Generate embedding for the query
@@ -381,6 +377,9 @@ def get_fastapi_nano_app():
 
     @app.post("/chat")
     async def chat(message: str = Body(..., embed=True)):
+        if openai_client is None:
+            raise HTTPException(status_code=503, detail="OpenAI client not configured")
+        
         try:
             # For now, simple echo with OpenAI completion
             response = openai_client.chat.completions.create(
@@ -459,6 +458,9 @@ def get_fastapi_nano_app():
 
     @app.post("/upload")
     async def upload(file: UploadFile = File(...)):
+        if openai_client is None:
+            raise HTTPException(status_code=503, detail="OpenAI client not configured")
+        
         try:
             # Read file content
             content = await file.read()
@@ -720,6 +722,10 @@ def get_fastapi_nano_app():
             }
 
     return app
+
+
+# Create the FastAPI app instance at module level for uvicorn
+app = get_fastapi_nano_app()
 
 
 # === 3. MAIN SCRIPT LOGIC ===

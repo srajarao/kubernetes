@@ -60,4 +60,4 @@ EXPOSE 8000
 
 # Set the default command for the container
 WORKDIR /app
-CMD ["python3", "/app/app/src/fastapi_app.py"]
+CMD ["python3", "/app/app/src/nano_app.py"]

@@ -22,15 +22,10 @@ USER root
 RUN --mount=type=cache,target=/var/cache/apt \
         apt-get update && \
         apt-get install -y --no-install-recommends \
-            python3.10 python3.10-venv  \
+            python3.10 python3.10-venv python3-pip \
             ca-certificates curl wget git build-essential \
             libopenblas0 libgomp1 postgresql-client && \
     rm -rf /var/lib/apt/lists/*
-
-# Install pip for Python 3.11
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python3.10 get-pip.py && \
-    rm get-pip.py
 
 # --- Install cuSPARSELt (Online) ---
 RUN wget https://developer.download.nvidia.com/compute/cusparselt/0.8.0/local_installers/cusparselt-local-tegra-repo-ubuntu2204-0.8.0_0.8.0-1_arm64.deb -O /tmp/cusparselt.deb && \
