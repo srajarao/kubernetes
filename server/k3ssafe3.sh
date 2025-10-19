@@ -21,15 +21,14 @@ INSTALL_NANO_AGENT=true
 # Install K3s agent on agx
 INSTALL_AGX_AGENT=true
 
-# Install K3s agent on spark2
-INSTALL_SPARK2_AGENT=true
+# Install K3s agent on spark1
+INSTALL_SPARK1_AGENT=true
 
 # IP addresses
 TOWER_IP="10.1.10.150"
 NANO_IP="10.1.10.181"   # <-- Use the correct, reachable IP
 AGX_IP="10.1.10.244"
-SPARK1_IP="10.1.10.201"
-SPARK2_IP="10.1.10.202"
+SPARK1_IP="10.1.10.200"
 
 # Registry settings
 REGISTRY_IP="10.1.10.150"
@@ -60,7 +59,7 @@ fi
 CURRENT_STEP=1
 
 # NOTE: Total steps count is 72 (includes nano and AGX GPU enablement)
-TOTAL_STEPS=97
+TOTAL_STEPS=96
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.
@@ -644,36 +643,6 @@ if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   fi
 else
   echo "{a} [spark1] [$SPARK1_IP] ${CURRENT_STEP}/${TOTAL_STEPS}. SPARK1 SSH verification skipped (not enabled)"
-fi
-step_increment
-print_divider
-}
-
-step_15b(){
-# -------------------------------------------------------------------------
-# STEP 15b: SPARK2 SSH Validation
-# -------------------------------------------------------------------------
-if [ "$INSTALL_SPARK2_AGENT" = true ]; then
-  if [ "$DEBUG" = "1" ]; then
-    echo "Running verbose SPARK2 SSH check..."
-  fi
-  step_echo_start "a" "spark2" "$SPARK2_IP" "Verifying SPARK2 SSH connectivity..."
-  sleep 5
-  # Test SSH connection by running 'hostname' on the SPARK2
-  if ssh -o StrictHostKeyChecking=no sanjay@$SPARK2_IP "hostname" > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    # --- Corrected Verbose Error Handling (Replaces original simple error) ---
-    echo -e "[31m❌ CRITICAL: Passwordless SSH Failed.[0m"
-    echo ""
-    echo -e "[31m================================================================================[0m"
-    echo -e "[33mACTION REQUIRED: Please run './6-setup_tower_sshkeys.sh' manually[0m"
-    echo -e "[33mand enter the password when prompted to enable passwordless SSH.[0m"
-    echo -e "[31m================================================================================[0m"
-    exit 1
-  fi
-else
-  echo "{a} [spark2] [$SPARK2_IP] ${CURRENT_STEP}/${TOTAL_STEPS}. SPARK2 SSH verification skipped (not enabled)"
 fi
 step_increment
 print_divider
@@ -2303,9 +2272,9 @@ print_divider
 
 
 
-step_61(){
+step_64(){
 # -------------------------------------------------------------------------
-# STEP 61: Build Image
+# STEP 64: Build Image
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Building Image... (Verbose output below)"
@@ -2326,9 +2295,9 @@ print_divider
 }
 
 
-step_62(){
+step_65(){
 # -------------------------------------------------------------------------
-# STEP 62: Tag Image
+# STEP 65: Tag Image
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Tagging Image..."
@@ -2350,9 +2319,9 @@ print_divider
 }
 
 
-step_63(){
+step_66(){
 # -------------------------------------------------------------------------
-# STEP 63: Push Image
+# STEP 66: Push Image
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing Image... (Verbose output below)"
@@ -2375,9 +2344,9 @@ print_divider
 }
 
 
-step_64(){
+step_67(){
 # --------------------------------------------------------------------------------
-# STEP 64: Build AGX Docker Image
+# STEP 67: Build AGX Docker Image
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Building AGX Docker image... (Verbose output below)"
@@ -2397,9 +2366,9 @@ step_increment
 print_divider
 }
 
-step_65(){
+step_68(){
 # --------------------------------------------------------------------------------
-# STEP 65: Tag AGX Docker Image
+# STEP 68: Tag AGX Docker Image
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Tagging AGX Docker image..."
@@ -2420,9 +2389,9 @@ print_divider
 }
 
 
-step_66(){
+step_69(){
 # -------------------------------------------------------------------------
-# STEP 66: Push Image
+# STEP 69: Push Image
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing Image... (Verbose output below)"
@@ -2444,9 +2413,9 @@ print_divider
 
 }
 
-step_67(){
+step_70(){
 # --------------------------------------------------------------------------------
-# STEP 67: Build Spark1 Docker Image
+# STEP 70: Build Spark1 Docker Image
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Building Spark1 Docker image... (Verbose output below)"
@@ -2466,9 +2435,9 @@ step_increment
 print_divider
 }
 
-step_68(){
+step_71(){
 # --------------------------------------------------------------------------------
-# STEP 68: Tag Spark1 Docker Image
+# STEP 71: Tag Spark1 Docker Image
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Tagging Spark1 Docker image..."
@@ -2488,9 +2457,9 @@ step_increment
 print_divider
 }
 
-step_69(){
+step_72(){
 # -------------------------------------------------------------------------
-# STEP 69: Push Spark1 Image
+# STEP 72: Push Spark1 Image
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing Spark1 Image... (Verbose output below)"
@@ -2514,9 +2483,12 @@ print_divider
 
 
 
-step_70(){
+
+
+
+step_73(){
 # --------------------------------------------------------------------------------
-# STEP 70: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
+# STEP 73: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Cleaning up stuck pods and old deployments..."
 
@@ -2540,10 +2512,20 @@ print_divider
 }
 
 
-step_71(){
+
+
+
+
+
+
+
+
+
+
+step_74(){
 
 # -------------------------------------------------------------------------
-# STEP 71: Create PostgreSQL Initialization ConfigMap
+# STEP 74: Create PostgreSQL Initialization ConfigMap
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Creating PostgreSQL init configmap..."
 sleep 5
@@ -2564,9 +2546,171 @@ print_divider
 }
 
 
-step_72(){
+step_75(){
+# ------------------------------------------------------------------------
+# STEP 75: Create Deployment YAML
+# -------------------------------------------------------------------------
+step_echo_start "s" "tower" "$TOWER_IP" "Creating Deployment YAML..."
+sleep 5
+rm -f fastapi-deployment-full.yaml
+cat <<DEPLOYMENT > fastapi-deployment-full.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-nano
+  namespace: default
+  labels:
+    app: fastapi-nano
+    device: nano
+    tier: agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: fastapi-nano
+  template:
+    metadata:
+      labels:
+        app: fastapi-nano
+        device: nano
+        tier: agent
+    spec:
+      runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/hostname: nano
+      containers:
+      - name: fastapi-nano
+        image: $REGISTRY_IP:$REGISTRY_PORT/fastapi-nano:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 8888
+          name: jupyter
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+            nvidia.com/gpu: 1
+        env:
+        - name: DEVICE_TYPE
+          value: "nano"
+        - name: GPU_ENABLED
+          value: "true"
+        - name: FORCE_GPU_CHECKS
+          value: "true"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: vmstore
+          mountPath: /mnt/vmstore
+        - name: nano-home
+          mountPath: /home/nano
+        - name: nano-config
+          mountPath: /workspace/config
+        - name: nano-workspace
+          mountPath: /workspace
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: vmstore
+        nfs:
+          server: $TOWER_IP
+          path: /export/vmstore
+      - name: nano-home
+        nfs:
+          server: $TOWER_IP
+          path: /export/vmstore/nano_home
+      - name: nano-config
+        nfs:
+          server: $TOWER_IP
+          path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
+      - name: nano-workspace
+        nfs:
+          server: $TOWER_IP
+          path: /export/vmstore/tower_home/kubernetes/agent/nano
+      tolerations:
+      - key: "node-role.kubernetes.io/agent"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "CriticalAddonsOnly"
+        operator: "Equal"
+        value: "true"
+        effect: "NoExecute"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-nano-service
+  namespace: default
+  labels:
+    app: fastapi-nano
+    device: nano
+spec:
+  selector:
+    app: fastapi-nano
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 8888
+    targetPort: 8888
+    protocol: TCP
+    name: jupyter
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-nano-nodeport
+  namespace: default
+  labels:
+    app: fastapi-nano
+    device: nano
+spec:
+  selector:
+    app: fastapi-nano
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30002
+    protocol: TCP
+    name: http
+  - port: 8888
+    targetPort: 8888
+    nodePort: 30003
+    protocol: TCP
+    name: jupyter
+  type: NodePort
+DEPLOYMENT
+echo -e "[32m✅[0m"
+step_increment
+print_divider
+
+}
+
+
+step_76(){
 # --------------------------------------------------------------------------------
-# STEP 72: Build PostgreSQL Docker Image
+# STEP 76: Build PostgreSQL Docker Image
 # --------------------------------------------------------------------------------
 cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
 if [ "$DEBUG" = "1" ]; then
@@ -2587,9 +2731,9 @@ step_increment
 print_divider
 }
 
-step_73(){
+step_77(){
 # --------------------------------------------------------------------------------
-# STEP 73: Tag PostgreSQL Docker Image
+# STEP 77: Tag PostgreSQL Docker Image
 # --------------------------------------------------------------------------------
 cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
 if [ "$DEBUG" = "1" ]; then
@@ -2610,9 +2754,9 @@ step_increment
 print_divider
 }
 
-step_74(){
+step_78(){
 # --------------------------------------------------------------------------------
-# STEP 74: Push PostgreSQL Docker Image to Registry
+# STEP 78: Push PostgreSQL Docker Image to Registry
 # --------------------------------------------------------------------------------
 cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
 if [ "$DEBUG" = "1" ]; then
@@ -2633,9 +2777,9 @@ step_increment
 print_divider
 }
 
-step_75(){
+step_79(){
 # -------------------------------------------------------------------------
-# STEP 75: Deploy PostgreSQL Database with Robust Error Handling
+# STEP 79: Deploy PostgreSQL Database with Robust Error Handling
 # -------------------------------------------------------------------------
 cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
 
@@ -2674,9 +2818,9 @@ step_increment
 print_divider
 }
 
-step_76(){
+step_80(){
 # -------------------------------------------------------------------------
-# STEP 76: Update FastAPI Database Configuration
+# STEP 80: Update FastAPI Database Configuration
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Updating FastAPI database config..."
 sleep 5
@@ -2709,9 +2853,9 @@ print_divider
 
 
 
-step_77(){
+step_81(){
 # --------------------------------------------------------------------------------
-# STEP 77: Build pgAdmin Docker Image
+# STEP 81: Build pgAdmin Docker Image
 # --------------------------------------------------------------------------------
 cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
 if [ "$DEBUG" = "1" ]; then
@@ -2732,9 +2876,9 @@ step_increment
 print_divider
 }
 
-step_78(){
+step_82(){
 # --------------------------------------------------------------------------------
-# STEP 78: Tag pgAdmin Docker Image
+# STEP 82: Tag pgAdmin Docker Image
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Tagging pgAdmin Docker image..."
@@ -2754,9 +2898,9 @@ step_increment
 print_divider
 }
 
-step_79(){
+step_83(){
 # --------------------------------------------------------------------------------
-# STEP 79: Push pgAdmin Docker Image to Registry
+# STEP 83: Push pgAdmin Docker Image to Registry
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing pgAdmin Docker image to registry... (Verbose output below)"
@@ -2780,9 +2924,9 @@ print_divider
 
 
 
-step_80(){
+step_84(){
 # -------------------------------------------------------------------------
-# STEP 80: Deploy pgAdmin
+# STEP 84: Deploy pgAdmin
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying pgAdmin... (Verbose output below)"
@@ -2809,9 +2953,9 @@ print_divider
 
 
 
-step_81(){
+step_85(){
   # --------------------------------------------------------------------------------
-  # STEP 81: Verify PostgreSQL and pgAdmin Deployment
+  # STEP 85: Verify PostgreSQL and pgAdmin Deployment
   # --------------------------------------------------------------------------------
   step_echo_start "s" "tower" "$TOWER_IP" "Verifying PostgreSQL and pgAdmin..."
 
@@ -2835,9 +2979,9 @@ step_81(){
 
 
 
-step_82(){
+step_86(){
 # ------------------------------------------------------------------------
-# STEP 82: Deploy FastAPI on Nano (CPU-only)
+# STEP 86: Deploy FastAPI on Nano (CPU-only)
 # ------------------------------------------------------------------------
 step_echo_start "a" "nano" "$NANO_IP" "Deploying FastAPI on nano (CPU-only)"
 sleep 5
@@ -2993,9 +3137,9 @@ step_increment
 print_divider
 }
 
-step_83(){
+step_87(){
 # ------------------------------------------------------------------------
-# STEP 83: Deploy FastAPI on AGX (CPU-only)
+# STEP 87: Deploy FastAPI on AGX (CPU-only)
 # ------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "a" "agx" "$AGX_IP" "Deploying AI Workload on agx (CPU-only)"
@@ -3162,9 +3306,9 @@ step_increment
 print_divider
 }
 
-step_84(){
+step_88(){
 # ------------------------------------------------------------------------
-# STEP 84: Deploy FastAPI on Spark1 (CPU-only)
+# STEP 88: Deploy FastAPI on Spark1 (CPU-only)
 # ------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   step_echo_start "a" "spark1" "$SPARK1_IP" "Deploying AI Workload on spark1 (CPU-only)"
@@ -3327,9 +3471,9 @@ print_divider
 
 
 
-step_85(){
+step_89(){
 # --------------------------------------------------------------------------------
-# STEP 85: AGX GPU CAPACITY VERIFICATION
+# STEP 89: AGX GPU CAPACITY VERIFICATION
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "a" "agx" "$AGX_IP" "Verifying AGX GPU capacity..."
@@ -3347,9 +3491,9 @@ print_divider
 
 
 
-step_86(){
+step_90(){
 # --------------------------------------------------------------------------------
-# STEP 86: NANO GPU CAPACITY VERIFICATION
+# STEP 90: NANO GPU CAPACITY VERIFICATION
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   step_echo_start "a" "nano" "$NANO_IP" "Verifying NANO GPU capacity..."
@@ -3366,9 +3510,9 @@ print_divider
 }
 
 
-step_87(){
+step_91(){
 # --------------------------------------------------------------------------------
-# STEP 87: SPARK1 GPU CAPACITY VERIFICATION
+# STEP 91: SPARK1 GPU CAPACITY VERIFICATION
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   step_echo_start "a" "spark1" "$SPARK1_IP" "Verifying SPARK1 GPU capacity..."
@@ -3385,93 +3529,75 @@ print_divider
 }
 
 
-step_88(){
+step_92(){
 # --------------------------------------------------------------------------------
-# STEP 88: AGX GPU RESOURCE CLEANUP
+# STEP 92: AGX GPU RESOURCE CLEANUP
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "a" "agx" "$AGX_IP" "Cleaning up AGX GPU resources for deployment..."
 
-  # Check if AGX CPU deployment exists before cleanup
-  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get deployment fastapi-agx -n default --ignore-not-found=true | grep -q "fastapi-agx"; then
-    # Force-delete any stuck pods on AGX node to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=agx --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
-      :
-    fi
+  # Force-delete any stuck pods on AGX node to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=agx --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    :
+  fi
 
-    # Delete AGX AI Workload deployment to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-agx -n default --ignore-not-found=true > /dev/null 2>&1; then
-      sleep 5 # Give time for GPU resources to be fully released
-      echo -e "[32m✅[0m"
-    else
-      echo -e "[31m❌[0m"
-      exit 1
-    fi
-  else
-    echo -e "No AGX CPU deployment found, skipping cleanup"
+  # Delete AGX AI Workload deployment to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-agx -n default --ignore-not-found=true > /dev/null 2>&1; then
+    sleep 5 # Give time for GPU resources to be fully released
     echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
   fi
 fi
 step_increment
 print_divider
 }
 
-step_89(){
+step_93(){
 # --------------------------------------------------------------------------------
-# STEP 89: NANO GPU RESOURCE CLEANUP
+# STEP 93: NANO GPU RESOURCE CLEANUP
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   step_echo_start "a" "nano" "$NANO_IP" "Cleaning up Nano GPU resources for deployment..."
 
-  # Check if NANO CPU deployment exists before cleanup
-  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get deployment fastapi-nano -n default --ignore-not-found=true | grep -q "fastapi-nano"; then
-    # Force-delete any stuck pods on Nano node to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=nano --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
-      :
-    fi
+  # Force-delete any stuck pods on Nano node to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=nano --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    :
+  fi
 
-    # Delete Nano AI Workload deployment to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-nano -n default --ignore-not-found=true > /dev/null 2>&1; then
-      sleep 5 # Give time for GPU resources to be fully released
-      echo -e "[32m✅[0m"
-    else
-      echo -e "[31m❌[0m"
-      exit 1
-    fi
-  else
-    echo -e "No NANO CPU deployment found, skipping cleanup"
+  # Delete Nano AI Workload deployment to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-nano -n default --ignore-not-found=true > /dev/null 2>&1; then
+    sleep 5 # Give time for GPU resources to be fully released
     echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
   fi
 fi
 step_increment
 print_divider
 }
 
-step_90(){
+step_94(){
 # --------------------------------------------------------------------------------
-# STEP 90: SPARK1 GPU RESOURCE CLEANUP
+# STEP 94: SPARK1 GPU RESOURCE CLEANUP
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   step_echo_start "a" "spark1" "$SPARK1_IP" "Cleaning up Spark1 GPU resources for deployment..."
 
-  # Check if SPARK1 CPU deployment exists before cleanup
-  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get deployment fastapi-spark1 -n default --ignore-not-found=true | grep -q "fastapi-spark1"; then
-    # Force-delete any stuck pods on Spark1 node to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=spark1 --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
-      :
-    fi
+  # Force-delete any stuck pods on Spark1 node to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=spark1 --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    :
+  fi
 
-    # Delete Spark1 AI Workload deployment to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-spark1 -n default --ignore-not-found=true > /dev/null 2>&1; then
-      sleep 5 # Give time for GPU resources to be fully released
-      echo -e "[32m✅[0m"
-    else
-      echo -e "[31m❌[0m"
-      exit 1
-    fi
-  else
-    echo -e "No SPARK1 CPU deployment found, skipping cleanup"
+  # Delete Spark1 AI Workload deployment to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-spark1 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    sleep 5 # Give time for GPU resources to be fully released
     echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
   fi
 fi
 step_increment
@@ -3480,9 +3606,9 @@ print_divider
 
 
 
-step_91(){
+step_95(){
 # --------------------------------------------------------------------------------
-# STEP 91: AGX GPU-ENABLED AI WORKLOAD DEPLOYMENT
+# STEP 95: AGX GPU-ENABLED AI WORKLOAD DEPLOYMENT
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "a" "agx" "$AGX_IP" "Deploying GPU-enabled AI Workload on AGX..."
@@ -3514,7 +3640,7 @@ spec:
         operator: Exists
       containers:
       - name: fastapi
-        image: $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest
+        image: 10.1.10.150:5000/fastapi-agx:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
@@ -3569,15 +3695,15 @@ spec:
       volumes:
       - name: vmstore
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore
       - name: agx-home
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore/agx_home
       - name: agx-config
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore/tower_home/kubernetes/agent/agx/app/config
 ---
 apiVersion: v1
@@ -3668,9 +3794,9 @@ step_increment
 print_divider
 }
 
-step_92(){
+step_96(){
 # --------------------------------------------------------------------------------
-# STEP 92: NANO GPU-ENABLED AI WORKLOAD DEPLOYMENT
+# STEP 96: NANO GPU-ENABLED AI WORKLOAD DEPLOYMENT
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   step_echo_start "a" "nano" "$NANO_IP" "Deploying GPU-enabled AI Workload on NANO..."
@@ -3702,7 +3828,7 @@ spec:
         operator: Exists
       containers:
       - name: fastapi
-        image: $REGISTRY_IP:$REGISTRY_PORT/fastapi-nano:latest
+        image: 10.1.10.150:5000/fastapi-nano:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
@@ -3753,19 +3879,19 @@ spec:
       volumes:
       - name: vmstore
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore
       - name: nano-home
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore/nano_home
       - name: nano-config
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
       - name: nano-workspace
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore/tower_home/kubernetes/agent/nano
       tolerations:
       - key: "node-role.kubernetes.io/agent"
@@ -3855,9 +3981,9 @@ step_increment
 print_divider
 }
 
-step_93(){
+step_97(){
 # --------------------------------------------------------------------------------
-# STEP 93: SPARK1 GPU-ENABLED AI WORKLOAD DEPLOYMENT
+# STEP 97: SPARK1 GPU-ENABLED AI WORKLOAD DEPLOYMENT
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   step_echo_start "a" "spark1" "$SPARK1_IP" "Deploying GPU-enabled AI Workload on SPARK1..."
@@ -3889,7 +4015,7 @@ spec:
         operator: Exists
       containers:
       - name: fastapi
-        image: $REGISTRY_IP:$REGISTRY_PORT/fastapi-spark1:latest
+        image: 10.1.10.150:5000/fastapi-spark1:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
@@ -3944,15 +4070,15 @@ spec:
       volumes:
       - name: vmstore
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore
       - name: spark1-home
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore/spark1_home
       - name: spark1-config
         nfs:
-          server: $TOWER_IP
+          server: 10.1.10.150
           path: /export/vmstore/tower_home/kubernetes/agent/spark1/app/config
 ---
 apiVersion: v1
@@ -4048,9 +4174,9 @@ print_divider
 
 
 
-step_94() {
+step_98() {
 # --------------------------------------------------------------------------------
-# STEP 94: FINAL DEPLOYMENT VERIFICATION AND LOGGING
+# STEP 98: FINAL DEPLOYMENT VERIFICATION AND LOGGING
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Running final verification and saving log..."
 # FIX: Calling the function without output redirection.
@@ -4108,9 +4234,9 @@ step_increment
 print_divider
 }
 
-step_95(){
+step_99(){
 # -------------------------------------------------------------------------
-# STEP 95: Comprehensive Pod Verification
+# STEP 99: Comprehensive Pod Verification
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Running comprehensive pod verification..."
 echo ""
@@ -4149,14 +4275,14 @@ sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get services
 echo ""
 echo "✅ VERIFICATION COMPLETE"
 echo "bash ./verify-all_fixed.sh for detailed checks"
-step_increment
+basstep_increment
 print_divider
 }
 
 
-step_96(){
+step_100(){
 # ------------------------------------------------------------------------
-# STEP 96: Final Success Message
+# STEP 100: Final Success Message
 # ------------------------------------------------------------------------
 
 # Final success message
@@ -4188,7 +4314,6 @@ step_12
 step_13
 step_14
 step_15
-step_15b
 step_16
 step_17
 step_18
@@ -4248,12 +4373,12 @@ step_71
 step_72
 step_73
 step_74
-step_75
 step_76
 step_77
 step_78
 step_79
 step_80
+step_75
 step_81
 step_82
 step_83
@@ -4270,9 +4395,10 @@ step_93
 step_94
 step_95
 step_96
-
-
-
+step_97
+step_98
+step_99
+step_100
 # End of script
 
 

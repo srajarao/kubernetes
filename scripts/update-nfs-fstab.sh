@@ -13,6 +13,27 @@ echo "   Tower IP: $TOWER_IP"
 echo "   Mount Point: $MOUNT_POINT"
 echo "   NFS Export: $NFS_EXPORT"
 
+# Check if we're running on the Tower (NFS server)
+if ip route get $TOWER_IP | grep -q "src $TOWER_IP"; then
+    echo "   🏠 Running on Tower (NFS server) - ensuring local mount point exists"
+    
+    # On Tower, just ensure the directory exists and is accessible
+    sudo mkdir -p "$MOUNT_POINT"
+    
+    # If /export/vmstore is mounted locally, bind mount it to /mnt/vmstore
+    if mount | grep -q "/export/vmstore"; then
+        echo "   🔗 Binding /export/vmstore to /mnt/vmstore"
+        sudo mount --bind "/export/vmstore" "$MOUNT_POINT" 2>/dev/null || true
+    fi
+    
+    echo "   ✅ Tower mount point ready!"
+    echo "   📁 Mount point: $MOUNT_POINT (local bind mount)"
+    echo ""
+    echo "📋 TOWER FSTAB UPDATE COMPLETE"
+    echo "   Local bind mount configured"
+    exit 0
+fi
+
 # Backup current fstab
 FSTAB_BACKUP="/etc/fstab.backup.$(date +%Y%m%d_%H%M%S)"
 sudo cp /etc/fstab "$FSTAB_BACKUP"

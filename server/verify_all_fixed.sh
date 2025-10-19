@@ -69,8 +69,14 @@ test_http_endpoint "AGX FastAPI Status" "http://10.1.10.150:30004/status"
 test_http_endpoint "AGX FastAPI Docs" "http://10.1.10.150:30004/docs"
 test_http_endpoint "AGX Jupyter" "http://10.1.10.150:30005/jupyter" "200|302"
 
-# Note: AGX LLM API (port 30006) is not implemented yet
+# Test Spark1 FastAPI endpoints
+test_http_endpoint "Spark1 FastAPI Health" "http://10.1.10.150:30007/health"
+test_http_endpoint "Spark1 FastAPI Docs" "http://10.1.10.150:30007/docs"
+test_http_endpoint "Spark1 Jupyter" "http://10.1.10.150:30008/jupyter" "200|302"
+
+# Note: AGX LLM API (port 30006) and Spark1 LLM API (port 30009) are not implemented yet
 echo "Testing AGX LLM API (http://10.1.10.150:30006/docs)... ⚠️  SKIP (Not implemented)"
+echo "Testing Spark1 LLM API (http://10.1.10.150:30009/docs)... ⚠️  SKIP (Not implemented)"
 
 echo ""
 

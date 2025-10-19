@@ -19,10 +19,13 @@ spec:
       - key: CriticalAddonsOnly
         operator: Exists
       containers:
-      - image: nvcr.io/nvidia/k8s-device-plugin:v0.16.0
+      - image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
         name: nvidia-device-plugin-ctr
         securityContext:
           privileged: true
+        env:
+        - name: DEVICE_DISCOVERY_STRATEGY
+          value: nvml
         volumeMounts:
         - name: device-plugin
           mountPath: /var/lib/kubelet/device-plugins

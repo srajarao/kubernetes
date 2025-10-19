@@ -29,6 +29,12 @@ case "$HOSTNAME" in
     agx)
         DEST="$BASE_PATH/agx_home/containers"
         ;;
+    spark1)
+        DEST="$BASE_PATH/spark1_home/containers"
+        ;;
+    spark2)
+        DEST="$BASE_PATH/spark2_home/containers"
+        ;;
     *)
         echo "Unknown hostname: $HOSTNAME. Defaulting to tower_home."
         DEST="$BASE_PATH/tower_home/containers"

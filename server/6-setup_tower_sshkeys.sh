@@ -9,13 +9,15 @@ echo "########################################"
 # Configuration
 NANO_IP="10.1.10.181"
 AGX_IP="10.1.10.244"
+SPARK1_IP="10.1.10.201"
+SPARK2_IP="10.1.10.202"
 SSH_USER="sanjay"
 KEY_TYPE="ed25519"
 KEY_FILE="$HOME/.ssh/id_${KEY_TYPE}"
 BACKUP_DIR="$HOME/.ssh/backup_$(date +%Y%m%d_%H%M%S)"
 
 echo "Setting up passwordless SSH from Tower to Jetson devices..."
-echo "Target devices: Nano ($NANO_IP), AGX ($AGX_IP)"
+echo "Target devices: Nano ($NANO_IP), AGX ($AGX_IP), Spark1 ($SPARK1_IP), Spark2 ($SPARK2_IP)"
 echo ""
 
 # Backup existing SSH configuration
@@ -78,6 +80,44 @@ else
     echo "   ❌ Failed to copy SSH key to AGX"
 fi
 
+# Step 3b: Copy public key to Spark1
+echo ""
+echo "3b. Setting up passwordless access to Spark1 ($SPARK1_IP)..."
+echo "    Please enter the password for $SSH_USER@$SPARK1_IP when prompted:"
+
+if ssh-copy-id -i "${KEY_FILE}.pub" "$SSH_USER@$SPARK1_IP"; then
+    echo "    ✅ SSH key copied to Spark1 successfully"
+    
+    # Test the connection
+    echo "    Testing passwordless connection to Spark1..."
+    if ssh -o ConnectTimeout=5 -o BatchMode=yes "$SSH_USER@$SPARK1_IP" "echo 'Passwordless SSH to Spark1: SUCCESS'" 2>/dev/null; then
+        echo "    ✅ Passwordless SSH to Spark1 is working!"
+    else
+        echo "    ⚠️  Passwordless SSH test failed. You may need to enter password manually."
+    fi
+else
+    echo "    ❌ Failed to copy SSH key to Spark1"
+fi
+
+# Step 3c: Copy public key to Spark2
+echo ""
+echo "3c. Setting up passwordless access to Spark2 ($SPARK2_IP)..."
+echo "    Please enter the password for $SSH_USER@$SPARK2_IP when prompted:"
+
+if ssh-copy-id -i "${KEY_FILE}.pub" "$SSH_USER@$SPARK2_IP"; then
+    echo "    ✅ SSH key copied to Spark2 successfully"
+    
+    # Test the connection
+    echo "    Testing passwordless connection to Spark2..."
+    if ssh -o ConnectTimeout=5 -o BatchMode=yes "$SSH_USER@$SPARK2_IP" "echo 'Passwordless SSH to Spark2: SUCCESS'" 2>/dev/null; then
+        echo "    ✅ Passwordless SSH to Spark2 is working!"
+    else
+        echo "    ⚠️  Passwordless SSH test failed. You may need to enter password manually."
+    fi
+else
+    echo "    ❌ Failed to copy SSH key to Spark2"
+fi
+
 # Step 4: Create SSH config for easier access
 echo ""
 echo "4. Creating SSH config file for easier access..."
@@ -86,11 +126,13 @@ SSH_CONFIG="$HOME/.ssh/config"
 # Remove any existing entries for our hosts to avoid duplicates
 if [ -f "$SSH_CONFIG" ]; then
     # Create a temp file without our host entries
-    grep -v -E "^Host (nano|agx)$" "$SSH_CONFIG" | \
+    grep -v -E "^Host (nano|agx|spark1|spark2)$" "$SSH_CONFIG" | \
     awk '/^Host nano$/,/^Host [^n]/ {if(/^Host [^n]/) print; next} 1' | \
-    awk '/^Host agx$/,/^Host [^a]/ {if(/^Host [^a]/) print; next} 1' > "${SSH_CONFIG}.tmp"
+    awk '/^Host agx$/,/^Host [^a]/ {if(/^Host [^a]/) print; next} 1' | \
+    awk '/^Host spark1$/,/^Host [^s]/ {if(/^Host [^s]/) print; next} 1' | \
+    awk '/^Host spark2$/,/^Host [^s]/ {if(/^Host [^s]/) print; next} 1' > "${SSH_CONFIG}.tmp"
     mv "${SSH_CONFIG}.tmp" "$SSH_CONFIG"
-    echo "   Cleaned existing nano/agx entries from SSH config"
+    echo "   Cleaned existing nano/agx/spark1/spark2 entries from SSH config"
 fi
 
 # Add or update entries
@@ -110,12 +152,28 @@ Host agx
     IdentityFile $KEY_FILE
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
+
+Host spark1
+    HostName $SPARK1_IP
+    User $SSH_USER
+    IdentityFile $KEY_FILE
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
+Host spark2
+    HostName $SPARK2_IP
+    User $SSH_USER
+    IdentityFile $KEY_FILE
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
 EOF
 
 chmod 600 "$SSH_CONFIG"
 echo "   ✅ SSH config updated. You can now use:"
-echo "      ssh nano    # Connect to Nano"
-echo "      ssh agx     # Connect to AGX"
+echo "      ssh nano     # Connect to Nano"
+echo "      ssh agx      # Connect to AGX"
+echo "      ssh spark1   # Connect to Spark1"
+echo "      ssh spark2   # Connect to Spark2"
 
 # Step 5: Final verification
 echo ""
@@ -135,6 +193,20 @@ else
     echo "❌ FAILED"
 fi
 
+echo -n "   Testing 'ssh spark1'... "
+if ssh -o ConnectTimeout=5 -o BatchMode=yes spark1 "hostname" 2>/dev/null; then
+    echo "✅ SUCCESS"
+else
+    echo "❌ FAILED"
+fi
+
+echo -n "   Testing 'ssh spark2'... "
+if ssh -o ConnectTimeout=5 -o BatchMode=yes spark2 "hostname" 2>/dev/null; then
+    echo "✅ SUCCESS"
+else
+    echo "❌ FAILED"
+fi
+
 echo ""
 echo "=========================================="
 echo "🔑 SSH KEY SETUP COMPLETE!"
@@ -142,8 +214,12 @@ echo "=========================================="
 echo "✅ You can now use passwordless SSH:"
 echo "   • ssh nano"
 echo "   • ssh agx"
+echo "   • ssh spark1"
+echo "   • ssh spark2"
 echo "   • ssh $SSH_USER@$NANO_IP"
 echo "   • ssh $SSH_USER@$AGX_IP"
+echo "   • ssh $SSH_USER@$SPARK1_IP"
+echo "   • ssh $SSH_USER@$SPARK2_IP"
 echo ""
 echo "🔧 Scripts can now run without password prompts!"
 echo "=========================================="

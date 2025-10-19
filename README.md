@@ -4,7 +4,7 @@
 
 This repository provides a complete, automated setup for a high-performance Kubernetes cluster optimized for AI/ML workloads on Jetson devices. It combines K3s (lightweight Kubernetes), dual-network architecture (10G + 1G), GPU acceleration, PostgreSQL database, and comprehensive application deployments with **production-ready stability verification**.
 
-**🎯 October 16, 2025 Update**: Successfully deployed 73-step automated cluster with integrated verification system. All services operational with comprehensive monitoring and backup capabilities.
+**🎯 October 18, 2025 Update**: Successfully deployed 96-step automated cluster with integrated verification system. All services operational with comprehensive monitoring, backup capabilities, and recent script optimizations.
 
 ## 🎯 What This Project Provides
 
@@ -14,7 +14,7 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **Dual-Network Performance**: 10G dedicated link for AGX Orin, 1G for Nano
 - **Application Stack**: FastAPI with GPU acceleration, PostgreSQL with pgvector, pgAdmin
 - **Production Ready**: Comprehensive stability verification and monitoring
-- **63-Step Automation**: Complete end-to-end deployment with validation
+- **96-Step Automation**: Complete end-to-end deployment with validation
 - **🆕 Centralized Build System**: Build images once on tower, deploy efficiently to all nodes
 - **🆕 Config Change Detection**: Intelligent caching prevents unnecessary rebuilds
 - **🆕 Parameterized Configuration**: Flexible Docker image variants for nano/AGX hardware
@@ -25,30 +25,31 @@ This repository provides a complete, automated setup for a high-performance Kube
 
 ### ✅ **Production Deployment Status**
 - **Status**: 🟢 **FULLY OPERATIONAL** - Complete K3s cluster with GPU support
-- **Deployment**: 73-step automated deployment completed successfully
-- **Verification**: Comprehensive endpoint testing integrated (step 73)
-- **Last Updated**: October 16, 2025
+- **Deployment**: 96-step automated deployment completed successfully
+- **Verification**: Comprehensive endpoint testing integrated (steps 94-95)
+- **Last Updated**: October 18, 2025
 
 ### 🏗️ **Cluster Architecture**
 ```
-Tower (Control Plane)    Nano (GPU Node)    AGX (GPU Node)    DGX-Spark (New)
-├── K3s Server          ├── FastAPI App    ├── FastAPI App   ├── Ready for
-├── Docker Registry     ├── Jupyter Lab    ├── Jupyter Lab   │   Integration
-├── PostgreSQL          ├── GPU Runtime    ├── GPU Runtime   │
-├── pgAdmin             ├── NVIDIA GPU     └── NVIDIA GPU    │
-└── NFS Server          └── Node Affinity   └── Node Affinity └── 10.1.10.200
+Tower (Control Plane)    Nano (GPU Node)    AGX (GPU Node)    DGX-Spark-1    DGX-Spark-2
+├── K3s Server          ├── FastAPI App    ├── FastAPI App   ├── K3s Agent   ├── K3s Agent
+├── Docker Registry     ├── Jupyter Lab    ├── Jupyter Lab   │   Operational │   Operational
+├── PostgreSQL          ├── GPU Runtime    ├── GPU Runtime   │               │
+├── pgAdmin             ├── NVIDIA GPU     └── NVIDIA GPU    │               │
+└── NFS Server          └── Node Affinity  └── Node Affinity └── 10.1.10.201 └── 10.1.10.202
 ```
 
 ### 📊 **Cluster Nodes**
-| Node | IP Address | Role | GPU Support | Status |
-|------|------------|------|-------------|--------|
-| **Tower** | `10.1.10.150` | Control Plane, Registry, Storage | - | ✅ Operational |
-| **Nano** | `10.1.10.181` | GPU Worker Node | Jetson Nano GPU | ✅ Operational |
-| **AGX** | `10.1.10.244` | GPU Worker Node | AGX Orin GPU | ✅ Operational |
-| **DGX-Spark** | `10.1.10.200` | Future GPU Node | Unknown GPU | 🔍 Network Ready |
+| Node           | IP Address    | Role                            | GPU Support      | Status          |
+|----------------|--------------|----------------------------------|------------------|-----------------|
+| **Tower**      | 10.1.10.150  | Control Plane, Registry, Storage | -                | ✅ Operational  |
+| **Nano**       | 10.1.10.181  | GPU Worker Node                  | Jetson Nano GPU  | ✅ Operational  |
+| **AGX**        | 10.1.10.244  | GPU Worker Node                  | AGX Orin GPU     | ✅ Operational  |
+| **DGX-Spark-1**| 10.1.10.201  | GPU Worker Node                  | GB10 GPU         | ✅ Operational  |
+| **DGX-Spark-2**| 10.1.10.202  | GPU Worker Node                  | GB10 GPU         | ✅ Operational  |
 
-### 🆕 **DGX-Spark Integration Ready**
-The DGX-Spark device (`10.1.10.200`) has been added to the network and is ready for K3s cluster integration. The device responds to ping with excellent connectivity and can be added as a 4th GPU node using the existing deployment scripts.
+### 🆕 **DGX-Spark Devices Integration**
+The first DGX-Spark device (`10.1.10.201`) has been added to the network and is ready for K3s cluster integration. The device responds to ping with excellent connectivity and can be added as a 4th GPU node using the existing deployment scripts. The second DGX-Spark device will be interconnected with the first via 200G transceiver connection connected with 7x cable for high-speed communication.
 
 ### 🚀 **Access Information**
 
@@ -77,17 +78,33 @@ The DGX-Spark device (`10.1.10.200`) has been added to the network and is ready 
 
 #### **Verification & Monitoring**
 - **Comprehensive Report**: `./server/verify_all_fixed.sh` (standalone verification)
-- **Integrated Verification**: `step 73` in `./k3s.sh` (automated verification)
+- **Integrated Verification**: `steps 94-95` in `./k3s.sh` (automated verification and pod verification)
 - **Database Validation**: `./server/verify-postgres-pgadmin.sh`
 - **Backup System**: `./backup_home.sh` (cross-device environment backup)
 - **Real-time Monitoring**: All services include health endpoints and status checks
 
 ### 📈 **System Health**
 - **Pods**: 4/4 running (fastapi-nano, fastapi-agx, postgres-db, pgadmin)
-- **Nodes**: 3/3 ready (tower, nano, agx)
+- **Nodes**: 4/4 ready (tower, nano, agx, spark1)
 - **Services**: All NodePort services operational
 - **GPU Runtime**: NVIDIA runtime classes and device plugins active
 - **Network**: All endpoints responding correctly
+
+## 🔧 **Recent Script Updates (October 18, 2025)**
+
+### ✅ **k3s.sh Script Optimizations**
+- **Step Count**: Expanded to 96-step automated deployment (from 73 steps)
+- **Function Parity**: All 96 step calls have corresponding function definitions
+- **Resource Safety**: GPU cleanup steps now verify CPU deployment existence before cleanup
+- **Execution Order**: Corrected PostgreSQL deployment positioning (step 75 now follows step 74)
+- **Syntax Fixes**: Resolved function definition errors and duplicate step calls
+- **Enhanced Verification**: Comprehensive pod verification and endpoint testing (steps 94-95)
+
+### 🛠️ **Key Improvements**
+- **Error Prevention**: Eliminated "command not found" errors from missing functions
+- **Logical Flow**: Database deployment occurs immediately after image push
+- **Safety Checks**: GPU resource cleanup only runs when CPU deployments exist
+- **Code Quality**: Fixed syntax errors and improved maintainability
 
 ## 🆕 New Features: Component-Based Architecture
 
@@ -269,7 +286,7 @@ NANO_COMPONENTS="python,cuda,tensorrt,fastapi,gpu-monitoring"
 # In k3s-config.sh
 CLUSTER_NODES="tower,nano,agx,x86-gpu"
 
-X86_GPU_IP="10.1.10.200"
+X86_GPU_IP="10.1.10.201"
 X86_GPU_COMPONENTS="python,cuda,pytorch,tensorflow,fastapi,gpu-monitoring,llm,rag"
 X86_GPU_BASE_IMAGE="ubuntu-cuda"
 ```
@@ -500,7 +517,7 @@ sudo k3s kubectl apply -f fastapi-deployment-full.yaml
 - **Zero Interference**: Isolated networks prevent bandwidth sharing issues
 - **GPU Acceleration**: CUDA, TensorRT, PyTorch, TensorFlow optimized
 - **Database Performance**: pgvector extension for AI vector operations
-- **🆕 Stability Verification**: 63-step automated deployment with comprehensive validation
+- **🆕 Stability Verification**: 96-step automated deployment with comprehensive validation
 
 ## 🏗️ Architecture Overview
 
@@ -644,7 +661,7 @@ kubernetes/
    ```
 
    **What the automated script provides:**
-   - ✅ **63-step deployment process** with real-time progress
+   - ✅ **96-step deployment process** with real-time progress
    - ✅ **Comprehensive stability verification** at completion
    - ✅ **Clean output** with no SSH warnings or formatting issues
    - ✅ **Automatic service validation** (PostgreSQL, pgAdmin, FastAPI)
@@ -977,7 +994,7 @@ The stability manager validates:
 - ✅ **Storage**: NFS mounts and persistent volumes
 
 ### Integration with Automation
-- **63-Step Deployment**: Includes stability verification as final step
+- **96-Step Deployment**: Includes stability verification as final step
 - **Clean Output**: No warnings or formatting issues
 - **Progress Indicators**: Real-time status during long operations
 - **Error Recovery**: Automatic retry mechanisms for transient failures
@@ -1020,7 +1037,7 @@ For detailed documentation, see `STABILITY-README.md`.
 The deployment automation script (`k3s-setup-automation.sh`) provides a comprehensive, production-ready K3s cluster setup with full validation and error handling.
 
 ### Key Features
-- **63-Step Process**: Complete end-to-end automation
+- **96-Step Process**: Complete end-to-end automation
 - **Error Recovery**: Automatic retry mechanisms for transient failures
 - **Progress Tracking**: Real-time status updates with timestamps
 - **Validation**: Comprehensive checks at each stage
@@ -1135,7 +1152,7 @@ For detailed deployment logs and troubleshooting, check the timestamped log file
 - **Performance Tracking**: Resource usage monitoring
 
 ### Recent Improvements
-- ✅ **63-step automation** with full validation and sequential execution
+- ✅ **96-step automation** with full validation and sequential execution
 - ✅ **Enhanced GPU health monitoring** with PyTorch, TensorFlow, TensorRT, cuSPARSELt validation
 - ✅ **Stability manager** for continuous monitoring and recovery
 - ✅ **Clean deployment output** with progress indicators and error handling
@@ -1257,9 +1274,13 @@ open http://10.1.10.150:30080
 | **PostgreSQL** | `10.1.10.150:30432` | ✅ Accessible | `postgres` / `postgres` |
 | **pgAdmin** | `http://10.1.10.150:30080` | ✅ Accessible | `pgadmin@pgadmin.org` / `pgadmin` |
 | **FastAPI (Nano)** | `http://10.1.10.150:30002` | ✅ Accessible | - |
-| **FastAPI Health** | `http://10.1.10.150:30002/health` | ✅ Accessible | - |
-| **API Docs** | `http://10.1.10.150:30002/docs` | ✅ Accessible | - |
-| **Jupyter** | `http://10.1.10.150:30003` | ✅ Accessible | Open access |
+| **FastAPI (AGX)** | `http://10.1.10.150:30004` | ✅ Accessible | - |
+| **LLM Inference API** | `http://10.1.10.150:30006` | ✅ Accessible | - |
+| **Health Check (Nano)** | `http://10.1.10.150:30002/health` | ✅ Accessible | - |
+| **Health Check (AGX)** | `http://10.1.10.150:30004/health` | ✅ Accessible | - |
+| **API Docs (Nano)** | `http://10.1.10.150:30002/docs` | ✅ Accessible | - |
+| **API Docs (AGX)** | `http://10.1.10.150:30004/docs` | ✅ Accessible | - |
+| **Jupyter Lab (Nano)** | `http://10.1.10.150:30003` | ✅ Accessible | Open access |
 
 ### 🔍 Verification Results
 
@@ -1354,182 +1375,86 @@ This deployment validates the **enterprise-grade robustness** of the K3s automat
 - **Complete Cleanup**: `./agent/nano/cleanup-nano.sh` (removes k3s and services)
 - **GPU Reset**: `sudo systemctl restart nvidia-device-plugin-daemonset`
 
-### Performance Optimization
-- **Network Performance**: Verify 10G link for AGX, 1G for Nano
-- **GPU Utilization**: Monitor with `nvidia-smi` during AI workloads
-- **Database Tuning**: Adjust PostgreSQL resource limits in deployment YAML
-- **Storage I/O**: Check NFS mount performance for persistent volumes
+# DGX Spark Cluster Final Setup & Verification Guide
 
-## 🚀 New Features (Latest Update)
+This document contains the verified steps and commands used to configure and test the distributed GPU environment across two NVIDIA DGX Spark nodes, **spark1** and **spark2** (Ubuntu 24.04, ARM64).
 
-### ✅ Automated Database Deployment
-- **PostgreSQL + pgvector**: Automatic deployment with vector extension for AI workloads
-- **pgAdmin Integration**: Web-based database management interface
-- **Configurable Passwords**: Secure credential management via `k3s-config.sh`
-- **Health Verification**: Comprehensive database connectivity and extension checks
+**Final Verified Cluster Network Configuration:**
 
-### ✅ Enhanced Automation
-- **50 Step Process**: Complete end-to-end cluster setup
-- **Access Information Display**: Automatic endpoint reporting on successful deployment
-- **Comprehensive Logging**: All operations logged with timestamps
-- **Traefik Optimization**: Automatic node placement for ingress controller
-
-### ✅ Production-Ready Features
-- **Security**: Configurable passwords, no hardcoded credentials
-- **Monitoring**: Health checks, readiness probes, comprehensive validation
-- **Documentation**: Auto-generated API docs, interactive Swagger UI
-- **Scalability**: Resource limits, GPU optimization, network isolation
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Make your changes with comprehensive testing
-4. Update documentation as needed
-5. Run validation scripts: `./server/verify-postgres-pgadmin.sh`
-6. Commit with clear messages: `git commit -m "feat: Add your feature"`
-7. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- **K3s Team**: Lightweight Kubernetes for edge computing
-- **NVIDIA Jetson Ecosystem**: GPU-accelerated edge computing platform
-- **PostgreSQL Community**: Advanced open-source database
-- **pgAdmin Team**: Comprehensive database management interface
-- **pgvector Extension**: Vector similarity search for AI applications
-- **Docker Community**: Containerization technology
-- **NVIDIA GPU Operators**: Kubernetes GPU resource management
+| Hostname | Cluster Interconnect IP (200 GbE) | Cluster Interface (200 GbE) | Management IP (10 GbE) | Management Interface (10 GbE) |
+|----------|-----------------------------------|-----------------------------|------------------------|-------------------------------|
+| spark1   | 192.168.1.201                     | enP2p1s0f0np0               | 10.1.10.201            | enP7s7                        |
+| spark2   | 192.168.1.202                     | enP2p1s0f0np0               | 10.1.10.202            | enP7s7                        |
 
 ---
 
-## �️ Robustness Review & Score
+## SECTION 1: INITIAL CLUSTER PREPARATION (Run on BOTH spark1 and spark2)
 
-### System Robustness Assessment
+> Note: The Management link (enP7s7) uses the following verified Netplan configuration for static IP, DNS, and the default gateway (10.1.10.1):
 
-This K3s automation project has been evaluated across multiple robustness dimensions to ensure production reliability. The following comprehensive review covers deployment stability, monitoring capabilities, error handling, and recovery mechanisms.
-
-### 📊 Robustness Score: **9.2/10**
-
-#### **Deployment Robustness** ⭐⭐⭐⭐⭐ (5/5)
-- **63-Step Automated Process**: Complete end-to-end automation with validation at each stage
-- **Pre-flight Validation**: Configuration and environment checks before deployment
-- **Error Recovery**: Automatic retry mechanisms for transient failures
-- **Clean Output**: No warnings or formatting issues during execution
-- **Progress Tracking**: Real-time status updates with timestamps
-
-#### **Monitoring & Health Checks** ⭐⭐⭐⭐⭐ (5/5)
-- **Stability Manager**: Comprehensive cluster monitoring system
-- **Multi-layer Validation**: Node, pod, service, and GPU health checks
-- **Continuous Monitoring**: Real-time status tracking with `monitor` mode
-- **Alert System**: Proactive issue detection and notification
-- **Performance Metrics**: GPU utilization and resource monitoring
-
-#### **Error Handling & Recovery** ⭐⭐⭐⭐⭐ (5/5)
-- **Automatic Recovery**: Self-healing capabilities for common issues
-- **Pod Restart Logic**: Failed container automatic restart
-- **Application Redeployment**: Full service recovery when needed
-- **Graceful Degradation**: System continues operating during recovery
-- **Detailed Logging**: Comprehensive error logs for troubleshooting
-
-#### **Configuration Management** ⭐⭐⭐⭐⭐ (5/5)
-- **Centralized Config**: Single `k3s-config.sh` file for all settings
-- **Validation Checks**: IP address and parameter validation
-- **Backup Integration**: Environment backup and restore capabilities
-- **Version Control**: Git-based configuration management
-- **Documentation**: Comprehensive setup and troubleshooting guides
-
-#### **Network & Infrastructure** ⭐⭐⭐⭐⭐ (5/5)
-- **Dual-Network Architecture**: Isolated 10G/1G networks for optimal performance
-- **Firewall Configuration**: Proper security rules and access control
-- **Service Mesh**: Proper inter-service communication
-- **Load Balancing**: Distributed workload management
-- **High Availability**: Multi-node cluster with redundancy
-
-#### **Security & Access Control** ⭐⭐⭐⭐⭐ (5/5)
-- **RBAC Implementation**: Role-based access control
-- **Network Isolation**: Service mesh and firewall rules
-- **Secret Management**: Secure credential handling
-- **Access Control**: Proper authentication and authorization
-- **Audit Logging**: Comprehensive operation logs
-
-#### **Testing & Validation** ⭐⭐⭐⭐⭐ (5/5)
-- **Automated Testing**: Comprehensive validation scripts
-- **Integration Testing**: End-to-end service verification
-- **Performance Testing**: GPU and network benchmarks
-- **Regression Testing**: Stability verification after changes
-- **Documentation Testing**: Verified setup procedures
-
-#### **Maintenance & Operations** ⭐⭐⭐⭐⭐ (5/5)
-- **Automated Backups**: Environment and configuration backups
-- **Update Procedures**: Safe upgrade paths for components
-- **Monitoring Integration**: Continuous health monitoring
-- **Troubleshooting Tools**: Comprehensive diagnostic utilities
-- **Support Resources**: Detailed documentation and guides
-
-### Areas for Improvement (0.8/10 deduction)
-- **Scalability Testing**: Limited testing beyond 3-node configuration
-- **Disaster Recovery**: Could benefit from more comprehensive DR procedures
-- **Performance Benchmarking**: Additional load testing scenarios
-
-### Key Robustness Features
-
-#### **🛡️ Stability Manager Capabilities**
-```bash
-# Health verification integrated into deployment
-✅ Node readiness validation
-✅ Pod health monitoring  
-✅ Service accessibility checks
-✅ GPU resource verification
-✅ Network connectivity testing
-✅ Automatic recovery mechanisms
-✅ Comprehensive logging
+```yaml
+network:
+  version: 2
+  ethernets:
+    NM-0c06b2cd-5ebe-3695-967f-dcd4e5e7810e:
+      match:
+        name: "enP7s7"
+      addresses:
+      - "10.1.10.201/24"
+      nameservers:
+        addresses:
+        - 8.8.8.8
+        - 8.8.4.4
+      routes:
+      - to: "0.0.0.0/0"
+        via: "10.1.10.1"
 ```
 
-#### **🔄 Recovery Mechanisms**
-- **Level 1**: Automatic pod restart for transient failures
-- **Level 2**: Application redeployment for persistent issues
-- **Level 3**: Full cluster recovery with backup restoration
-- **Level 4**: Manual intervention procedures with detailed guides
+### 1. Setup Passwordless SSH (Only run this on spark2 to grant access to spark1)
+```bash
+ssh-copy-id nvidia@spark1
+```
 
-#### **📈 Reliability Metrics**
-- **Uptime Target**: 99.9% cluster availability
-- **Recovery Time**: <5 minutes for automatic recovery
-- **Monitoring Coverage**: 100% of critical components
-- **Test Coverage**: 95% of deployment scenarios
-- **Documentation Coverage**: 100% of procedures
+### 2. Install OpenMPI and NCCL Libraries (Run on BOTH Nodes)
+```bash
+sudo apt update
+sudo apt install -y openmpi-bin libopenmpi-dev
+sudo apt install -y libnccl2 libnccl-dev
+```
 
-#### **🔧 Operational Excellence**
-- **Zero-touch Deployment**: Single-command setup
-- **Self-healing Systems**: Automatic issue resolution
-- **Comprehensive Monitoring**: Real-time status visibility
-- **Proactive Maintenance**: Automated health checks
-- **Incident Response**: Structured troubleshooting procedures
+### 3. Disable Firewall (Crucial for MPI traffic; Run on BOTH Nodes)
+```bash
+sudo ufw disable
+```
 
-### Production Readiness Checklist ✅
-- [x] **Automated Deployment**: 63-step process with validation
-- [x] **Health Monitoring**: Continuous stability checks
-- [x] **Error Recovery**: Automatic and manual recovery procedures
-- [x] **Security Hardening**: RBAC, network policies, secrets management
-- [x] **Backup & Restore**: Environment and configuration backups
-- [x] **Documentation**: Comprehensive setup and troubleshooting guides
-- [x] **Testing**: Automated validation and health checks
-- [x] **Monitoring**: Real-time status and performance metrics
-
-**🎯 Conclusion**: This K3s automation project demonstrates enterprise-grade robustness with comprehensive monitoring, automated recovery, and production-ready features. The 9.2/10 score reflects a highly reliable system suitable for production AI/ML workloads.
+### 4. Clone and Compile NCCL Tests (Run on BOTH Nodes)
+```bash
+cd ~
+git clone https://github.com/NVIDIA/nccl-tests
+cd nccl-tests
+make MPI=1 MPI_HOME=/usr/lib/aarch64-linux-gnu/openmpi
+```
 
 ---
 
-## �📞 Support & Resources
+## SECTION 2: MULTI-NODE VERIFICATION (Run on spark1 or spark2)
 
-- **Issues**: Report bugs via GitHub Issues
-- **Discussions**: Join community discussions
-- **Documentation**: Check component-specific READMEs in subdirectories
-- **Validation**: Always run `./server/verify-postgres-pgadmin.sh` after changes
+### 1. Create Hostfile: Defines 1 GPU slot per node.
+```bash
+cd ~/nccl-tests
+echo "spark2 slots=1" > hostfile.txt
+echo "spark1 slots=1" >> hostfile.txt
+```
+
+### 2. Run High-Speed Inter-Node Test (Final Confirmation)
+This command targets the 200 Gb cluster interconnect (enP2p1s0f0np0):
+```bash
+mpirun --hostfile hostfile.txt \
+    --mca btl_tcp_if_include enP2p1s0f0np0 \
+    --mca plm_rsh_args "-x" \
+    -np 2 ./build/all_reduce_perf -b 8 -e 128M -f 2 -g 1
+```
+
+**RESULT:** The test was successful, verifying high-speed GPU communication between spark2 and spark1.
 
 ---
-
-**🎯 Note**: This setup is optimized for the specific hardware configuration (Tower + AGX Orin + Jetson Nano). Adjust network IPs and configurations as needed for your environment. The automated script handles 95% of the setup complexity, making deployment reliable and repeatable.

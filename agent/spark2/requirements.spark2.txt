@@ -1,0 +1,20 @@
+# Auto-generated requirements.txt for spark2 node
+# Components: python,cuda,tensorrt,fastapi,gpu-monitoring,jupyter
+# Generated: Sat 11 Oct 2025 04:12:12 PM PDT
+
+# fastapi dependencies
+fastapi
+uvicorn
+pydantic
+psycopg2-binary
+python-dotenv
+python-multipart
+openai
+
+# gpu-monitoring dependencies
+nvidia-ml-py
+
+# jupyter dependencies
+jupyterlab
+notebook
+

@@ -7,15 +7,25 @@ set -e
 echo "🔧 Updating NFS mounts in /etc/fstab on all devices..."
 echo "   New Tower IP: 10.1.10.150"
 
+# First, update NFS exports on Tower
+echo ""
+echo "🏠 Updating NFS exports on Tower..."
+if bash /home/sanjay/containers/kubernetes/scripts/update-nfs-exports.sh > /dev/null 2>&1; then
+    echo "   ✅ Updated NFS exports on Tower"
+else
+    echo "   ❌ Failed to update NFS exports on Tower"
+    exit 1
+fi
+
 # Copy the update script to each device and run it
-DEVICES=("agx" "nano")
+DEVICES=("agx" "nano" "spark1" "spark2")
 
 for device in "${DEVICES[@]}"; do
     echo ""
     echo "📡 Updating $device..."
 
     # Copy the script to the device
-    if scp /home/sanjay/containers/kubernetes/update-nfs-fstab.sh sanjay@$device:~ > /dev/null 2>&1; then
+    if scp /home/sanjay/containers/kubernetes/scripts/update-nfs-fstab.sh sanjay@$device:~ > /dev/null 2>&1; then
         echo "   ✅ Copied update script to $device"
 
         # Run the script on the device
@@ -32,7 +42,7 @@ done
 echo ""
 echo "🏠 Updating Tower..."
 # Run locally on Tower
-if bash /home/sanjay/containers/kubernetes/update-nfs-fstab.sh > /dev/null 2>&1; then
+if bash /home/sanjay/containers/kubernetes/scripts/update-nfs-fstab.sh > /dev/null 2>&1; then
     echo "   ✅ Updated NFS mount on Tower"
 else
     echo "   ❌ Failed to update NFS mount on Tower"

@@ -21,15 +21,14 @@ INSTALL_NANO_AGENT=true
 # Install K3s agent on agx
 INSTALL_AGX_AGENT=true
 
-# Install K3s agent on spark2
-INSTALL_SPARK2_AGENT=true
+# Install K3s agent on spark1
+INSTALL_SPARK1_AGENT=true
 
 # IP addresses
 TOWER_IP="10.1.10.150"
 NANO_IP="10.1.10.181"   # <-- Use the correct, reachable IP
 AGX_IP="10.1.10.244"
-SPARK1_IP="10.1.10.201"
-SPARK2_IP="10.1.10.202"
+SPARK1_IP="10.1.10.200"
 
 # Registry settings
 REGISTRY_IP="10.1.10.150"
@@ -60,7 +59,7 @@ fi
 CURRENT_STEP=1
 
 # NOTE: Total steps count is 72 (includes nano and AGX GPU enablement)
-TOTAL_STEPS=97
+TOTAL_STEPS=96
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.
@@ -644,36 +643,6 @@ if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   fi
 else
   echo "{a} [spark1] [$SPARK1_IP] ${CURRENT_STEP}/${TOTAL_STEPS}. SPARK1 SSH verification skipped (not enabled)"
-fi
-step_increment
-print_divider
-}
-
-step_15b(){
-# -------------------------------------------------------------------------
-# STEP 15b: SPARK2 SSH Validation
-# -------------------------------------------------------------------------
-if [ "$INSTALL_SPARK2_AGENT" = true ]; then
-  if [ "$DEBUG" = "1" ]; then
-    echo "Running verbose SPARK2 SSH check..."
-  fi
-  step_echo_start "a" "spark2" "$SPARK2_IP" "Verifying SPARK2 SSH connectivity..."
-  sleep 5
-  # Test SSH connection by running 'hostname' on the SPARK2
-  if ssh -o StrictHostKeyChecking=no sanjay@$SPARK2_IP "hostname" > /dev/null 2>&1; then
-    echo -e "[32m✅[0m"
-  else
-    # --- Corrected Verbose Error Handling (Replaces original simple error) ---
-    echo -e "[31m❌ CRITICAL: Passwordless SSH Failed.[0m"
-    echo ""
-    echo -e "[31m================================================================================[0m"
-    echo -e "[33mACTION REQUIRED: Please run './6-setup_tower_sshkeys.sh' manually[0m"
-    echo -e "[33mand enter the password when prompted to enable passwordless SSH.[0m"
-    echo -e "[31m================================================================================[0m"
-    exit 1
-  fi
-else
-  echo "{a} [spark2] [$SPARK2_IP] ${CURRENT_STEP}/${TOTAL_STEPS}. SPARK2 SSH verification skipped (not enabled)"
 fi
 step_increment
 print_divider
@@ -2303,7 +2272,7 @@ print_divider
 
 
 
-step_61(){
+step_61()){
 # -------------------------------------------------------------------------
 # STEP 61: Build Image
 # -------------------------------------------------------------------------
@@ -3385,31 +3354,25 @@ print_divider
 }
 
 
-step_88(){
+step_88{
 # --------------------------------------------------------------------------------
 # STEP 88: AGX GPU RESOURCE CLEANUP
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_AGX_AGENT" = true ]; then
   step_echo_start "a" "agx" "$AGX_IP" "Cleaning up AGX GPU resources for deployment..."
 
-  # Check if AGX CPU deployment exists before cleanup
-  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get deployment fastapi-agx -n default --ignore-not-found=true | grep -q "fastapi-agx"; then
-    # Force-delete any stuck pods on AGX node to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=agx --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
-      :
-    fi
+  # Force-delete any stuck pods on AGX node to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=agx --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    :
+  fi
 
-    # Delete AGX AI Workload deployment to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-agx -n default --ignore-not-found=true > /dev/null 2>&1; then
-      sleep 5 # Give time for GPU resources to be fully released
-      echo -e "[32m✅[0m"
-    else
-      echo -e "[31m❌[0m"
-      exit 1
-    fi
-  else
-    echo -e "No AGX CPU deployment found, skipping cleanup"
+  # Delete AGX AI Workload deployment to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-agx -n default --ignore-not-found=true > /dev/null 2>&1; then
+    sleep 5 # Give time for GPU resources to be fully released
     echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
   fi
 fi
 step_increment
@@ -3423,24 +3386,18 @@ step_89(){
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   step_echo_start "a" "nano" "$NANO_IP" "Cleaning up Nano GPU resources for deployment..."
 
-  # Check if NANO CPU deployment exists before cleanup
-  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get deployment fastapi-nano -n default --ignore-not-found=true | grep -q "fastapi-nano"; then
-    # Force-delete any stuck pods on Nano node to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=nano --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
-      :
-    fi
+  # Force-delete any stuck pods on Nano node to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=nano --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    :
+  fi
 
-    # Delete Nano AI Workload deployment to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-nano -n default --ignore-not-found=true > /dev/null 2>&1; then
-      sleep 5 # Give time for GPU resources to be fully released
-      echo -e "[32m✅[0m"
-    else
-      echo -e "[31m❌[0m"
-      exit 1
-    fi
-  else
-    echo -e "No NANO CPU deployment found, skipping cleanup"
+  # Delete Nano AI Workload deployment to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-nano -n default --ignore-not-found=true > /dev/null 2>&1; then
+    sleep 5 # Give time for GPU resources to be fully released
     echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
   fi
 fi
 step_increment
@@ -3454,24 +3411,18 @@ step_90(){
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   step_echo_start "a" "spark1" "$SPARK1_IP" "Cleaning up Spark1 GPU resources for deployment..."
 
-  # Check if SPARK1 CPU deployment exists before cleanup
-  if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get deployment fastapi-spark1 -n default --ignore-not-found=true | grep -q "fastapi-spark1"; then
-    # Force-delete any stuck pods on Spark1 node to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=spark1 --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
-      :
-    fi
+  # Force-delete any stuck pods on Spark1 node to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete pods -l kubernetes.io/hostname=spark1 --force --grace-period=0 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    :
+  fi
 
-    # Delete Spark1 AI Workload deployment to free GPU resources
-    if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-spark1 -n default --ignore-not-found=true > /dev/null 2>&1; then
-      sleep 5 # Give time for GPU resources to be fully released
-      echo -e "[32m✅[0m"
-    else
-      echo -e "[31m❌[0m"
-      exit 1
-    fi
-  else
-    echo -e "No SPARK1 CPU deployment found, skipping cleanup"
+  # Delete Spark1 AI Workload deployment to free GPU resources
+  if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-spark1 -n default --ignore-not-found=true > /dev/null 2>&1; then
+    sleep 5 # Give time for GPU resources to be fully released
     echo -e "[32m✅[0m"
+  else
+    echo -e "[31m❌[0m"
+    exit 1
   fi
 fi
 step_increment
@@ -4188,7 +4139,6 @@ step_12
 step_13
 step_14
 step_15
-step_15b
 step_16
 step_17
 step_18
@@ -4248,12 +4198,12 @@ step_71
 step_72
 step_73
 step_74
-step_75
 step_76
 step_77
 step_78
 step_79
 step_80
+step_75
 step_81
 step_82
 step_83
