@@ -450,6 +450,9 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
 else
   echo "{a} [$NODE_NAME] [$NODE_IP] ${CURRENT_STEP}/${TOTAL_STEPS}. $NODE_DISPLAY SSH verification skipped (not enabled)"
 fi
+if [ "$DEBUG" = "1" ]; then
+  echo "$NODE_DISPLAY SSH validation completed."
+fi
 step_increment
 print_divider
 }
@@ -459,10 +462,18 @@ step_02(){
 # -------------------------------------------------------------------------
 # STEP 02: Nano ARP/PING CHECK
 # -------------------------------------------------------------------------
+if [ "$DEBUG" = "1" ]; then
+  echo "Running $NODE_DISPLAY network connectivity check..."
+  sleep 5
+  echo "Pinging $NODE_DISPLAY at $NODE_IP to verify network reachability..."
+fi
 if [ "$INSTALL_NANO_AGENT" = true ]; then
   step_echo_start "a" "$NODE_NAME" "$NODE_IP" "Verifying $NODE_DISPLAY network reachability (ARP/Ping)..."
   sleep 5
   run_network_check $NODE_IP "$NODE_DISPLAY"
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "$NODE_DISPLAY network reachability check completed."
 fi
 step_increment
 print_divider
@@ -516,6 +527,9 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
       echo -e "[32m✅[0m"  # Print checkmark if uninstall script doesn't exist (already uninstalled)
     fi
   fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "K3s agent uninstall on $NODE_DISPLAY completed."
 fi
 step_increment
 print_divider
@@ -603,10 +617,20 @@ EOF';
       echo -en " ✅[0m
 "
     else
-      echo -e "[31m❌[0m"
+      echo -e "[31m❌ Failed to reinstall K3s agent on $NODE_DISPLAY[0m"
+      echo "Debug info:"
+      echo "Reinstalling Agent on $NODE_DISPLAY with binary transfer..."
+      echo "Transferring k3s binary from tower to $NODE_DISPLAY..."
+      echo "Setting up systemd service on $NODE_DISPLAY..."
+      echo "Configuring K3s agent with token and server URL..."
+      echo "Error details - attempting to show command output:"
+      $SSH_CMD $SSH_USER@$NODE_IP "$K3S_REINSTALL_CMD"
       exit 1
     fi
   fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "K3s agent reinstall on $NODE_DISPLAY completed."
 fi
 step_increment
 print_divider
@@ -657,6 +681,9 @@ else
   echo -e "\x1b[31mFATAL: Failed to overwrite $NODE_DISPLAY service file.\x1b[0m"
   exit 1
 fi
+if [ "$DEBUG" = "1" ]; then
+  echo "K3s $NODE_DISPLAY agent service override completed."
+fi
 step_increment
 print_divider
 }
@@ -683,9 +710,12 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
   if $SSH_CMD $SSH_USER@$NODE_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
       echo -en " ✅\033[0m\n"
     else
-      echo -e "\033[31m❌\033[0m"
+      echo -e "\033[31m❌ Failed to create registry configuration directory on $NODE_DISPLAY\033[0m"
       exit 1
     fi
+  fi
+  if [ "$DEBUG" = "1" ]; then
+    echo "Registry configuration directory creation completed."
   fi
   step_increment
   print_divider
@@ -760,10 +790,13 @@ EOF
     if [ $? -eq 0 ]; then
       echo -e "\e[32m✅\e[0m"
     else
-      echo -e "\e[31m❌\e[0m"
+      echo -e "\e[31m❌ Failed to configure registry for $NODE_DISPLAY\e[0m"
       exit 1
     fi
   fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "Registry configuration for $NODE_DISPLAY completed."
 fi
 step_increment
 print_divider
@@ -795,6 +828,9 @@ else
     echo -e "⚠️"
   fi
 fi
+if [ "$DEBUG" = "1" ]; then
+  echo "K3s agent restart after registry config completed."
+fi
 step_increment
 print_divider
 
@@ -820,9 +856,15 @@ else
     wait_for_agent $NODE_NAME
     echo -e "[32m✅[0m"
   else
-    echo -e "[31m❌[0m"
+    echo -e "[31m❌ Failed to restart K3s agent after containerd config[0m"
+    echo "Debug info: Attempted to stop and start k3s-agent service on $NODE_IP"
+    echo "SSH command: $SSH_CMD $SSH_USER@$NODE_IP"
+    echo "Check systemctl status and logs on $NODE_NAME"
     exit 1
   fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "K3s agent restart after containerd config completed."
 fi
 step_increment
 print_divider
@@ -833,10 +875,11 @@ step_10(){
 # --------------------------------------------------------------------------------
 # STEP 10: Install NVIDIA Device Plugin for GPU Support
 # --------------------------------------------------------------------------------
-step_echo_start "s" "tower" "$TOWER_IP" "Installing NVIDIA Device Plugin for GPU support..."
-sleep 5
-# Apply the NVIDIA device plugin DaemonSet with correct configuration for Jetson Nano
-cat <<EOF | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1
+if [ "$DEBUG" = "1" ]; then
+  echo "Installing NVIDIA Device Plugin for GPU support... (Verbose output below)"
+  sleep 5
+  # Apply the NVIDIA device plugin DaemonSet with correct configuration for Jetson Nano
+  cat <<EOF | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f -
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -919,11 +962,110 @@ spec:
           type: ""
         name: nvidia-modeset
 EOF
-if [ $? -eq 0 ]; then
-  echo -e "\n✅ NVIDIA Device Plugin applied (unchanged if already exists)"
+  if [ $? -eq 0 ]; then
+    echo "NVIDIA Device Plugin applied successfully"
+  else
+    echo "Failed to apply NVIDIA Device Plugin"
+    exit 1
+  fi
 else
-  echo -e "\n❌ Failed to apply NVIDIA Device Plugin"
-  exit 1
+  step_echo_start "s" "tower" "$TOWER_IP" "Installing NVIDIA Device Plugin for GPU support..."
+  sleep 5
+  # Apply the NVIDIA device plugin DaemonSet with correct configuration for Jetson Nano
+  cat <<EOF | sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f - > /dev/null 2>&1
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-ds
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
+
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - nano
+                - agx
+      containers:
+      - env:
+        - name: DEVICE_DISCOVERY_STRATEGY
+          value: nvml
+        - name: FAIL_ON_INIT_ERROR
+          value: "false"
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.14.1
+        name: nvidia-device-plugin-ctr
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/device-plugins
+          name: device-plugin
+        - mountPath: /sys
+          name: sys
+        - mountPath: /usr/lib
+          name: usr-lib
+        - mountPath: /dev/nvidia0
+          name: nvidia-dev
+        - mountPath: /dev/nvidiactl
+          name: nvidia-ctl
+        - mountPath: /dev/nvidia-modeset
+          name: nvidia-modeset
+      tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+
+      volumes:
+      - hostPath:
+          path: /var/lib/kubelet/device-plugins
+          type: ""
+        name: device-plugin
+      - hostPath:
+          path: /sys
+          type: ""
+        name: sys
+      - hostPath:
+          path: /usr/lib
+          type: ""
+        name: usr-lib
+      - hostPath:
+          path: /dev/nvidia0
+          type: ""
+        name: nvidia-dev
+      - hostPath:
+          path: /dev/nvidiactl
+          type: ""
+        name: nvidia-ctl
+      - hostPath:
+          path: /dev/nvidia-modeset
+          type: ""
+        name: nvidia-modeset
+EOF
+  if [ $? -eq 0 ]; then
+    echo -e "\n✅ NVIDIA Device Plugin applied (unchanged if already exists)"
+  else
+    echo -e "\n❌ Failed to apply NVIDIA Device Plugin"
+    echo "Debug info: kubectl apply failed for NVIDIA device plugin DaemonSet"
+    echo "Check kubectl status and cluster connectivity"
+    exit 1
+  fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "NVIDIA Device Plugin installation completed."
 fi
 step_increment
 print_divider
@@ -946,7 +1088,12 @@ if [ "$DEBUG" = "1" ]; then
   else
     echo '{"insecure-registries": ["10.1.10.150:30500", "10.1.10.244:30500", "10.1.10.181:30500", "10.1.10.201:30500", "10.1.10.202:30500"]}' | sudo tee /etc/docker/daemon.json > /dev/null
   fi
-  sudo systemctl restart docker
+  if sudo systemctl restart docker; then
+    echo "Docker daemon restarted successfully"
+  else
+    echo "Failed to restart Docker daemon"
+    exit 1
+  fi
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Configuring Docker for insecure registry..."
   sleep 5
@@ -962,8 +1109,14 @@ else
   if sudo systemctl restart docker > /dev/null 2>&1; then
     echo -e "[32m✅[0m"
   else
-    echo -e "[32m✅[0m"
+    echo -e "[31m❌ Failed to restart Docker after registry configuration[0m"
+    echo "Debug info: systemctl restart docker failed"
+    echo "Check Docker service status and daemon.json configuration"
+    exit 1
   fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "Docker insecure registry configuration completed."
 fi
 step_increment
 print_divider
@@ -987,6 +1140,9 @@ else
     echo -e "[32m✅[0m"
   fi
 fi
+if [ "$DEBUG" = "1" ]; then
+  echo "FastAPI Nano Docker image tags cleanup completed."
+fi
 step_increment
 print_divider
 }
@@ -1009,6 +1165,9 @@ else
     exit 1
   fi
 fi
+if [ "$DEBUG" = "1" ]; then
+  echo "Nano Docker image build completed."
+fi
 step_increment
 print_divider
 }
@@ -1030,6 +1189,9 @@ else
     echo -e "[31m❌[0m"
     exit 1
   fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "Nano Docker image tagging completed."
 fi
 step_increment
 print_divider
@@ -1054,13 +1216,12 @@ else
     exit 1
   fi
 fi
+if [ "$DEBUG" = "1" ]; then
+  echo "Docker image push to registry completed."
+fi
 step_increment
 print_divider
-
 }
-
-
-
 
 step_15(){
 # ------------------------------------------------------------------------
@@ -1424,15 +1585,30 @@ step_16(){
 # STEP 16: GPU CAPACITY VERIFICATION
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ] || [ "$INSTALL_AGX_AGENT" = true ]; then
-  step_echo_start "a" "$NODE_NAME" "$NODE_IP" "Verifying $NODE_DISPLAY GPU capacity..."
-  sleep 5
-  if wait_for_gpu_capacity; then
-    GPU_AVAILABLE=true
-    echo -e "[32m✅[0m"
+  if [ "$DEBUG" = "1" ]; then
+    echo "Verifying $NODE_DISPLAY GPU capacity..."
+    sleep 5
+    if wait_for_gpu_capacity; then
+      GPU_AVAILABLE=true
+      echo "$NODE_DISPLAY GPU capacity verified successfully"
+    else
+      GPU_AVAILABLE=false
+      echo "$NODE_DISPLAY GPU not available, skipping GPU steps"
+    fi
   else
-    GPU_AVAILABLE=false
-    echo -e "[33m⚠️ GPU not available, skipping GPU steps[0m"
+    step_echo_start "a" "$NODE_NAME" "$NODE_IP" "Verifying $NODE_DISPLAY GPU capacity..."
+    sleep 5
+    if wait_for_gpu_capacity; then
+      GPU_AVAILABLE=true
+      echo -e "[32m✅[0m"
+    else
+      GPU_AVAILABLE=false
+      echo -e "[33m⚠️ GPU not available, skipping GPU steps[0m"
+    fi
   fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "GPU capacity verification completed."
 fi
 step_increment
 print_divider
@@ -1473,7 +1649,7 @@ if [ "$INSTALL_NANO_AGENT" = true ] || [ "$INSTALL_AGX_AGENT" = true ] && [ "$GP
 
       # Delete Nano AI Workload deployment to free GPU resources
       if sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-nano -n default --ignore-not-found=true > /dev/null 2>&1; then
-        sleep 5 # Give time for GPU resources to be fully released
+        sleep 15 # Give more time for GPU resources to be fully released
         echo -e "[32m✅[0m"
       else
         echo -e "[31m❌[0m"
@@ -1497,19 +1673,57 @@ step_18(){
 if [ "$INSTALL_NANO_AGENT" = true ] && [ "$GPU_AVAILABLE" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Deploying GPU-enabled AI Workload on Nano..."
-    # Deploy Nano AI Workload with GPU resources and services
-    # Delete existing deployment and services if they exist to ensure clean apply
-    # Also delete AGX services that may be using conflicting ports
-    echo "Deleting existing fastapi-agx-nodeport service..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-agx-nodeport --ignore-not-found=true
-    echo "Deleting existing fastapi-nano deployment..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-nano --ignore-not-found=true
-    echo "Deleting existing fastapi-nano-service..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-service --ignore-not-found=true
-    echo "Deleting existing fastapi-nano-nodeport..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-nodeport --ignore-not-found=true
+    sleep 5
+  else
+    step_echo_start "a" "nano" "$NANO_IP" "Deploying GPU-enabled AI Workload on Nano..."
+    sleep 5
+  fi
+
+  # Verify GPU resources are available before deployment
+  if [ "$DEBUG" = "1" ]; then
+    echo "Checking GPU resource availability..."
+  fi
+  GPU_ALLOCATED=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node $NODE_NAME | grep "nvidia.com/gpu" | tail -1 | awk '{print $2}')
+  GPU_CAPACITY=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node $NODE_NAME | grep "nvidia.com/gpu" | head -1 | awk '{print $2}')
+  
+  if [ "$GPU_ALLOCATED" = "$GPU_CAPACITY" ]; then
+    echo -e "❌ All GPU resources are allocated. Cannot deploy GPU-enabled workload."
+    echo "GPU capacity: $GPU_CAPACITY, GPU allocated: $GPU_ALLOCATED"
+    echo "Try running cleanup again or check for stuck pods."
+    exit 1
+  fi
+
+  # Deploy Nano AI Workload with GPU resources and services
+  # Delete existing deployment and services if they exist to ensure clean apply
+  if [ "$DEBUG" = "1" ]; then
+    echo "Deleting existing fastapi-nano deployment and services..."
+  fi
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-nano --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-service --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-nodeport --ignore-not-found=true > /dev/null 2>&1
+  
+  # Check for and delete any services using the required NodePorts (30004, 30005, 30006)
+  if [ "$DEBUG" = "1" ]; then
+    echo "Checking for services using required NodePorts (30004, 30005, 30006)..."
+  fi
+  for port in 30004 30005 30006; do
+    # Get services that have this NodePort
+    conflicting_services=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get services --no-headers -o custom-columns="NAME:.metadata.name,TYPE:.spec.type,PORTS:.spec.ports[*].nodePort" | grep "NodePort" | grep "$port" | awk '{print $1}')
+    for service in $conflicting_services; do
+      if [ "$service" != "fastapi-nano-nodeport" ]; then
+        if [ "$DEBUG" = "1" ]; then
+          echo "Deleting conflicting service '$service' using NodePort $port..."
+        fi
+        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service "$service" --ignore-not-found=true > /dev/null 2>&1
+      fi
+    done
+  done
+  
+  if [ "$DEBUG" = "1" ]; then
     echo "Creating GPU-enabled deployment YAML..."
-    cat > /tmp/fastapi-nano-gpu.yaml <<EOF
+  fi
+  YAML_FILE=$(mktemp)
+  cat <<EOF > "$YAML_FILE"
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1658,218 +1872,92 @@ EOF
 
   if [ "$DEBUG" = "1" ]; then
     echo "Applying GPU-enabled $NODE_DISPLAY FastAPI deployment..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-nano-gpu.yaml
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f "$YAML_FILE"
     apply_exit=$?
   else
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-nano-gpu.yaml > /dev/null 2>&1
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f "$YAML_FILE" > /dev/null 2>&1
     apply_exit=$?
   fi
 
   if [ $apply_exit -eq 0 ]; then
-    echo -e "✅ GPU-enabled AI Workload deployed on $NODE_DISPLAY"
+    if [ "$DEBUG" = "1" ]; then
+      echo "GPU-enabled deployment YAML applied successfully"
+    else
+      echo -e "[32m✅[0m"
+    fi
     # Wait for GPU-enabled pod to be running
-    echo -e "Waiting for GPU-enabled FastAPI pod to be ready..."
+    if [ "$DEBUG" = "1" ]; then
+      echo "Waiting for GPU-enabled FastAPI pod to be ready..."
+    fi
     for i in {1..60}; do
-      if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-nano -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
-        echo -e "✅ GPU-enabled AI Workload pod is running on $NODE_DISPLAY"
+      pod_status=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-nano -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
+      if [ "$pod_status" = "True" ]; then
+        if [ "$DEBUG" = "1" ]; then
+          echo "GPU-enabled AI Workload pod is ready on $NODE_DISPLAY"
+        else
+          echo -e "✅ GPU-enabled AI Workload pod is ready on $NODE_DISPLAY"
+        fi
         break
       fi
       sleep 5
     done
     if [ $i -eq 60 ]; then
-      echo -e "❌ GPU-enabled AI Workload pod did not start within 5 minutes"
+      echo -e "❌ GPU-enabled AI Workload pod did not become ready within 5 minutes"
+      echo ""
+      echo "Troubleshooting steps:"
+      echo "1. Check pod status: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-$NODE_NAME -o wide"
+      echo "2. View pod events: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe pods -l app=fastapi-$NODE_NAME"
+      echo "3. Check $NODE_DISPLAY node status: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node $NODE_NAME"
+      echo "4. Verify GPU resources: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node $NODE_NAME | grep -A 5 nvidia.com/gpu"
+      echo "5. Check image availability: sudo docker images | grep fastapi-$NODE_NAME"
+      echo ""
+      if [ "$DEBUG" = "1" ]; then
+        echo "Debug info: Checking pod status and events..."
+        echo "Pod status:"
+        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-nano -o wide
+        echo "Pod events:"
+        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe pods -l app=fastapi-nano
+        echo "Nano node status:"
+        sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node nano
+      fi
       exit 1
     fi
   else
     echo -e "❌ Failed to deploy GPU-enabled AI Workload on $NODE_DISPLAY"
-    exit 1
-  fi
-  else
-    step_echo_start "a" "nano" "$NANO_IP" "Deploying GPU-enabled AI Workload on Nano..."
-    echo -e "[32m✅[0m"
-
-    # Deploy Nano AI Workload with GPU resources and services
-    # Delete existing deployment and services if they exist to ensure clean apply
-    # Also delete AGX services that may be using conflicting ports
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-agx-nodeport --ignore-not-found=true > /dev/null 2>&1
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-nano --ignore-not-found=true > /dev/null 2>&1
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-service --ignore-not-found=true > /dev/null 2>&1
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-nodeport --ignore-not-found=true > /dev/null 2>&1
-    cat > /tmp/fastapi-nano-gpu.yaml <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: fastapi-nano
-  labels:
-    app: fastapi-nano
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: fastapi-nano
-  template:
-    metadata:
-      labels:
-        app: fastapi-nano
-    spec:
-      runtimeClassName: nvidia
-      nodeSelector:
-        kubernetes.io/hostname: nano
-      tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-      containers:
-      - name: fastapi
-        image: $REGISTRY_IP:$REGISTRY_NODE_PORT/fastapi-nano:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8000
-          name: http
-        - containerPort: 8888
-          name: jupyter
-        - containerPort: 8001
-          name: llm-api
-        resources:
-          requests:
-            memory: "2Gi"
-            cpu: "500m"
-            nvidia.com/gpu: 1
-          limits:
-            memory: "4Gi"
-            cpu: "2000m"
-            nvidia.com/gpu: 1
-        env:
-        - name: DEVICE_TYPE
-          value: "nano"
-        - name: GPU_ENABLED
-          value: "true"
-        - name: FORCE_GPU_CHECKS
-          value: "true"
-        - name: LLM_ENABLED
-          value: "true"
-        - name: RAG_ENABLED
-          value: "true"
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        volumeMounts:
-        - name: vmstore
-          mountPath: /mnt/vmstore
-        - name: nano-home
-          mountPath: /home/nano
-        - name: nano-config
-          mountPath: /app/app/config
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8000
-          initialDelaySeconds: 10
-          periodSeconds: 10
-      volumes:
-      - name: vmstore
-        nfs:
-          server: $TOWER_IP
-          path: /export/vmstore
-      - name: nano-home
-        nfs:
-          server: $TOWER_IP
-          path: /export/vmstore/nano_home
-      - name: nano-config
-        nfs:
-          server: $TOWER_IP
-          path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: fastapi-nano-service
-  namespace: default
-  labels:
-    app: fastapi-nano
-    device: nano
-spec:
-  selector:
-    app: fastapi-nano
-  ports:
-  - port: 8000
-    targetPort: 8000
-    protocol: TCP
-    name: http
-  - port: 8888
-    targetPort: 8888
-    protocol: TCP
-    name: jupyter
-  - port: 8001
-    targetPort: 8001
-    protocol: TCP
-    name: llm-api
-  type: ClusterIP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: fastapi-nano-nodeport
-  namespace: default
-  labels:
-    app: fastapi-nano
-    device: nano
-spec:
-  selector:
-    app: fastapi-nano
-  ports:
-  - port: 8000
-    targetPort: 8000
-    nodePort: 30004
-    protocol: TCP
-    name: http
-  - port: 8888
-    targetPort: 8888
-    nodePort: 30005
-    protocol: TCP
-    name: jupyter
-  - port: 8001
-    targetPort: 8001
-    nodePort: 30006
-    protocol: TCP
-    name: llm-api
-  type: NodePort
-EOF
-
-    if [ "$DEBUG" = "1" ]; then
-      echo "Applying GPU-enabled $NODE_DISPLAY FastAPI deployment..."
-      sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-nano-gpu.yaml
-      apply_exit=$?
-    else
-      sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-nano-gpu.yaml > /dev/null 2>&1
-      apply_exit=$?
-    fi
-
-    if [ $apply_exit -eq 0 ]; then
-      echo -e "✅ GPU-enabled AI Workload deployed on $NODE_DISPLAY"
-      # Wait for GPU-enabled pod to be running
-      echo -e "Waiting for GPU-enabled FastAPI pod to be ready..."
-      for i in {1..60}; do
-        if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-nano -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
-          echo -e "✅ GPU-enabled AI Workload pod is running on $NODE_DISPLAY"
-          break
-        fi
-        sleep 5
-      done
-      if [ $i -eq 60 ]; then
-        echo -e "❌ GPU-enabled AI Workload pod did not start within 5 minutes"
-        exit 1
+    echo "Exit code: $apply_exit"
+    echo ""
+    
+    # Check if the error is due to port conflicts
+    port_conflict_detected=false
+    for port in 30004 30005 30006; do
+      conflicting_services=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get services --no-headers -o custom-columns="NAME:.metadata.name,TYPE:.spec.type,PORTS:.spec.ports[*].nodePort" | grep "NodePort" | grep "$port" | awk '{print $1}')
+      if [ -n "$conflicting_services" ]; then
+        port_conflict_detected=true
+        echo "🚨 PORT CONFLICT DETECTED: NodePort $port is already in use by service(s): $conflicting_services"
       fi
-    else
-      echo -e "❌ Failed to deploy GPU-enabled AI Workload on $NODE_DISPLAY"
-      exit 1
+    done
+    
+    if [ "$port_conflict_detected" = true ]; then
+      echo ""
+      echo "SOLUTION: The script should have automatically cleaned up conflicting services."
+      echo "If this error persists, manually delete the conflicting services:"
+      echo "  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service <conflicting-service-name>"
+      echo ""
     fi
+    
+    echo "Troubleshooting steps:"
+    echo "1. Check cluster connectivity: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes"
+    echo "2. Verify $NODE_DISPLAY node is ready: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node $NODE_NAME"
+    echo "3. Check for existing deployments: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-$NODE_NAME"
+    echo "4. Validate YAML syntax: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f $YAML_FILE --dry-run=client"
+    echo "5. Check GPU resources: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml describe node $NODE_NAME | grep -A 5 nvidia.com/gpu"
+    echo ""
+    if [ "$DEBUG" = "1" ]; then
+      echo "Debug info: kubectl apply failed with exit code $apply_exit"
+      echo "Check the YAML syntax and cluster connectivity"
+      echo "Try running: sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f $YAML_FILE"
+    fi
+    exit 1
   fi
 fi
 step_increment
