@@ -43,7 +43,7 @@ esac
 
 
 # Add .git to the exclusion list
-EXCLUDES="--exclude=.git --exclude=.cache --exclude=Cache --exclude=__pycache__ --exclude=.mozilla --exclude=.config/google-chrome --exclude=.config/chromium --exclude=.thumbnails --exclude=.local/share/Trash"
+EXCLUDES="--exclude=.git --exclude=.cache --exclude=Cache --exclude=__pycache__ --exclude=.mozilla --exclude=.config/google-chrome --exclude=.config/chromium --exclude=.thumbnails --exclude=.local/share/Trash --exclude=rag/reference/azure-ai-search-multimodal-sample/data/"
 
 # Perform the backup with --delete to remove files from the destination that are not in the source.
 rsync -avh --delete $EXCLUDES "$SRC/" "$DEST/"

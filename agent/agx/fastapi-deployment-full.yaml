@@ -1,11 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastapi-nano
+  name: fastapi-agx
   namespace: default
   labels:
-    app: fastapi-nano
-    device: nano
+    app: fastapi-agx
+    device: agx
     tier: agent
 spec:
   replicas: 1
@@ -13,20 +13,21 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: fastapi-nano
+      app: fastapi-agx
   template:
     metadata:
       labels:
-        app: fastapi-nano
-        device: nano
+        app: fastapi-agx
+        device: agx
         tier: agent
     spec:
       runtimeClassName: nvidia
       nodeSelector:
-        kubernetes.io/hostname: nano
+        kubernetes.io/hostname: agx
       containers:
-      - name: fastapi-nano
-        image: 10.1.10.150:5000/fastapi-nano:latest
+      - name: fastapi-agx
+        image: 10.1.10.150:5000/fastapi-agx:v4
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
           name: http
@@ -36,18 +37,26 @@ spec:
           requests:
             memory: "512Mi"
             cpu: "250m"
-            nvidia.com/gpu: 1
           limits:
             memory: "2Gi"
             cpu: "1000m"
-            nvidia.com/gpu: 1
         env:
         - name: DEVICE_TYPE
-          value: "nano"
+          value: "agx"
         - name: GPU_ENABLED
           value: "true"
         - name: FORCE_GPU_CHECKS
           value: "true"
+        - name: POSTGRES_HOST
+          value: "postgres-db"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          value: "postgres"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "postgres"
         - name: NODE_NAME
           valueFrom:
             fieldRef:
@@ -55,11 +64,11 @@ spec:
         volumeMounts:
         - name: vmstore
           mountPath: /mnt/vmstore
-        - name: nano-home
-          mountPath: /home/nano
-        - name: nano-config
+        - name: agx-home
+          mountPath: /home/agx
+        - name: agx-config
           mountPath: /workspace/config
-        - name: nano-workspace
+        - name: agx-workspace
           mountPath: /workspace
         livenessProbe:
           httpGet:
@@ -78,18 +87,18 @@ spec:
         nfs:
           server: 10.1.10.150
           path: /export/vmstore
-      - name: nano-home
+      - name: agx-home
         nfs:
           server: 10.1.10.150
-          path: /export/vmstore/nano_home
-      - name: nano-config
+          path: /export/vmstore/agx_home
+      - name: agx-config
         nfs:
           server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
-      - name: nano-workspace
+          path: /export/vmstore/tower_home/kubernetes/agent/agx/app/config
+      - name: agx-workspace
         nfs:
           server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/nano
+          path: /export/vmstore/tower_home/kubernetes/agent/agx
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"
@@ -102,14 +111,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-nano-service
+  name: fastapi-agx-service
   namespace: default
   labels:
-    app: fastapi-nano
-    device: nano
+    app: fastapi-agx
+    device: agx
 spec:
   selector:
-    app: fastapi-nano
+    app: fastapi-agx
   ports:
   - port: 8000
     targetPort: 8000
@@ -124,23 +133,23 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-nano-nodeport
+  name: fastapi-agx-nodeport
   namespace: default
   labels:
-    app: fastapi-nano
-    device: nano
+    app: fastapi-agx
+    device: agx
 spec:
   selector:
-    app: fastapi-nano
+    app: fastapi-agx
   ports:
   - port: 8000
     targetPort: 8000
-    nodePort: 30002
+    nodePort: 30006
     protocol: TCP
     name: http
   - port: 8888
     targetPort: 8888
-    nodePort: 30003
+    nodePort: 30007
     protocol: TCP
     name: jupyter
   type: NodePort

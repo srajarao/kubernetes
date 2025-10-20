@@ -1,11 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastapi-nano
+  name: fastapi-spark1
   namespace: default
   labels:
-    app: fastapi-nano
-    device: nano
+    app: fastapi-spark1
+    device: spark1
     tier: agent
 spec:
   replicas: 1
@@ -13,20 +13,21 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: fastapi-nano
+      app: fastapi-spark1
   template:
     metadata:
       labels:
-        app: fastapi-nano
-        device: nano
+        app: fastapi-spark1
+        device: spark1
         tier: agent
     spec:
       runtimeClassName: nvidia
       nodeSelector:
-        kubernetes.io/hostname: nano
+        kubernetes.io/hostname: spark1
       containers:
-      - name: fastapi-nano
-        image: 10.1.10.150:5000/fastapi-nano:latest
+      - name: fastapi-spark1
+        image: 10.1.10.150:5000/fastapi-spark1:v2
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
           name: http
@@ -36,30 +37,36 @@ spec:
           requests:
             memory: "512Mi"
             cpu: "250m"
-            nvidia.com/gpu: 1
           limits:
             memory: "2Gi"
             cpu: "1000m"
-            nvidia.com/gpu: 1
         env:
         - name: DEVICE_TYPE
-          value: "nano"
+          value: "spark1"
         - name: GPU_ENABLED
           value: "true"
         - name: FORCE_GPU_CHECKS
           value: "true"
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
+        - name: POSTGRES_HOST
+          value: "postgres-db"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          value: "postgres"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "postgres"
+        - name: SKIP_GPU_CHECKS
+          value: "true"
         volumeMounts:
         - name: vmstore
           mountPath: /mnt/vmstore
-        - name: nano-home
-          mountPath: /home/nano
-        - name: nano-config
+        - name: spark1-home
+          mountPath: /home/spark1
+        - name: spark1-config
           mountPath: /workspace/config
-        - name: nano-workspace
+        - name: spark1-workspace
           mountPath: /workspace
         livenessProbe:
           httpGet:
@@ -78,18 +85,18 @@ spec:
         nfs:
           server: 10.1.10.150
           path: /export/vmstore
-      - name: nano-home
+      - name: spark1-home
         nfs:
           server: 10.1.10.150
-          path: /export/vmstore/nano_home
-      - name: nano-config
+          path: /export/vmstore/spark1_home
+      - name: spark1-config
         nfs:
           server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
-      - name: nano-workspace
+          path: /export/vmstore/tower_home/kubernetes/agent/spark1/app/config
+      - name: spark1-workspace
         nfs:
           server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/nano
+          path: /export/vmstore/tower_home/kubernetes/agent/spark1
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"
@@ -102,14 +109,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-nano-service
+  name: fastapi-spark1-service
   namespace: default
   labels:
-    app: fastapi-nano
-    device: nano
+    app: fastapi-spark1
+    device: spark1
 spec:
   selector:
-    app: fastapi-nano
+    app: fastapi-spark1
   ports:
   - port: 8000
     targetPort: 8000
@@ -124,23 +131,23 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-nano-nodeport
+  name: fastapi-spark1-nodeport
   namespace: default
   labels:
-    app: fastapi-nano
-    device: nano
+    app: fastapi-spark1
+    device: spark1
 spec:
   selector:
-    app: fastapi-nano
+    app: fastapi-spark1
   ports:
   - port: 8000
     targetPort: 8000
-    nodePort: 30002
+    nodePort: 30004
     protocol: TCP
     name: http
   - port: 8888
     targetPort: 8888
-    nodePort: 30003
+    nodePort: 30005
     protocol: TCP
     name: jupyter
   type: NodePort

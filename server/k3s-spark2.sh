@@ -858,26 +858,9 @@ if [ "$INSTALL_SERVER" = true ]; then
   sleep 5
   # The output of the curl | sh command is inherently verbose and NOT suppressed here,
   # but the surrounding messages provide the necessary structure.
-  # Allow callers to override install flags via K3S_INSTALL_FLAGS; otherwise
-  # install with a default that binds the API to all interfaces and forces
-  # the HTTPS listen port to 6443.
-  K3S_INSTALL_FLAGS="${K3S_INSTALL_FLAGS:---bind-address=0.0.0.0 --https-listen-port=6443}"
-  echo "Installing k3s with flags: $K3S_INSTALL_FLAGS"
-  curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="$K3S_INSTALL_FLAGS" sh -s - server --disable=traefik
+  sudo curl -sfL https://get.k3s.io | sh -s - server --disable=traefik
   echo -e "Waiting for K3s server to fully initialize..."
   sleep 30
-  # Verify API server is listening on the expected port so we can fail early if
-  # the server did not bind correctly.
-  echo "Verifying API server is listening on port 6443..."
-  if sudo ss -tulnp | grep -w 6443 > /dev/null 2>&1; then
-    echo -e "\033[32m✅ API server listening on 6443:\033[0m"
-    sudo ss -tulnp | grep -w 6443 || true
-  else
-    echo -e "\033[31m❌ API server NOT listening on 6443 (see output)\033[0m"
-    sudo ss -tulnp | grep -w 6443 || true
-  fi
-  echo "k3s systemd status (short):"
-  sudo systemctl status k3s --no-pager || true
   echo -e "[32m$(printf '%.0s=' {1..80})[0m"
   step_echo_start "s" "tower" "$TOWER_IP" "IK3s server installed..."
   echo -e "[32m✅[0m"

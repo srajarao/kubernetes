@@ -251,7 +251,7 @@ def start_jupyter_lab():
         return False
 
 
-def check_fastapi_agx_deps():
+def check_fastapi_spark1_deps():
     print("\n=== FastAPI AGX Project Dependencies Check ===")
     dependencies = {
         "psycopg2": "psycopg2",
@@ -379,29 +379,59 @@ def main():
     result1 = load_libstdcxx()
     print(f"libstdc++ result: {result1}")
     
-    print("Running cuSPARSELt check...")
-    result2 = check_cusparselt()
-    print(f"cuSPARSELt result: {result2}")
-    
-    print("Running PyTorch check...")
-    result3 = check_torch()
-    print(f"PyTorch result: {result3}")
-    
-    print("Running TensorFlow check...")
-    result4 = check_tensorflow()
-    print(f"TensorFlow result: {result4}")
-    
-    print("Running TensorRT check...")
-    result5 = check_tensorrt()
-    print(f"TensorRT result: {result5}")
+    # Check if we should skip GPU checks (container environment or Spark1 CPU-only)
+    force_gpu_checks = os.getenv("FORCE_GPU_CHECKS", "false").lower() == "true"
+    skip_gpu_checks = (
+        os.getenv("SKIP_GPU_CHECKS", "false").lower() == "true" or
+        (os.path.exists("/.dockerenv") and not force_gpu_checks) or  # Running in Docker container (unless forced)
+        (os.uname().machine == "aarch64" and not force_gpu_checks)   # ARM64 device (unless forced)
+    )
+
+    if skip_gpu_checks:
+        reason = []
+        if os.getenv("SKIP_GPU_CHECKS", "false").lower() == "true":
+            reason.append("SKIP_GPU_CHECKS=true")
+        if os.path.exists("/.dockerenv") and not force_gpu_checks:
+            reason.append("Docker container")
+        if os.uname().machine == "aarch64" and not force_gpu_checks:
+            reason.append("ARM64 architecture")
+
+        print(f"Skipping GPU checks ({', '.join(reason)})...")
+        result2 = True  # Skip cuSPARSELt check
+        print(f"cuSPARSELt result: {result2} (skipped)")
+        
+        result3 = True  # Skip PyTorch check
+        print(f"PyTorch result: {result3} (skipped)")
+        
+        result4 = True  # Skip TensorFlow check
+        print(f"TensorFlow result: {result4} (skipped)")
+        
+        result5 = True  # Skip TensorRT check
+        print(f"TensorRT result: {result5} (skipped)")
+    else:
+        print("Running cuSPARSELt check...")
+        result2 = check_cusparselt()
+        print(f"cuSPARSELt result: {result2}")
+        
+        print("Running PyTorch check...")
+        result3 = check_torch()
+        print(f"PyTorch result: {result3}")
+        
+        print("Running TensorFlow check...")
+        result4 = check_tensorflow()
+        print(f"TensorFlow result: {result4}")
+        
+        print("Running TensorRT check...")
+        result5 = check_tensorrt()
+        print(f"TensorRT result: {result5}")
     
     print("Running Jupyter check...")
     result6 = check_jupyter()
     print(f"Jupyter result: {result6}")
     
-    print("Running FastAPI AGX deps check...")
-    result7 = check_fastapi_agx_deps()
-    print(f"FastAPI AGX deps result: {result7}")
+    print("Running FastAPI Spark1 deps check...")
+    result7 = check_fastapi_spark1_deps()
+    print(f"FastAPI Spark1 deps result: {result7}")
     
     # Check database connection (skip if SKIP_DB_CHECK is set for testing)
     if os.getenv("SKIP_DB_CHECK", "true").lower() == "true":  # Changed default to true
