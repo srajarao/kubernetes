@@ -26,30 +26,35 @@ spec:
         kubernetes.io/hostname: agx
       containers:
       - name: fastapi-agx
-        image: 10.1.10.150:30500/fastapi-nano:latest
+        image: 10.1.10.150:30500/fastapi-agx:latest
         imagePullPolicy: Always
+        command: ["/opt/venv/bin/python", "agx_app.py"]
         ports:
         - containerPort: 8000
           name: http
         - containerPort: 8888
           name: jupyter
+        - containerPort: 8001
+          name: llm-api
         resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
           limits:
+            # nvidia.com/gpu: 1
             memory: "2Gi"
             cpu: "1000m"
+          requests:
+            # nvidia.com/gpu: 1
+            memory: "512Mi"
+            cpu: "250m"
         env:
         - name: DEVICE_TYPE
           value: "agx"
         - name: GPU_ENABLED
           value: "true"
         - name: FORCE_GPU_CHECKS
-          value: "false"
+          value: "true"
         - name: SKIP_GPU_CHECKS
           value: "false"
-        - name: SKIP_TENSORFLOW_CHECK
+        - name: POSTGRES_HOST
           value: "postgres-db"
         - name: POSTGRES_PORT
           value: "5432"
@@ -68,22 +73,20 @@ spec:
           mountPath: /mnt/vmstore
         - name: agx-home
           mountPath: /home/agx
-        - name: agx-config
-          mountPath: /workspace/config
         - name: agx-workspace
           mountPath: /workspace
         livenessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         readinessProbe:
           httpGet:
             path: /ready
             port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: 10
+          periodSeconds: 10
       volumes:
       - name: vmstore
         nfs:
@@ -93,10 +96,6 @@ spec:
         nfs:
           server: 10.1.10.150
           path: /export/vmstore/agx_home
-      - name: agx-config
-        nfs:
-          server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/agx/app/config
       - name: agx-workspace
         nfs:
           server: 10.1.10.150
@@ -109,49 +108,3 @@ spec:
         operator: "Equal"
         value: "true"
         effect: "NoExecute"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: fastapi-agx-service
-  namespace: default
-  labels:
-    app: fastapi-agx
-    device: agx
-spec:
-  selector:
-    app: fastapi-agx
-  ports:
-  - port: 8000
-    targetPort: 8000
-    protocol: TCP
-    name: http
-  - port: 8888
-    targetPort: 8888
-    protocol: TCP
-    name: jupyter
-  type: ClusterIP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: fastapi-agx-nodeport
-  namespace: default
-  labels:
-    app: fastapi-agx
-    device: agx
-spec:
-  selector:
-    app: fastapi-agx
-  ports:
-  - port: 8000
-    targetPort: 8000
-    nodePort: 30006
-    protocol: TCP
-    name: http
-  - port: 8888
-    targetPort: 8888
-    nodePort: 30007
-    protocol: TCP
-    name: jupyter
-  type: NodePort

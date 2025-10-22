@@ -2,7 +2,7 @@
 # AGX Cleanup Script
 # Use this to completely remove k3s agent and reset AGX for fresh setup
 
-source "$(dirname "$0")/agx-config.env"
+source "$(dirname "$0")/spark1-config.env"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'

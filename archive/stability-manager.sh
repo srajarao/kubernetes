@@ -83,9 +83,16 @@ check_pods() {
 
     # Check each expected pod
     for pod in "fastapi-nano" "postgres-db" "pgadmin"; do
-        if sudo kubectl --kubeconfig="$KUBECONFIG" get pods -l app="$pod" --no-headers 2>/dev/null | grep -q "Running"; then
-            if [ "${QUIET_MODE:-false}" = false ]; then
-                success "$pod: Running"
+        if sudo kubectl --kubeconfig="$KUBECONFIG" get pods --no-headers 2>/dev/null | grep -q "$pod"; then
+            if sudo kubectl --kubeconfig="$KUBECONFIG" get pods --no-headers 2>/dev/null | grep "$pod" | grep -q "Running"; then
+                if [ "${QUIET_MODE:-false}" = false ]; then
+                    success "$pod: Running"
+                fi
+            else
+                if [ "${QUIET_MODE:-false}" = false ]; then
+                    error "$pod: Not running or missing"
+                fi
+                ((failed_pods++))
             fi
         else
             if [ "${QUIET_MODE:-false}" = false ]; then

@@ -5,8 +5,6 @@ metadata:
   namespace: default
   labels:
     app: fastapi-nano
-    device: nano
-    tier: agent
 spec:
   replicas: 1
   strategy:
@@ -18,36 +16,37 @@ spec:
     metadata:
       labels:
         app: fastapi-nano
-        device: nano
-        tier: agent
     spec:
-      runtimeClassName: nvidia
       nodeSelector:
         kubernetes.io/hostname: nano
       containers:
-      - name: fastapi-nano
-        image: 10.1.10.150:5000/fastapi-nano:latest
+      - name: fastapi
+        image: 10.1.10.150:30500/fastapi-nano:latest
         ports:
         - containerPort: 8000
           name: http
         - containerPort: 8888
           name: jupyter
+        - containerPort: 8001
+          name: llm-api
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "250m"
-            nvidia.com/gpu: 1
-          limits:
             memory: "2Gi"
-            cpu: "1000m"
-            nvidia.com/gpu: 1
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
         env:
         - name: DEVICE_TYPE
           value: "nano"
         - name: GPU_ENABLED
-          value: "true"
+          value: "false"
         - name: FORCE_GPU_CHECKS
-          value: "true"
+          value: "false"
+        - name: LLM_ENABLED
+          value: "false"
+        - name: RAG_ENABLED
+          value: "false"
         - name: NODE_NAME
           valueFrom:
             fieldRef:
@@ -58,21 +57,19 @@ spec:
         - name: nano-home
           mountPath: /home/nano
         - name: nano-config
-          mountPath: /workspace/config
-        - name: nano-workspace
-          mountPath: /workspace
+          mountPath: /app/app/config
         livenessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
         readinessProbe:
           httpGet:
             path: /ready
             port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: 10
+          periodSeconds: 10
       volumes:
       - name: vmstore
         nfs:
@@ -86,10 +83,6 @@ spec:
         nfs:
           server: 10.1.10.150
           path: /export/vmstore/tower_home/kubernetes/agent/nano/app/config
-      - name: nano-workspace
-        nfs:
-          server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/nano
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"
@@ -119,6 +112,10 @@ spec:
     targetPort: 8888
     protocol: TCP
     name: jupyter
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: llm-api
   type: ClusterIP
 ---
 apiVersion: v1
@@ -143,4 +140,9 @@ spec:
     nodePort: 30003
     protocol: TCP
     name: jupyter
+  - port: 8001
+    targetPort: 8001
+    nodePort: 30007
+    protocol: TCP
+    name: llm-api
   type: NodePort

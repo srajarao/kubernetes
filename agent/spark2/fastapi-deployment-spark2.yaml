@@ -1,50 +1,62 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastapi-spark1
+  name: fastapi-spark2
   namespace: default
   labels:
-    app: fastapi-spark1
-    device: spark1
-    tier: agent
+    app: fastapi-spark2
 spec:
   replicas: 1
-  strategy:
-    type: Recreate
   selector:
     matchLabels:
-      app: fastapi-spark1
+      app: fastapi-spark2
   template:
     metadata:
       labels:
-        app: fastapi-spark1
-        device: spark1
+        app: fastapi-spark2
+        device: spark2
         tier: agent
     spec:
-      runtimeClassName: nvidia
+      restartPolicy: Always
       nodeSelector:
-        kubernetes.io/hostname: spark1
+        kubernetes.io/hostname: spark2
       containers:
-      - name: fastapi-spark1
-        image: 10.1.10.150:30500/fastapi-spark1:latest
-        imagePullPolicy: Always
+      - name: fastapi-spark2
+        image: 10.1.10.150:30500/fastapi-spark2:latest
         ports:
         - containerPort: 8000
           name: http
         - containerPort: 8888
           name: jupyter
+        - containerPort: 8001
+          name: llm
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          failureThreshold: 30
+          periodSeconds: 10
+          initialDelaySeconds: 60
         resources:
           requests:
             memory: "512Mi"
             cpu: "250m"
+            nvidia.com/gpu: 1
           limits:
             memory: "2Gi"
             cpu: "1000m"
+            nvidia.com/gpu: 1
         env:
         - name: DEVICE_TYPE
-          value: "spark1"
+          value: "spark2"
         - name: GPU_ENABLED
           value: "true"
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "all"
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: "all"
+        - name: NVIDIA_REQUIRE_CUDA
+          value: "cuda>=11.0"
         - name: FORCE_GPU_CHECKS
           value: "true"
         - name: POSTGRES_HOST
@@ -57,17 +69,21 @@ spec:
           value: "postgres"
         - name: POSTGRES_PASSWORD
           value: "postgres"
-        - name: SKIP_GPU_CHECKS
-          value: "true"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         volumeMounts:
         - name: vmstore
           mountPath: /mnt/vmstore
-        - name: spark1-home
-          mountPath: /home/spark1
-        - name: spark1-config
-          mountPath: /workspace/config
-        - name: spark1-workspace
-          mountPath: /workspace
+        - name: spark2-home
+          mountPath: /home/spark2
+        - name: spark2-config
+          mountPath: /app/app/config
+        - name: nvidia-driver
+          mountPath: /usr/lib/aarch64-linux-gnu
+        securityContext:
+          privileged: true
         livenessProbe:
           httpGet:
             path: /health
@@ -85,18 +101,17 @@ spec:
         nfs:
           server: 10.1.10.150
           path: /export/vmstore
-      - name: spark1-home
+      - name: spark2-home
         nfs:
           server: 10.1.10.150
-          path: /export/vmstore/spark1_home
-      - name: spark1-config
+          path: /export/vmstore/spark2_home
+      - name: spark2-config
         nfs:
           server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/spark1/app/config
-      - name: spark1-workspace
-        nfs:
-          server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/spark1
+          path: /export/vmstore/tower_home/kubernetes/agent/spark2/app/config
+      - name: nvidia-driver
+        hostPath:
+          path: /usr/lib/aarch64-linux-gnu
       tolerations:
       - key: "node-role.kubernetes.io/agent"
         operator: "Exists"
@@ -109,14 +124,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-spark1-service
+  name: fastapi-spark2-service
   namespace: default
   labels:
-    app: fastapi-spark1
-    device: spark1
+    app: fastapi-spark2
+    device: spark2
 spec:
   selector:
-    app: fastapi-spark1
+    app: fastapi-spark2
   ports:
   - port: 8000
     targetPort: 8000
@@ -131,14 +146,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-spark1-nodeport
+  name: fastapi-spark2-nodeport
   namespace: default
   labels:
-    app: fastapi-spark1
-    device: spark1
+    app: fastapi-spark2
+    device: spark2
 spec:
   selector:
-    app: fastapi-spark1
+    app: fastapi-spark2
   ports:
   - port: 8000
     targetPort: 8000
@@ -150,4 +165,9 @@ spec:
     nodePort: 30011
     protocol: TCP
     name: jupyter
+  - port: 8001
+    targetPort: 8001
+    nodePort: 30012
+    protocol: TCP
+    name: llm
   type: NodePort

@@ -5,7 +5,7 @@
 
 set -e
 
-IMAGE_NAME="fastapi-agx"
+IMAGE_NAME="fastapi-spark2"
 REGISTRY="10.1.10.150:30500"
 TAG="latest"
 FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
@@ -29,9 +29,9 @@ fi
 # Build the image
 echo "🏗️  Building ${FULL_IMAGE} (with Jupyter Lab pre-installed and CUDA PyTorch)"
 if [[ "$FORCE_CLEAN" == true ]]; then
-    docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t ${IMAGE_NAME} --no-cache --load .
+    docker buildx build --platform linux/arm64 -f dockerfile.spark2.req -t ${IMAGE_NAME} --no-cache --load .
 else
-    docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t ${IMAGE_NAME} --load .
+    docker buildx build --platform linux/arm64 -f dockerfile.spark2.req -t ${IMAGE_NAME} --load .
 fi
 
 # Tag and push
@@ -47,7 +47,7 @@ echo "🎮 GPU support: CUDA-enabled PyTorch installed (detects GPU at runtime)"
 echo ""
 echo "🚀 To deploy:"
 echo "   kubectl apply -f start-fastapi.yaml"
-echo "   kubectl delete pods -l app=fastapi-agx  # Force restart"
+echo "   kubectl delete pods -l app=fastapi-spark2  # Force restart"
 echo ""
 echo "💡 For clean rebuilds when troubleshooting:"
 echo "   ./build.sh --clean"

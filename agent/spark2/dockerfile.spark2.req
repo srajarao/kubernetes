@@ -48,7 +48,7 @@ RUN $VIRTUAL_ENV/bin/pip install \
 RUN $VIRTUAL_ENV/bin/pip install -r /app/requirements.spark2.txt
 
 # Copy application code
-COPY spark1_app.py /app/spark1__app.py
+COPY spark2_app.py /app/spark2_app.py
 COPY app/config/ /app/app/config/
 
 # Create necessary directories
@@ -61,4 +61,4 @@ EXPOSE 8001
 
 # Set the default command for the container
 WORKDIR /app
-CMD ["python3", "/app/spark1_app.py"]
+CMD ["python3", "/app/spark2_app.py"]

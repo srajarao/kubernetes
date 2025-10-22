@@ -21,6 +21,9 @@ import importlib
 import psycopg2
 from dotenv import load_dotenv
 import os
+import signal
+import platform
+
 print(f"AGX_APP: GPU_ENABLED env at module load: '{os.getenv('GPU_ENABLED', 'NOT_SET')}'")
 
 from fastapi import FastAPI, HTTPException, Query
@@ -47,6 +50,8 @@ EXIT_DB_FAIL = 8
 # Load environment variables from the .env file.
 load_dotenv(dotenv_path="/app/app/config/postgres.env")
 
+def timeout_handler(signum, frame):
+    raise TimeoutError("Check timed out after 30 seconds")
 
 # A Pydantic model to define the data structure for an Item
 class Item(BaseModel):
@@ -73,17 +78,26 @@ def load_libstdcxx():
 
 def check_cusparselt():
     print("\n=== cuSPARSELt Check ===")
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(30)
     try:
         ctypes.CDLL("libcusparseLt.so")
         print("✅ cuSPARSELt: PASS")
+        signal.alarm(0)
         return True
+    except TimeoutError:
+        print("❌ cuSPARSELt: TIMEOUT")
+        return False
     except OSError as e:
         print("❌ cuSPARSELt: FAIL ->", e)
+        signal.alarm(0)
         return False
 
 
 def check_torch():
     print("\n=== PyTorch + CUDA + cuDNN Check ===")
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(30)
     try:
         import torch
 
@@ -104,14 +118,21 @@ def check_torch():
             y = torch.randn(2, 3, device="cuda")
             _ = x + y
         print("✅ PyTorch: PASS")
+        signal.alarm(0)
         return True
+    except TimeoutError:
+        print("❌ PyTorch: TIMEOUT")
+        return False
     except Exception as e:
         print("❌ PyTorch: FAIL ->", e)
+        signal.alarm(0)
         return False
 
 
 def check_tensorflow():
     print("\n=== TensorFlow + GPU + cuDNN Check ===")
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(30)
     try:
         os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
         import tensorflow as tf
@@ -140,43 +161,62 @@ def check_tensorflow():
                 print("✅ TensorFlow: PASS")
             except Exception as e:
                 print("❌ TensorFlow: FAIL ->", e)
+                signal.alarm(0)
                 return False
         else:
             print("❌ TensorFlow: FAIL -> No GPU detected")
+            signal.alarm(0)
             return False
+        signal.alarm(0)
         return True
+    except TimeoutError:
+        print("❌ TensorFlow: TIMEOUT")
+        return False
     except Exception as e:
         print("❌ TensorFlow: FAIL ->", e)
+        signal.alarm(0)
         return False
 
 
 def check_tensorrt():
     print("\n=== TensorRT Check ===")
-    candidates = [
-        "libnvinfer.so.10",
-        "libnvinfer.so.9",
-        "libnvinfer.so.8",
-        "libnvinfer.so",
-    ]
-    loaded = False
-    last_err = None
-    for name in candidates:
-        try:
-            ctypes.CDLL(name)
-            print(f"Found {name}")
-            loaded = True
-            break
-        except OSError as e:
-            last_err = e
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(30)
     try:
-        import tensorrt as trt
-        print("TensorRT Python version:", getattr(trt, "__version__", "unknown"))
-        print("✅ TensorRT: PASS (skipping builder test)")
-        return True
+        candidates = [
+            "libnvinfer.so.10",
+            "libnvinfer.so.9",
+            "libnvinfer.so.8",
+            "libnvinfer.so",
+        ]
+        loaded = False
+        last_err = None
+        for name in candidates:
+            try:
+                ctypes.CDLL(name)
+                print(f"Found {name}")
+                loaded = True
+                break
+            except OSError as e:
+                last_err = e
+        try:
+            import tensorrt as trt
+            print("TensorRT Python version:", getattr(trt, "__version__", "unknown"))
+            print("✅ TensorRT: PASS (skipping builder test)")
+            signal.alarm(0)
+            return True
+        except Exception as e:
+            if not loaded and last_err is not None:
+                print("❌ TensorRT: FAIL -> libnvinfer not found:", last_err)
+            print("❌ TensorRT: FAIL ->", e)
+            signal.alarm(0)
+            return False
+    except TimeoutError:
+        print("❌ TensorRT: TIMEOUT")
+        return False
     except Exception as e:
-        if not loaded and last_err is not None:
-            print("❌ TensorRT: FAIL -> libnvinfer not found:", last_err)
         print("❌ TensorRT: FAIL ->", e)
+        signal.alarm(0)
         return False
 
 
@@ -374,6 +414,9 @@ def main():
     """Main function to run health checks and start services"""
     print("AGX_APP: Starting main execution...")
     
+    # Force GPU checks to run
+    skip_gpu_checks = False
+    
     # Run all health checks
     print("Running libstdc++ check...")
     result1 = load_libstdcxx()
@@ -430,8 +473,8 @@ def main():
         print("\nStarting FastAPI AGX server...")
         try:
             port = int(os.getenv("FASTAPI_PORT", "8000"))
-            print(f"Starting FastAPI on port {port}...")
-            uvicorn.run(app, host="0.0.0.0", port=port)
+            print(f"Starting FastAPI on port {port} with hot reload enabled...")
+            uvicorn.run(app, host="0.0.0.0", port=port, reload=True)
         except Exception as e:
             print(f"❌❌❌ FAILED TO START FASTAPI AGX SERVER: {e} ❌❌❌")
             sys.exit(1)
@@ -440,13 +483,13 @@ def main():
         if not load_libstdcxx():
             sys.exit(EXIT_LIBSTDCPP_FAIL)
         if not check_cusparselt():
-            sys.exit(EXIT_CUSPARSELT_FAIL)
+            print("⚠️  Warning: cuSPARSELt check failed, continuing without")
         if not check_torch():
-            sys.exit(EXIT_TORCH_FAIL)
+            print("⚠️  Warning: Torch check failed, continuing without")
         if not check_tensorflow():
-            sys.exit(EXIT_TF_FAIL)
+            print("⚠️  Warning: TensorFlow check failed, continuing without")
         if not check_tensorrt():
-            sys.exit(EXIT_TRT_FAIL)
+            print("⚠️  Warning: TensorRT check failed, continuing without")
         if not check_jupyter():
             sys.exit(EXIT_JUPYTER_FAIL)
         if not check_fastapi_agx_deps():

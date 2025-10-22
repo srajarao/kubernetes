@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 FROM nvcr.io/nvidia/l4t-jetpack:r36.4.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -57,4 +56,5 @@ RUN chmod +x /usr/local/bin/start-jupyter.sh
 # Set the default command for the container
 WORKDIR /workspace
 COPY agx_app.py /workspace/agx_app.py
-CMD ["python", "agx_app.py"]
+# Updated
+CMD ["/opt/venv/bin/python", "-u", "agx_app.py"]

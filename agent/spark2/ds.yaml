@@ -1,0 +1,195 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    deprecated.daemonset.template.generation: "11"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"DaemonSet","metadata":{"annotations":{"deprecated.daemonset.template.generation":"7","nvidia.com/last-applied-hash":"3404031277","openshift.io/scc":"hostmount-anyuid"},"creationTimestamp":"2025-10-21T16:20:18Z","generation":7,"labels":{"app":"nvidia-device-plugin-daemonset","app.kubernetes.io/managed-by":"gpu-operator","helm.sh/chart":"gpu-operator-v25.3.4"},"name":"nvidia-device-plugin-daemonset","namespace":"default","ownerReferences":[{"apiVersion":"nvidia.com/v1","blockOwnerDeletion":true,"controller":true,"kind":"ClusterPolicy","name":"cluster-policy","uid":"4b2e3e8d-59d0-4af9-beee-4e513add14bd"}],"resourceVersion":"460617","uid":"a8fbcc7b-fc0b-4cbe-b3a3-8034781132ed"},"spec":{"revisionHistoryLimit":10,"selector":{"matchLabels":{"app":"nvidia-device-plugin-daemonset"}},"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"2025-10-21T11:35:35-07:00"},"creationTimestamp":null,"labels":{"app":"nvidia-device-plugin-daemonset","app.kubernetes.io/managed-by":"gpu-operator","helm.sh/chart":"gpu-operator-v25.3.4"}},"spec":{"containers":[{"args":["--config-file=/etc/nvidia/cdi/config.yaml"],"command":["nvidia-device-plugin"],"env":[{"name":"PASS_DEVICE_SPECS","value":"true"},{"name":"FAIL_ON_INIT_ERROR","value":"true"},{"name":"DEVICE_LIST_STRATEGY","value":"envvar,cdi-annotations"},{"name":"DEVICE_ID_STRATEGY","value":"uuid"},{"name":"NVIDIA_VISIBLE_DEVICES","value":"all"},{"name":"NVIDIA_DRIVER_CAPABILITIES","value":"all"},{"name":"MPS_ROOT","value":"/run/nvidia/mps"},{"name":"MIG_STRATEGY","value":"single"},{"name":"NVIDIA_MIG_MONITOR_DEVICES","value":"all"},{"name":"CDI_ENABLED","value":"true"},{"name":"CDI_ANNOTATION_PREFIX","value":"nvidia.cdi.k8s.io/"},{"name":"NVIDIA_CDI_HOOK_PATH","value":"/usr/local/nvidia/toolkit/nvidia-cdi-hook"},{"name":"RESOURCE_NAME","value":"nvidia.com/gpu"}],"image":"nvcr.io/nvidia/k8s-device-plugin:v0.17.4","imagePullPolicy":"IfNotPresent","name":"nvidia-device-plugin","resources":{},"securityContext":{"privileged":true},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","volumeMounts":[{"mountPath":"/etc/nvidia/cdi/config.yaml","name":"nvidia-device-plugin-config","subPath":"config.yaml"},{"mountPath":"/bin/entrypoint.sh","name":"nvidia-device-plugin-entrypoint","readOnly":true,"subPath":"entrypoint.sh"},{"mountPath":"/var/lib/kubelet/device-plugins","name":"device-plugin"},{"mountPath":"/run/nvidia/validations","name":"run-nvidia-validations"},{"mountPath":"/driver-root","mountPropagation":"HostToContainer","name":"driver-install-dir"},{"mountPath":"/host","mountPropagation":"HostToContainer","name":"host-root","readOnly":true},{"mountPath":"/var/run/cdi","name":"cdi-root"},{"mountPath":"/dev/shm","name":"mps-shm"},{"mountPath":"/mps","name":"mps-root"}]}],"dnsPolicy":"ClusterFirst","initContainers":[{"args":["until [ -f /run/nvidia/validations/toolkit-ready ]; do echo waiting for nvidia container stack to be setup; sleep 5; done"],"command":["sh","-c"],"image":"nvcr.io/nvidia/cloud-native/gpu-operator-validator:v25.3.4","imagePullPolicy":"IfNotPresent","name":"toolkit-validation","resources":{},"securityContext":{"privileged":true},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","volumeMounts":[{"mountPath":"/run/nvidia/validations","mountPropagation":"HostToContainer","name":"run-nvidia-validations"}]}],"nodeSelector":{"nvidia.com/gpu.deploy.device-plugin":"true"},"priorityClassName":"system-node-critical","restartPolicy":"Always","runtimeClassName":"nvidia","schedulerName":"default-scheduler","securityContext":{},"serviceAccount":"nvidia-device-plugin","serviceAccountName":"nvidia-device-plugin","terminationGracePeriodSeconds":30,"tolerations":[{"effect":"NoSchedule","key":"nvidia.com/gpu","operator":"Exists"}],"volumes":[{"configMap":{"name":"nvidia-device-plugin-config"},"name":"nvidia-device-plugin-config"},{"configMap":{"defaultMode":448,"name":"nvidia-device-plugin-entrypoint"},"name":"nvidia-device-plugin-entrypoint"},{"hostPath":{"path":"/var/lib/kubelet/device-plugins","type":""},"name":"device-plugin"},{"hostPath":{"path":"/run/nvidia/validations","type":"DirectoryOrCreate"},"name":"run-nvidia-validations"},{"hostPath":{"path":"/run/nvidia/driver","type":"DirectoryOrCreate"},"name":"driver-install-dir"},{"hostPath":{"path":"/","type":""},"name":"host-root"},{"hostPath":{"path":"/var/run/cdi","type":"DirectoryOrCreate"},"name":"cdi-root"},{"hostPath":{"path":"/run/nvidia/mps","type":"DirectoryOrCreate"},"name":"mps-root"},{"hostPath":{"path":"/run/nvidia/mps/shm","type":""},"name":"mps-shm"}]}},"updateStrategy":{"rollingUpdate":{"maxSurge":0,"maxUnavailable":1},"type":"RollingUpdate"}},"status":{"currentNumberScheduled":2,"desiredNumberScheduled":2,"numberAvailable":1,"numberMisscheduled":0,"numberReady":1,"numberUnavailable":1,"observedGeneration":7,"updatedNumberScheduled":1}}
+    nvidia.com/last-applied-hash: "3404031277"
+    openshift.io/scc: hostmount-anyuid
+  creationTimestamp: "2025-10-21T16:20:18Z"
+  generation: 11
+  labels:
+    app: nvidia-device-plugin-daemonset
+    app.kubernetes.io/managed-by: gpu-operator
+    helm.sh/chart: gpu-operator-v25.3.4
+  name: nvidia-device-plugin-daemonset
+  namespace: default
+  ownerReferences:
+  - apiVersion: nvidia.com/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: ClusterPolicy
+    name: cluster-policy
+    uid: 4b2e3e8d-59d0-4af9-beee-4e513add14bd
+  resourceVersion: "463158"
+  uid: a8fbcc7b-fc0b-4cbe-b3a3-8034781132ed
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: nvidia-device-plugin-daemonset
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2025-10-21T11:57:17-07:00"
+      creationTimestamp: null
+      labels:
+        app: nvidia-device-plugin-daemonset
+        app.kubernetes.io/managed-by: gpu-operator
+        helm.sh/chart: gpu-operator-v25.3.4
+    spec:
+      containers:
+      - args:
+        - --config-file=/etc/nvidia/cdi/config.yaml
+        command:
+        - nvidia-device-plugin
+        env:
+        - name: PASS_DEVICE_SPECS
+          value: "true"
+        - name: FAIL_ON_INIT_ERROR
+          value: "true"
+        - name: DEVICE_LIST_STRATEGY
+          value: envvar,cdi-annotations
+        - name: DEVICE_ID_STRATEGY
+          value: uuid
+        - name: DEVICE_DISCOVERY_STRATEGY
+          value: cdi
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: all
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: all
+        - name: MPS_ROOT
+          value: /run/nvidia/mps
+        - name: MIG_STRATEGY
+          value: single
+        - name: NVIDIA_MIG_MONITOR_DEVICES
+          value: all
+        - name: CDI_ENABLED
+          value: "true"
+        - name: CDI_ANNOTATION_PREFIX
+          value: nvidia.cdi.k8s.io/
+        - name: NVIDIA_CDI_HOOK_PATH
+          value: /usr/local/nvidia/toolkit/nvidia-cdi-hook
+        - name: CONTAINER_DRIVER_ROOT
+          value: /run/nvidia/driver
+        - name: RESOURCE_NAME
+          value: nvidia.com/gpu
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.17.4
+        imagePullPolicy: IfNotPresent
+        name: nvidia-device-plugin
+        resources: {}
+        securityContext:
+          privileged: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/nvidia/cdi/config.yaml
+          name: nvidia-device-plugin-config
+          subPath: config.yaml
+        - mountPath: /bin/entrypoint.sh
+          name: nvidia-device-plugin-entrypoint
+          readOnly: true
+          subPath: entrypoint.sh
+        - mountPath: /var/lib/kubelet/device-plugins
+          name: device-plugin
+        - mountPath: /run/nvidia/validations
+          name: run-nvidia-validations
+        - mountPath: /driver-root
+          mountPropagation: HostToContainer
+          name: driver-install-dir
+        - mountPath: /host
+          mountPropagation: HostToContainer
+          name: host-root
+          readOnly: true
+        - mountPath: /var/run/cdi
+          name: cdi-root
+        - mountPath: /dev/shm
+          name: mps-shm
+        - mountPath: /mps
+          name: mps-root
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - args:
+        - until [ -f /run/nvidia/validations/toolkit-ready ]; do echo waiting for
+          nvidia container stack to be setup; sleep 5; done
+        command:
+        - sh
+        - -c
+        image: nvcr.io/nvidia/cloud-native/gpu-operator-validator:v25.3.4
+        imagePullPolicy: IfNotPresent
+        name: toolkit-validation
+        resources: {}
+        securityContext:
+          privileged: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /run/nvidia/validations
+          mountPropagation: HostToContainer
+          name: run-nvidia-validations
+      nodeSelector:
+        nvidia.com/gpu.deploy.device-plugin: "true"
+      priorityClassName: system-node-critical
+      restartPolicy: Always
+      runtimeClassName: nvidia
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: nvidia-device-plugin
+      serviceAccountName: nvidia-device-plugin
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: nvidia-device-plugin-config
+        name: nvidia-device-plugin-config
+      - configMap:
+          defaultMode: 448
+          name: nvidia-device-plugin-entrypoint
+        name: nvidia-device-plugin-entrypoint
+      - hostPath:
+          path: /var/lib/kubelet/device-plugins
+          type: ""
+        name: device-plugin
+      - hostPath:
+          path: /run/nvidia/validations
+          type: DirectoryOrCreate
+        name: run-nvidia-validations
+      - hostPath:
+          path: /run/nvidia/driver
+          type: DirectoryOrCreate
+        name: driver-install-dir
+      - hostPath:
+          path: /
+          type: ""
+        name: host-root
+      - hostPath:
+          path: /var/run/cdi
+          type: DirectoryOrCreate
+        name: cdi-root
+      - hostPath:
+          path: /run/nvidia/mps
+          type: DirectoryOrCreate
+        name: mps-root
+      - hostPath:
+          path: /run/nvidia/mps/shm
+          type: ""
+        name: mps-shm
+  updateStrategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+status:
+  currentNumberScheduled: 2
+  desiredNumberScheduled: 2
+  numberAvailable: 1
+  numberMisscheduled: 0
+  numberReady: 1
+  numberUnavailable: 1
+  observedGeneration: 11
+  updatedNumberScheduled: 1

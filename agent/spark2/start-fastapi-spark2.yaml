@@ -1,28 +1,35 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastapi-agx
+  name: fastapi-spark2
   labels:
-    app: fastapi-agx
+    app: fastapi-spark2
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: fastapi-agx
+      app: fastapi-spark2
   template:
     metadata:
       labels:
-        app: fastapi-agx
+        app: fastapi-spark2
     spec:
-      # runtimeClassName: nvidia  # Uses the NVIDIA Container Runtime
+      runtimeClassName: nvidia  # Uses the NVIDIA Container Runtime
       # hostNetwork: true         # Allows direct access to the host's network interfaces
-      nodeSelector:
-        kubernetes.io/hostname: agx
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - spark2
       securityContext:
         runAsUser: 0            # Runs as root user inside the container
       containers:
         - name: fastapi
-          image: 10.1.10.150:5000/fastapi-agx:latest
+          image: 10.1.10.150:30500/fastapi-spark2:latest
        
           # -------------------------------------------------------------------
           # FIX 1: Pull from registry with insecure config
@@ -55,18 +62,19 @@ spec:
               value: "5432"
             - name: SKIP_DB_CHECK
               value: "true"
-            # - name: NVIDIA_VISIBLE_DEVICES
-            #   value: "all"
-            # - name: NVIDIA_DRIVER_CAPABILITIES
-            #   value: "compute,utility"
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
           resources:
             requests:
               cpu: "500m"
               memory: "512Mi"
+              nvidia.com/gpu: 1  # Requests access to the single GPU
             limits:
               cpu: "1000m"
               memory: "1Gi"
-              # nvidia.com/gpu: 1  # Requests access to the single GPU
+              nvidia.com/gpu: 1  # Requests access to the single GPU
           volumeMounts:
             - name: pulse
               mountPath: /tmp/pulse
@@ -86,13 +94,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-agx-service
+  name: fastapi-spark2-service
   labels:
-    app: fastapi-agx
+    app: fastapi-spark2
 spec:
   type: ClusterIP
   selector:
-    app: fastapi-agx
+    app: fastapi-spark2
   ports:
     - name: http
       port: 8000

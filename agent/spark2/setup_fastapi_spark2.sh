@@ -1,10 +1,6 @@
 #!/bin/bash
-
-# K3s Agent Setup Script for AGX
-# This script sets up AGX as a k3s agent connected to the tower server
-
 clear
-
+echo -e "${GREEN}Starting SPARK2 FastAPI agent setup...${NC}\n"
 # Setup colors
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -12,20 +8,6 @@ YELLOW='\033[0;33m'
 NC='\033[0m'
 TICK="${GREEN}✅${NC}"
 CROSS="${RED}❌${NC}"
-
-echo -e "${GREEN}Starting k3s Agent Setup...${NC}\n"
-
-# Source configuration
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/agx-config.env" ]; then
-    source "$SCRIPT_DIR/agx-config.env"
-    echo -e "${GREEN}Configuration loaded from agx-config.env${NC}"
-    echo -e "  Tower IP: ${TOWER_IP}"
-    echo -e "  AGX IP: ${AGX_IP}"
-    echo -e "  Token Directory: ${TOKEN_DIR}"
-    echo -e "  Project Directory: ${PROJECT_DIR}"
-    echo -e "  Image Directory: ${IMAGE_DIR}"
-fi
 
 # Debug flag - can be overridden by environment variable
 DEBUG=${DEBUG:-0}
@@ -37,22 +19,19 @@ function debug_msg() {
 }
 
 function print_result() {
-    local timestamp=$(date '+%H:%M:%S')
     if [ "$1" -eq 0 ]; then
-        echo -e "[$timestamp] $2 $TICK"
+        echo -e "$2 $TICK"
         debug_msg "$2 succeeded"
     else
-        echo -e "[$timestamp] $2 $CROSS"
+        echo -e "$2 $CROSS"
         debug_msg "$2 failed"
     fi
 }
 
-# Directories - will be overridden by agx-config.env if present
-TOKEN_DIR="${TOKEN_DIR:-/mnt/vmstore/agx_home/containers/fastapi/.token}"  # AGX: Read Token from server
-PROJECT_DIR="${PROJECT_DIR:-/home/sanjay/containers/fastapi}"              # AGX: Main project directory
-IMAGE_DIR="${IMAGE_DIR:-/mnt/vmstore/agx_home/containers/fastapi}"         # AGX: Save build images for server
-TOWER_IP="${TOWER_IP:-10.1.10.150}"                                      # Tower server IP
-AGX_IP="${AGX_IP:-10.1.10.244}"                                        # AGX device IP
+# Directories
+TOKEN_DIR="/mnt/vmstore/spark2_home/containers/fastapi/.token"  # SPARK2: Read Token from server
+PROJECT_DIR="/home/sanjay/containers/kubernetes/agent/spark2"                # SPARK2: Main project directory
+IMAGE_DIR="/mnt/vmstore/spark2_home/containers/fastapi"         # SPARK2: Save build images for server
 
 function cleanup_k3s_agent_installation() {
     debug_msg "Running cleanup_k3s_agent_installation"
@@ -62,24 +41,26 @@ function cleanup_k3s_agent_installation() {
     KUBECONFIG_PATH="/home/sanjay/k3s.yaml"
     debug_msg "KUBECONFIG_PATH set to $KUBECONFIG_PATH"
 
-    # Check for the k3s uninstall script and run it FIRST
+    # --- NEW: Forcefully delete existing Kubernetes resources ---
+    if [ -f "$KUBECONFIG_PATH" ] && command -v kubectl >/dev/null 2>&1; then
+        debug_msg "Kubeconfig found and kubectl available, proceeding with cleanup"
+        if [ "$DEBUG" -eq 1 ]; then
+            echo -e "  Attempting forceful cleanup of old 'fastapi-spark2' resources... $TICK"
+        fi
+        # 1. Delete the Deployment and Service (ignore if not found)
+        debug_msg "Deleting deployment fastapi-spark2"
+        timeout 30s KUBECONFIG="$KUBECONFIG_PATH" kubectl delete deployment fastapi-spark2 --ignore-not-found >/dev/null 2>&1
+        print_result $? "  Cleaned up K8s Deployment/Service/RS/Pods"
+    else
+        debug_msg "Kubeconfig not found or kubectl not available, skipping cleanup"
+        print_result 0 "  No kubeconfig or kubectl found, skipping cleanup"
+    fi
+    # -----------------------------------------------------------
+
+    # Check for the k3s uninstall script and run it if it exists
     debug_msg "Checking for k3s-agent-uninstall.sh"
     if [ -f "/usr/local/bin/k3s-agent-uninstall.sh" ]; then
-        debug_msg "Found k3s-agent-uninstall.sh, running cleanup first"
-
-        # CRITICAL: Delete pods running on THIS node only, especially GPU-using ones, to free resources
-        debug_msg "Deleting pods on agx node before k3s uninstall to free GPU resources"
-        if [ -f "$KUBECONFIG_PATH" ] && kubectl --kubeconfig="$KUBECONFIG_PATH" get pods >/dev/null 2>&1; then
-            echo -e "  Deleting pods on agx node to free GPU resources..."
-            # Only delete pods scheduled on the agx node
-            kubectl --kubeconfig="$KUBECONFIG_PATH" delete pods -l kubernetes.io/hostname=agx --force --grace-period=0 >/dev/null 2>&1
-            print_result $? "  Deleted pods on agx node (GPU resources freed)"
-            # Give pods time to terminate
-            sleep 5
-        else
-            debug_msg "No valid kubeconfig found, skipping pod deletion"
-        fi
-
+        debug_msg "Found k3s-agent-uninstall.sh, running cleanup"
         if [ "$DEBUG" -eq 1 ]; then
             echo -e "  Found k3s agent uninstall script, running cleanup..."
         fi
@@ -89,15 +70,10 @@ function cleanup_k3s_agent_installation() {
         debug_msg "No k3s-agent-uninstall.sh found"
         print_result 0 "  No k3s agent uninstall script found (initial setup or clean system)"
     fi
-
-    # Remove stale kubeconfig immediately after k3s uninstall
+    # Removed stale /home/sanjay/k3s.yaml
     debug_msg "Removing stale kubeconfig"
     rm -f /home/sanjay/k3s.yaml >/dev/null 2>&1
     print_result $? "  Removed stale /home/sanjay/k3s.yaml"
-
-    # Skip kubectl cleanup since k3s uninstall removes all resources
-    debug_msg "Skipping kubectl cleanup - k3s uninstall removes all resources"
-    print_result 0 "  Skipped kubectl cleanup (handled by k3s uninstall)"
 }
 
 function install_k3s_agent_with_token() {
@@ -116,8 +92,8 @@ function install_k3s_agent_with_token() {
         fi
         # Use server CA cert for agent trust
     TOKEN_CERT="$TOKEN_DIR/server-ca.crt"
-        # Configure Insecure Registry via registries.yaml
-        REGISTRY_IP="${TOWER_IP}:30500"
+        # FIX: Implement reliable Insecure Registry configuration via registries.yaml
+    REGISTRY_IP="192.168.10.1:5000"
         echo -e "${GREEN}\n== Configure Insecure Registry (registries.yaml) ==${NC}"
         # 1. Create configuration directory
         sudo mkdir -p /etc/rancher/k3s/
@@ -141,11 +117,11 @@ EOF
                     print_result $? "  Installed jq"
                 fi
                 if [ -f /etc/docker/daemon.json ] && command -v jq >/dev/null 2>&1; then
-                    sudo jq '.["insecure-registries"] = ["10.1.10.150:30500", "10.1.10.244:30500", "10.1.10.181:30500", "10.1.10.201:30500", "10.1.10.202:30500"]' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp > /dev/null
+                    sudo jq 'if .["insecure-registries"] then .["insecure-registries"] += ["192.168.10.1:5000"] | .["insecure-registries"] |= unique else . + {"insecure-registries": ["192.168.10.1:5000"]} end' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp > /dev/null
                     sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
                 else
                     echo -e "${YELLOW}  jq not available or daemon.json missing, overwriting daemon.json...${NC}"
-                    echo '{"insecure-registries": ["10.1.10.150:30500", "10.1.10.244:30500", "10.1.10.181:30500", "10.1.10.201:30500", "10.1.10.202:30500"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+                    echo '{"insecure-registries": ["192.168.10.1:5000"]}' | sudo tee /etc/docker/daemon.json > /dev/null
                 fi
                 print_result $? "  Updated /etc/docker/daemon.json for insecure registry"
                 if [ "$DEBUG" -eq 1 ]; then
@@ -154,25 +130,11 @@ EOF
                 fi
                 sudo systemctl restart docker
                 print_result $? "  Restarted Docker service"
-        # Install k3s agent
+        # Do NOT restart k3s-agent here, as it may not be installed yet
         if [ -f "$TOKEN_CERT" ]; then
             echo -e "${GREEN}  Installing k3s agent (this may take several minutes)...${NC}"
-            
-            # Fix internet connectivity for k3s download
-            echo -e "${GREEN}  Configuring internet connectivity for k3s download...${NC}"
-            # Save current default route for restoration
-            DEFAULT_ROUTE_VIA_TOWER=$(ip route show | grep "default via ${TOWER_IP}")
-            if [ -n "$DEFAULT_ROUTE_VIA_TOWER" ]; then
-                debug_msg "Temporarily removing default route via tower for internet access"
-                sudo ip route del default via ${TOWER_IP} dev eno1 2>/dev/null || true
-                print_result $? "  Configured internet access via wireless interface"
-            else
-                debug_msg "Default route via tower not found, continuing"
-                print_result 0 "  Internet connectivity already available"
-            fi
-            
-            K3S_URL="https://${TOWER_IP}:6443"
-            NODE_IP="$AGX_IP"
+            K3S_URL="https://192.168.10.1:6443"
+            NODE_IP="192.168.10.11"
             # --- START DEBUG INFO ---
             if [ "$DEBUG" -eq 1 ]; then
                 echo -e "\n${GREEN}== DEBUG: k3s agent install info ==${NC}"
@@ -193,39 +155,13 @@ EOF
                 sudo curl -sfL https://get.k3s.io | K3S_URL="$K3S_URL" K3S_TOKEN="$K3S_TOKEN" K3S_CA_FILE="$TOKEN_CERT" sh -s - agent --node-ip "$NODE_IP" >/dev/null 2>&1
             fi
             INSTALL_STATUS=$?
-            
-            # Restore default route via tower for local cluster communication
-            if [ -n "$DEFAULT_ROUTE_VIA_TOWER" ]; then
-                debug_msg "Restoring default route via tower"
-                sudo ip route add default via ${TOWER_IP} dev eno1 metric 100 2>/dev/null || true
-                print_result $? "  Restored tower route for cluster communication"
-            fi
-            
             print_result $INSTALL_STATUS "  Installed k3s-agent using token and CA cert"
             if [ $INSTALL_STATUS -ne 0 ]; then
                 echo -e "${RED}ERROR: k3s agent install failed. Check above output for details.${NC}"
             else
-                # Restart the service to load registries.yaml
+                # 3. IMPORTANT: Restart the service to load registries.yaml
                 sudo systemctl restart k3s-agent
                 print_result $? "  Restarted k3s-agent service to load registries.yaml"
-                
-                # Ensure route to Nano subnet persists after k3s networking setup
-                echo -e "${GREEN}  Ensuring route to Nano subnet (192.168.5.0/24) via Tower...${NC}"
-                if ! ip route show | grep -q "192.168.5.0/24 via $TOWER_IP"; then
-                    sudo ip route add 192.168.5.0/24 via $TOWER_IP dev $AGX_IFACE metric 100
-                    print_result $? "  Route to Nano subnet added"
-                else
-                    echo -e "${GREEN}  Route to Nano subnet already exists${NC}"
-                    print_result 0 "  Route to Nano subnet verified"
-                fi
-                
-                # Add iptables rule to allow traffic to Nano subnet (if not already allowed)
-                if ! sudo iptables -C FORWARD -s $AGX_IP -d 192.168.5.0/24 -j ACCEPT 2>/dev/null; then
-                    sudo iptables -I FORWARD -s $AGX_IP -d 192.168.5.0/24 -j ACCEPT
-                    print_result $? "  Added iptables rule for Nano traffic"
-                else
-                    print_result 0 "  iptables rule for Nano traffic already exists"
-                fi
             fi
         else
             print_result 1 "  Server CA cert not found at $TOKEN_CERT (cannot join cluster)"
@@ -245,15 +181,15 @@ EOF
         fi
         # Import the FastAPI image into containerd ONLY if registry pull fails
         # Check if the image is available from registry first
-        if sudo k3s ctr images list | grep -q "${TOWER_IP}:30500/fastapi_agx"; then
+        if sudo k3s ctr images list | grep -q "192.168.10.1:5000/fastapi_spark2"; then
             debug_msg "Image already available from registry, skipping tar import"
             print_result 0 "  FastAPI image available from registry (tar import not needed)"
-        elif [ -f "$IMAGE_DIR/fastapi_agx.tar" ]; then
+        elif [ -f "$IMAGE_DIR/fastapi_spark2.tar" ]; then
             debug_msg "Registry image not found, importing from tar backup"
-            sudo k3s ctr images import "$IMAGE_DIR/fastapi_agx.tar" >/dev/null 2>&1
-            print_result $? "  Imported fastapi_agx image into containerd from backup tar"
+            sudo k3s ctr images import "$IMAGE_DIR/fastapi_spark2.tar" >/dev/null 2>&1
+            print_result $? "  Imported fastapi_spark2 image into containerd from backup tar"
         else
-            print_result 0 "  fastapi_agx.tar not found (registry method should work)"
+            print_result 0 "  fastapi_spark2.tar not found (registry method should work)"
         fi
         # Install Nvidia container toolkit for GPU support
         echo -e "${GREEN}\n== Install NVIDIA Device Plugin ==${NC}"
@@ -294,21 +230,21 @@ function get_file_mtime() {
 function build_and_save_fastapi_image() {
     debug_msg "Running build_and_save_fastapi_image"
     echo -e "${GREEN}\n== Build and Save FastAPI Image ==${NC}"
-    if [ -f "$PROJECT_DIR/dockerfile.online.req" ]; then
+    if [ -f "$PROJECT_DIR/dockerfile.spark2.req" ]; then
         debug_msg "Dockerfile found, checking timestamps"
-        DOCKERFILE_MTIME=$(get_file_mtime "$PROJECT_DIR/dockerfile.online.req")
-        TAR_FILE="$IMAGE_DIR/fastapi_agx.tar"
+        DOCKERFILE_MTIME=$(get_file_mtime "$PROJECT_DIR/dockerfile.spark2.req")
+        TAR_FILE="$IMAGE_DIR/fastapi_spark2.tar"
         BUILT_IMAGE=false
         # Check if we can skip build by using existing tar
         if [ -f "$TAR_FILE" ]; then
             TAR_MTIME=$(get_file_mtime "$TAR_FILE")
             if [ "$DOCKERFILE_MTIME" -le "$TAR_MTIME" ] 2>/dev/null; then
                 debug_msg "Using cached image"
-                print_result 0 "  Using cached fastapi_agx image (Dockerfile unchanged)"
+                print_result 0 "  Using cached fastapi_spark2 image (Dockerfile unchanged)"
                 docker load -i "$TAR_FILE" >/dev/null 2>&1
                 LOAD_STATUS=$?
                 if [ $LOAD_STATUS -eq 0 ]; then
-                    print_result 0 "  Loaded fastapi_agx image from cache"
+                    print_result 0 "  Loaded fastapi_spark2 image from cache"
                 else
                     print_result 1 "  Failed to load cached image, will rebuild"
                     BUILT_IMAGE=true
@@ -323,60 +259,53 @@ function build_and_save_fastapi_image() {
             BUILT_IMAGE=true
         fi
         # Build if not loaded from cache or load failed
-        if ! docker images fastapi-agx:latest | grep -q fastapi-agx; then
+        if ! docker images fastapi-spark2:latest | grep -q fastapi-spark2; then
             debug_msg "Building image from Dockerfile"
-            BUILD_OUTPUT=$(DOCKER_BUILDKIT=1 docker build -f "$PROJECT_DIR/dockerfile.online.req" -t fastapi-agx:latest "$PROJECT_DIR" 2>&1)
+            BUILD_OUTPUT=$(DOCKER_BUILDKIT=1 docker build -f "$PROJECT_DIR/dockerfile.spark2.req" -t fastapi-spark2:latest "$PROJECT_DIR" 2>&1)
             # Check if build was successful
             if echo "$BUILD_OUTPUT" | grep -q "Successfully built"; then
                 # Check if cache was used
                 if echo "$BUILD_OUTPUT" | grep -q "Using cache"; then
-                    print_result 0 "  Built fastapi-agx:latest image from cache"
+                    print_result 0 "  Built fastapi-spark2:latest image from cache"
                 else
-                    print_result 0 "  Built fastapi-agx:latest image from scratch"
+                    print_result 0 "  Built fastapi-spark2:latest image from scratch"
                 fi
                 BUILT_IMAGE=true
             else
                 # Build failed
                 debug_msg "Build failed"
-                print_result 1 "  Failed to build fastapi-agx:latest image"
+                print_result 1 "  Failed to build fastapi-spark2:latest image"
                 echo "$BUILD_OUTPUT"  # Show build errors
                 return 1
             fi
         else
             debug_msg "Image already available"
-            print_result 0 "  fastapi-agx:latest image already available"
+            print_result 0 "  fastapi-spark2:latest image already available"
         fi
         # Tag and push to local registry only if we built/rebuild the image
         if [ "$BUILT_IMAGE" = true ]; then
-            # Configure Docker daemon for insecure registry before pushing
-            echo -e "${GREEN}  Configuring Docker daemon for insecure registry...${NC}"
-            echo '{"insecure-registries": ["10.1.10.150:30500"]}' | sudo tee /etc/docker/daemon.json > /dev/null
-            print_result $? "  Updated /etc/docker/daemon.json for insecure registry"
-            sudo systemctl restart docker
-            print_result $? "  Restarted Docker service"
-            sleep 10  # Wait for Docker to fully restart
             debug_msg "Tagging image for registry"
-            sudo docker tag fastapi-agx:latest 10.1.10.150:30500/fastapi-agx:latest
+            docker tag fastapi-spark2:latest 192.168.10.1:5000/fastapi-spark2:latest
             print_result $? "  Tagged image for local registry"
             debug_msg "Pushing image to registry"
-            sudo docker push 10.1.10.150:30500/fastapi-agx:latest
+            docker push 192.168.10.1:5000/fastapi-spark2:latest
             PUSH_STATUS=$?
-            print_result $PUSH_STATUS "  Pushed image to local registry 10.1.10.150:30500"
+            print_result $PUSH_STATUS "  Pushed image to local registry 192.168.10.1:5000"
         fi
         
         # Save to tar as backup only if we built/re-built the image or tar doesn't exist
         if [ "$BUILT_IMAGE" = true ] || [ ! -f "$TAR_FILE" ]; then
-            if docker images fastapi-agx:latest | grep -q fastapi-agx; then
+            if docker images fastapi-spark2:latest | grep -q fastapi-spark2; then
                 debug_msg "Saving image to tar as backup"
                 mkdir -p "$IMAGE_DIR"  # Ensure directory exists
-                docker save -o "$TAR_FILE" fastapi-agx:latest >/dev/null 2>&1
+                docker save -o "$TAR_FILE" fastapi-spark2:latest >/dev/null 2>&1
                 SAVE_STATUS=$?
                 if [ $SAVE_STATUS -eq 0 ]; then
                     chmod 644 "$TAR_FILE"  # Make readable by all
-                    print_result 0 "  Saved fastapi_agx image to $TAR_FILE (backup)"
+                    print_result 0 "  Saved fastapi_spark2 image to $TAR_FILE (backup)"
                     print_result 0 "  Backup tar file ready for containerd import if needed"
                 else
-                    print_result $SAVE_STATUS "  Saved fastapi_agx image to $TAR_FILE (backup)"
+                    print_result $SAVE_STATUS "  Saved fastapi_spark2 image to $TAR_FILE (backup)"
                 fi
             fi
         else
@@ -387,14 +316,14 @@ function build_and_save_fastapi_image() {
         fi
     else
         debug_msg "Dockerfile not found"
-        print_result 1 "  dockerfile.online.req not found in $PROJECT_DIR (skipping build)"
+        print_result 1 "  dockerfile.spark2.req not found in $PROJECT_DIR (skipping build)"
     fi
 }
 
 function apply_fastapi_deployment_yaml() {
     debug_msg "Running apply_fastapi_deployment_yaml"
     echo -e "${GREEN}\n== Apply FastAPI Deployment YAML ==${NC}"
-    DEPLOYMENT_YAML="$SCRIPT_DIR/start-fastapi.yaml"
+    DEPLOYMENT_YAML="$PROJECT_DIR/start-fastapi.yaml"
     debug_msg "DEPLOYMENT_YAML set to $DEPLOYMENT_YAML"
     if [ -f "$DEPLOYMENT_YAML" ]; then
         debug_msg "Deployment YAML found, applying with kubectl"
@@ -431,7 +360,7 @@ function verify_node_ready() {
 function check_fastapi_pod_status() {
     debug_msg "Running check_fastapi_pod_status"
     echo -e "${GREEN}\n== Check FastAPI Pod Status ==${NC}"
-    POD_NAME=$(timeout 10s kubectl get pods -l app=fastapi-agx -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    POD_NAME=$(timeout 10s kubectl get pods -l app=fastapi-spark2 -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     debug_msg "POD_NAME: $POD_NAME"
     if [ -z "$POD_NAME" ]; then
         debug_msg "No FastAPI pod found"
@@ -487,7 +416,7 @@ function check_certificate_trust() {
         grep server ~/.kube/config >/dev/null 2>&1
         print_result $? "  kubeconfig server entry present"
         debug_msg "Testing API server certificate"
-        openssl s_client -connect ${TOWER_IP}:6443 -showcerts </dev/null >/dev/null 2>&1
+        openssl s_client -connect 192.168.10.1:6443 -showcerts </dev/null >/dev/null 2>&1
         print_result $? "  API server certificate presented"
     fi
 }
@@ -510,7 +439,13 @@ echo -e "${GREEN}===============================================${NC}"
 debug_msg "Calling install_k3s_agent_with_token"
 install_k3s_agent_with_token
 echo -e "${GREEN}===============================================${NC}"
+debug_msg "Calling apply_fastapi_deployment_yaml"
+apply_fastapi_deployment_yaml
+echo -e "${GREEN}===============================================${NC}"
 debug_msg "Calling verify_node_ready"
 verify_node_ready
+echo -e "${GREEN}===============================================${NC}"
+debug_msg "Calling check_fastapi_pod_status"
+check_fastapi_pod_status
 debug_msg "Script completed"
 echo -e "  ${YELLOW}Script completed${NC}"

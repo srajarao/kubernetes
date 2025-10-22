@@ -1,7 +1,7 @@
 #!/opt/venv/bin/python
 """
 Unified healthcheck for Jetson (L4T r36.x)
-This script performs a series of checks on the system and then launches a FastAPI Spark2 server.
+This script performs a series of checks on the system and then launches a FastAPI SPARK2 server.
 If any check fails, the script will exit with a specific error code.
 
 Exit codes:
@@ -41,7 +41,7 @@ EXIT_TORCH_FAIL = 3
 EXIT_TF_FAIL = 4
 EXIT_TRT_FAIL = 5
 EXIT_JUPYTER_FAIL = 6
-EXIT_FASTAPI_SPARK1_FAIL = 7
+EXIT_FASTAPI_SPARK2_FAIL = 7
 EXIT_DB_FAIL = 8
 
 # Load environment variables from the .env file.
@@ -251,7 +251,7 @@ def start_jupyter_lab():
         return False
 
 
-def check_fastapi_agx_deps():
+def check_fastapi_spark2_deps():
     print("\n=== FastAPI AGX Project Dependencies Check ===")
     dependencies = {
         "psycopg2": "psycopg2",
@@ -400,8 +400,8 @@ def main():
     print(f"Jupyter result: {result6}")
     
     print("Running FastAPI AGX deps check...")
-    result7 = check_fastapi_agx_deps()
-    print(f"FastAPI AGX deps result: {result7}")
+    result7 = check_fastapi_spark2_deps()
+    print(f"FastAPI SPARK2 deps result: {result7}")
     
     # Check database connection (skip if SKIP_DB_CHECK is set for testing)
     if os.getenv("SKIP_DB_CHECK", "true").lower() == "true":  # Changed default to true
@@ -427,7 +427,14 @@ def main():
         else:
             print("⚠️  Jupyter Lab failed to start, but continuing with FastAPI")
         
-        print("\nStarting FastAPI AGX server...")
+        print("\nStarting FastAPI SPARK2 server...")
+        try:
+            port = int(os.getenv("FASTAPI_PORT", "8000"))
+            print(f"Starting FastAPI on port {port} with hot reload enabled...")
+            uvicorn.run(app, host="0.0.0.0", port=port, reload=True)
+        except Exception as e:
+            print(f"❌❌❌ FAILED TO START FASTAPI SPARK2 SERVER: {e} ❌❌❌")
+            sys.exit(1)
         try:
             port = int(os.getenv("FASTAPI_PORT", "8000"))
             print(f"Starting FastAPI on port {port}...")
@@ -450,7 +457,7 @@ def main():
         if not check_jupyter():
             sys.exit(EXIT_JUPYTER_FAIL)
         if not check_fastapi_agx_deps():
-            sys.exit(EXIT_FASTAPI_SPARK1_FAIL)
+            sys.exit(EXIT_FASTAPI_SPARK2_FAIL)
         if not connect_to_db():
             sys.exit(EXIT_DB_FAIL)
 
