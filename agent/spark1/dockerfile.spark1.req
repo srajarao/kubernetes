@@ -1,70 +1,62 @@
 # syntax=docker/dockerfile:1.7
-# Use NVIDIA CUDA runtime image that includes GPU drivers
-FROM nvcr.io/nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
+# Start FROM an official NVIDIA TensorFlow container for aarch64 (DGX Spark)
+FROM --platform=linux/arm64 nvcr.io/nvidia/tensorflow:25.02-tf2-py3
+
+# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
-     PIP_NO_CACHE_DIR=1 \
-     PYTHONUNBUFFERED=1 \
-     VIRTUAL_ENV=/opt/venv \
-     PATH="/opt/venv/bin:$PATH"
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1 \
+    # --- Define VENV Path ---
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
 
+# --- Switch to root to install system packages ---
 USER root
 
-# Copy requirements file
-COPY requirements.spark1.txt /app/requirements.spark1.txt
+# --- Install postgresql-client ---
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        postgresql-client \
+        # Add python3-venv if not already present (TF image likely has it)
+        python3-venv \
+    && rm -rf /var/lib/apt/lists/*
 
-# OS + Python deps
-RUN --mount=type=cache,target=/var/cache/apt \
-        apt-get update && \
-        apt-get install -y --no-install-recommends \
-            python3.10 python3.10-venv  \
-            ca-certificates curl wget git build-essential \
-            libopenblas0 libgomp1 postgresql-client && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        postgresql-client \
+        python3-venv \
+        libcusparselt0 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install pip for Python 3.10
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python3.10 get-pip.py && \
-    rm get-pip.py
 
 # --- Venv Setup ---
-RUN python3.10 -m venv --system-site-packages $VIRTUAL_ENV
+# Get the python version from the base image (likely python3.12)
+RUN python3 -m venv --system-site-packages $VIRTUAL_ENV
+# Activate venv for subsequent RUN commands (by modifying PATH)
+# Note: Subsequent RUN commands inherit the ENV PATH modification
 RUN $VIRTUAL_ENV/bin/pip install --upgrade pip setuptools wheel
 
-# --- BEGIN PYTORCH and TENSORFLOW INSTALLATION ---
+# --- Install Python Packages (using VENV pip) ---
+# Install Keras (if needed, might already be there)
+RUN pip install keras
 
-# Copy local files into the container
-COPY wheels/tensorflow-2.16.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl /app/
-COPY test_app.py /app/
+# Install PyTorch with CUDA 13.0 for GB10 support
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+
+# Copy requirements and install Python packages
 COPY requirements.spark1.txt /app/requirements.spark1.txt
+RUN pip install -r /app/requirements.spark1.txt
 
-# Install a compatible numpy version first
-RUN $VIRTUAL_ENV/bin/pip install numpy==1.26.4
+# --- Switch back to non-root user (Recommended) ---
+# The base TF image often defines a user like 'tensorflow' or 'nvidia'.
+# Check the base image or use 'id' command inside to find the user/group.
+# RUN groupadd -r appuser && useradd -r -g appuser appuser
+# RUN chown -R appuser:appuser /app /opt/venv
+# USER appuser
 
-# Install PyTorch for ARM64/aarch64
-# As per pytorch.org, for Linux/aarch64/Pip/Python/CUDA 11.8
-RUN $VIRTUAL_ENV/bin/pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-# Install the downloaded TensorFlow wheel
-RUN $VIRTUAL_ENV/bin/pip install /app/tensorflow-2.16.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl
-
-# --- END PYTORCH and TENSORFLOW INSTALLATION ---
-
-# 2. Install all other packages from requirements.txt
-RUN $VIRTUAL_ENV/bin/pip install -r /app/requirements.spark1.txt
-
-# Copy application code
+# --- App Setup & CMD ---
 COPY spark1_app.py /app/spark1_app.py
 COPY app/config/ /app/app/config/
-
-# Create necessary directories
-RUN mkdir -p /app/app/logs /app/app/data /mnt/vmstore
-
-# Expose ports
-EXPOSE 8888
-EXPOSE 8000
-EXPOSE 8001
-
-# Set the default command for the container
 WORKDIR /app
 CMD ["python3", "/app/spark1_app.py"]

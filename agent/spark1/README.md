@@ -1,51 +1,67 @@
-# AGX Kubernetes Agent Setup
+# Spark1 Kubernetes Agent Setup
 
-This directory contains all files needed for setting up and managing the AGX device as a k3s agent node.
+This directory contains all files needed for setting up and managing the Spark1 device as a k3s agent node.
 
 ## Files Overview
 
 ### Main Scripts
-- **`k3s-agx-setup.sh`** - Primary AGX agent setup script (template - replace with your working script)
-- **`agx-setup-directories.sh`** - Creates directory structure on AGX system
-- **`validate-agx-setup.sh`** - Validates AGX agent installation and connectivity
-- **`cleanup-agx.sh`** - Completely removes k3s agent for fresh setup
+- **`k3s-spark1.sh`** - Primary Spark1 agent setup script with comprehensive deployment
+- **`k3s-spark1-agent-setup.sh`** - Alternative Spark1 agent setup script
+- **`setup-spark1-network.sh`** - Network configuration for Spark1 device
+- **`build.sh`** - Docker image build script for Spark1
 
 ### Configuration
-- **`agx-config.env`** - AGX-specific configuration variables
-- **`README.md`** - This documentation
+- **`spark1_app.py`** - Health check application for Spark1
+- **`fastapi-deployment-spark1.yaml`** - Kubernetes deployment manifest
+- **`requirements.spark1.txt`** - Python dependencies
+- **`dockerfile.spark1.req`** - Docker build configuration
+- **`postgres.env`** - Database configuration
 
-## AGX Device Configuration
+## Spark1 Device Configuration
 
 ### Network Settings
-- **Tower Access**: 192.168.10.1 (AGX subnet)
-- **Node Name**: agx
-- **API Server**: https://192.168.10.1:6443
+- **IP Address**: 10.1.10.201
+- **Node Name**: spark1
+- **API Server**: https://10.1.10.150:6443
 
-### Storage Paths
-- **Tokens**: `/export/vmstore/agx_home/containers/fastapi/.token/`
-- **Registry**: `/export/vmstore/k3sRegistry/`
-- **Config**: `/export/vmstore/agx_home/containers/fastapi/`
+### Hardware
+- **GPU**: NVIDIA GB10
+- **Architecture**: ARM64
+- **CUDA**: 13.0 support
 
 ### Service Access
-- **PostgreSQL**: 192.168.10.1:5432
-- **pgAdmin**: http://192.168.10.1:8080
-- **Docker Registry**: 192.168.10.1:5000
+- **PostgreSQL**: 10.1.10.150:30432
+- **pgAdmin**: http://10.1.10.150:30080
+- **Docker Registry**: 10.1.10.150:30500
 
 ## Setup Process
 
 ### 1. Initial Setup
 ```bash
-# Create directory structure on AGX
-./agx-setup-directories.sh
+# Run comprehensive setup
+./k3s-spark1.sh
 
-# Configure environment (edit if needed)
-vi agx-config.env
-
-# Run agent setup (replace with your working script)
-./k3s-agx-setup.sh
+# Alternative: Use simplified setup
+./k3s-spark1-agent-setup.sh
 ```
 
-### 2. Validation
+### 2. Build and Deploy
+```bash
+# Build Docker image
+./build.sh
+
+# Deploy to Kubernetes
+kubectl apply -f fastapi-deployment-spark1.yaml
+```
+
+### 3. Validation
+```bash
+# Check pod status
+kubectl get pods -l app=fastapi-spark1
+
+# Check health endpoint
+curl http://10.1.10.150:30001/health
+```
 ```bash
 # Validate setup
 ./validate-agx-setup.sh

@@ -1,20 +1,6 @@
-# Auto-generated requirements.txt for nano node
-# Components: python,cuda,tensorrt,fastapi,gpu-monitoring,jupyter
+# Auto-generated requirements.txt for spark1 node
+# Components: python,cuda,tensorrt
 # Generated: Sat 11 Oct 2025 04:12:12 PM PDT
 
-# fastapi dependencies
-fastapi
-uvicorn
-pydantic
-psycopg2-binary
-python-dotenv
-python-multipart
-openai
-
-# gpu-monitoring dependencies
-nvidia-ml-py
-
-# jupyter dependencies
-jupyterlab
-notebook
+# GPU functionality validated through PyTorch and TensorFlow APIs
 
