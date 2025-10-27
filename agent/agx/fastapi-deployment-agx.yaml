@@ -32,8 +32,6 @@ spec:
         ports:
         - containerPort: 8000
           name: http
-        - containerPort: 8888
-          name: jupyter
         - containerPort: 8001
           name: llm-api
         resources:

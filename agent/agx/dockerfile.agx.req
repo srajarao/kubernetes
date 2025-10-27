@@ -46,12 +46,9 @@ RUN $VIRTUAL_ENV/bin/pip install \
 RUN $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /workspace/requirements.agx.txt
 
 # Expose ports
-EXPOSE 8889
 EXPOSE 8000
 
 # --- Final Setup ---
-COPY start-jupyter.sh /usr/local/bin/start-jupyter.sh
-RUN chmod +x /usr/local/bin/start-jupyter.sh
 
 # Set the default command for the container
 WORKDIR /workspace

@@ -16,9 +16,6 @@ nvidia-ml-py
 
 # Base dependencies
 tensorflow-io-gcs-filesystem==0.37.1
-notebook==7.1.3
-jupyterlab==4.1.5
-ipykernel==6.30.1
 
 # Added incrementally: numpy, tensorboard, google-auth, google-auth-oauthlib, ml-dtypes, typing_extensions, jinja2, MarkupSafe, filelock, fsspec, packaging, Markdown, werkzeug, requests, oauthlib, urllib3, rsa, cachetools, charset-normalizer, idna, certifi, tensorboard-data-server
 numpy==1.26.4

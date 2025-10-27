@@ -11,9 +11,8 @@ Exit codes:
   3 = PyTorch check failed
   4 = TensorFlow check failed
   5 = TensorRT check failed
-  6 = Jupyter Lab check failed
-  7 = FastAPI Nano dependencies check failed
-  8 = Database connection failed
+  6 = FastAPI Nano dependencies check failed
+  7 = Database connection failed
 """
 print("AGX_APP: Script starting...")
 import os, sys, ctypes, subprocess
@@ -43,9 +42,8 @@ EXIT_CUSPARSELT_FAIL = 2
 EXIT_TORCH_FAIL = 3
 EXIT_TF_FAIL = 4
 EXIT_TRT_FAIL = 5
-EXIT_JUPYTER_FAIL = 6
-EXIT_FASTAPI_NANO_FAIL = 7
-EXIT_DB_FAIL = 8
+EXIT_FASTAPI_NANO_FAIL = 6
+EXIT_DB_FAIL = 7
 
 # Load environment variables from the .env file.
 load_dotenv(dotenv_path="/app/app/config/postgres.env")
@@ -220,76 +218,6 @@ def check_tensorrt():
         return False
 
 
-def check_jupyter():
-    print("\n=== Jupyter Lab Check ===")
-    try:
-        import jupyterlab
-
-        print("JupyterLab version:", getattr(jupyterlab, "__version__", "unknown"))
-        jupyter_bin = subprocess.getoutput("command -v jupyter")
-        if not jupyter_bin:
-            print("❌ Jupyter Lab: FAIL -> 'jupyter' binary not found in PATH")
-            return False
-        print("Found jupyter binary at:", jupyter_bin)
-        out = subprocess.getoutput(f"{jupyter_bin} lab --help 2>&1")
-        if out.strip() and (
-            "JupyterLab" in out
-            or "Options" in out
-            or "Subcommands" in out
-            or "Examples" in out
-        ):
-            print("✅ Jupyter Lab: PASS")
-            return True
-        else:
-            print(
-                "❌ Jupyter Lab: FAIL -> Unexpected output from 'jupyter lab --help':\n",
-                out,
-            )
-            return False
-    except Exception as e:
-        print("❌ Jupyter Lab: FAIL ->", e)
-        return False
-
-
-def start_jupyter_lab():
-    """Start Jupyter Lab in background on port 8888"""
-    print("\n=== Starting Jupyter Lab ===")
-    try:
-        # Start Jupyter Lab in background with proper configuration
-        jupyter_cmd = [
-            "jupyter", "lab", 
-            "--ip=0.0.0.0", 
-            "--port=8888",
-            "--no-browser",
-            "--allow-root",
-            "--ServerApp.token=''",
-            "--ServerApp.password=''",
-            "--ServerApp.allow_origin='*'",
-            "--ServerApp.base_url=/jupyter"
-        ]
-        
-        print(f"Starting Jupyter Lab with command: {' '.join(jupyter_cmd)}")
-        
-        # Start in background thread
-        def run_jupyter():
-            try:
-                subprocess.run(jupyter_cmd, check=True)
-            except Exception as e:
-                print(f"❌ Jupyter Lab failed to start: {e}")
-        
-        jupyter_thread = threading.Thread(target=run_jupyter, daemon=True)
-        jupyter_thread.start()
-        
-        # Give it a moment to start
-        time.sleep(3)
-        
-        print("✅ Jupyter Lab started on port 8888")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Failed to start Jupyter Lab: {e}")
-        return False
-
 
 def check_fastapi_agx_deps():
     print("\n=== FastAPI AGX Project Dependencies Check ===")
@@ -438,43 +366,32 @@ def main():
     result5 = check_tensorrt()
     print(f"TensorRT result: {result5}")
     
-    print("Running Jupyter check...")
-    result6 = check_jupyter()
-    print(f"Jupyter result: {result6}")
-    
     print("Running FastAPI AGX deps check...")
-    result7 = check_fastapi_agx_deps()
-    print(f"FastAPI AGX deps result: {result7}")
+    result6 = check_fastapi_agx_deps()
+    print(f"FastAPI AGX deps result: {result6}")
     
     # Check database connection (skip if SKIP_DB_CHECK is set for testing)
     if os.getenv("SKIP_DB_CHECK", "true").lower() == "true":  # Changed default to true
         print("Skipping database check (SKIP_DB_CHECK=true)...")
-        result8 = True  # Skip database check for testing
-        print(f"Database result: {result8} (skipped)")
+        result7 = True  # Skip database check for testing
+        print(f"Database result: {result7} (skipped)")
     else:
         print("Running database check...")
-        result8 = connect_to_db()
-        print(f"Database result: {result8}")
+        result7 = connect_to_db()
+        print(f"Database result: {result7}")
     
-    all_checks_passed = result1 and result2 and result3 and result4 and result5 and result6 and result7 and result8
+    all_checks_passed = result1 and result2 and result3 and result4 and result5 and result6 and result7
     
     print(f"\nAll checks passed: {all_checks_passed}")
 
     if all_checks_passed:
         print("\n✅✅✅ ALL HEALTH CHECKS PASSED ✅✅✅")
         
-        # Start Jupyter Lab in background
-        jupyter_started = start_jupyter_lab()
-        if jupyter_started:
-            print("✅ Jupyter Lab is running on port 8888")
-        else:
-            print("⚠️  Jupyter Lab failed to start, but continuing with FastAPI")
-        
         print("\nStarting FastAPI AGX server...")
         try:
             port = int(os.getenv("FASTAPI_PORT", "8000"))
-            print(f"Starting FastAPI on port {port} with hot reload enabled...")
-            uvicorn.run(app, host="0.0.0.0", port=port, reload=True)
+            print(f"Starting FastAPI on port {port}...")
+            uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
         except Exception as e:
             print(f"❌❌❌ FAILED TO START FASTAPI AGX SERVER: {e} ❌❌❌")
             sys.exit(1)
@@ -490,8 +407,6 @@ def main():
             print("⚠️  Warning: TensorFlow check failed, continuing without")
         if not check_tensorrt():
             print("⚠️  Warning: TensorRT check failed, continuing without")
-        if not check_jupyter():
-            sys.exit(EXIT_JUPYTER_FAIL)
         if not check_fastapi_agx_deps():
             sys.exit(EXIT_FASTAPI_NANO_FAIL)
         if not connect_to_db():
