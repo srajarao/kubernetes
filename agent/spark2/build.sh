@@ -5,7 +5,7 @@
 
 set -e
 
-IMAGE_NAME="fastapi-spark2"
+IMAGE_NAME="spark2"
 REGISTRY="10.1.10.150:30500"
 TAG="latest"
 FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
@@ -27,11 +27,11 @@ if [[ "$FORCE_CLEAN" == false ]]; then
 fi
 
 # Build the image
-echo "🏗️  Building ${FULL_IMAGE} (with Jupyter Lab pre-installed and CUDA PyTorch)"
+echo "🏗️  Building ${FULL_IMAGE} (with CUDA PyTorch and pre-downloaded wheels)"
 if [[ "$FORCE_CLEAN" == true ]]; then
-    docker buildx build --platform linux/arm64 -f dockerfile.spark2.req -t ${IMAGE_NAME} --no-cache --load .
+    docker buildx build --platform linux/arm64 -f dockerfile.spark2.wheels -t ${IMAGE_NAME} --no-cache --load .
 else
-    docker buildx build --platform linux/arm64 -f dockerfile.spark2.req -t ${IMAGE_NAME} --load .
+    docker buildx build --platform linux/arm64 -f dockerfile.spark2.wheels -t ${IMAGE_NAME} --load .
 fi
 
 # Tag and push

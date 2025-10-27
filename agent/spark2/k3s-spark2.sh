@@ -18,12 +18,6 @@ INSTALL_SERVER=false # Set to true to allow server uninstall/install steps to ru
 # Install K3s agent on nano
 INSTALL_NANO_AGENT=false
 
-# Install K3s agent on agx
-INSTALL_AGX_AGENT=false
-
-# Install K3s agent on spark1
-INSTALL_SPARK1_AGENT=false
-
 # Install K3s agent on spark2
 INSTALL_SPARK2_AGENT=true
 
@@ -45,9 +39,6 @@ PGADMIN_PASSWORD="pgadmin"          # pgAdmin default password
 PGADMIN_EMAIL="pgadmin@pgadmin.org" # pgAdmin default email
 
 # Debug mode (0 for silent, 1 for verbose)
-DEBUG=0
-
-
 DEBUG=${DEBUG:-0}
 
 # Define the initial script message to be logged
@@ -70,10 +61,8 @@ get_k3s_token() {
   TOKEN=$(sudo cat /var/lib/rancher/k3s/server/node-token 2>/dev/null || true)
 
   if [ -z "$TOKEN" ]; then
-    if [ "$INSTALL_AGX_AGENT" = true ] || [ "$INSTALL_NANO_AGENT" = true ]; then
-      echo -e "\n\033[31mFATAL: K3S token not found. Ensure /var/lib/rancher/k3s/server/node-token exists on the Tower host.\033[0m\n"
-      exit 1
-    fi
+    echo -e "\n\033[31mFATAL: K3S token not found. Ensure /var/lib/rancher/k3s/server/node-token exists on the Tower host.\033[0m\n"
+    exit 1
   fi
 }
 
@@ -86,8 +75,8 @@ fi
 # Initialize Dynamic Step Counter
 CURRENT_STEP=1
 
-# NOTE: Total steps count is 20 (AGX agent setup and GPU enablement)
-TOTAL_STEPS=20
+# NOTE: Total steps count is 22 (agent cleanup and installation)
+TOTAL_STEPS=21
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.
@@ -206,6 +195,14 @@ capture_final_log() {
   $SSH_CMD $SSH_USER@$SPARK1_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'fastapi-spark1|Error|Fail'" >> "$log_file" 2>/dev/null
 
     echo -e "
+--- 8. CRITICAL: SPARK2 K3S AGENT LOG ERRORS (Container Runtime Check) ---" >> "$log_file"
+  echo "Executing: $SSH_CMD $SSH_USER@$SPARK2_IP 'sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E \"fastapi-spark2|Error|Fail\"'" >> "$log_file"
+    # Execute SSH command and pipe output directly to the log file
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'fastapi-spark2|Error|Fail'" >> "$log_file" 2>/dev/null
+
+
+
+    echo -e "
 --- LOG CAPTURE COMPLETE ---" >> "$log_file"
 }
 
@@ -230,29 +227,38 @@ wait_for_server() {
 # Function to wait for agent readiness (checks for 'nano' specifically)
 wait_for_agent() {
   local node_name="${1:-}"
-  local timeout=30  # Reduced from 60 to 30 seconds
+  local timeout=30  # Timeout in seconds
+  local start_time=$(date +%s)
   local count=0
   if [ "$DEBUG" = "1" ]; then echo "Waiting for agent to be ready..."; fi
 
   if [ -n "$node_name" ]; then
     # Check the specific node's Ready condition
-    while ! sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get node "$node_name" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q "True"; do
-      if [ $count -ge $timeout ]; then
-        echo "Agent $node_name did not join within $timeout seconds - continuing anyway"
+    while ! timeout 10 sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get node "$node_name" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q "True"; do
+      if [ "$DEBUG" = "1" ]; then
+        local status=$(timeout 10 sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get node "$node_name" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Node not found")
+        echo "DEBUG: Node $node_name status: '$status'"
+      fi
+      local current_time=$(date +%s)
+      local elapsed=$((current_time - start_time))
+      count=$((count + 1))
+      if [ $elapsed -ge $timeout ] || [ $count -ge 30 ]; then
+        echo "Agent $node_name did not join within $timeout seconds or after $count attempts - continuing anyway"
         return 1
       fi
       sleep 1
-      count=$((count + 1))
     done
   else
     # Fallback: wait until any node is Ready (legacy behavior)
-    while ! sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes 2>/dev/null | grep -q "Ready"; do
-      if [ $count -ge $timeout ]; then
-        echo "Agent did not join within $timeout seconds - continuing anyway"
+    while ! timeout 10 sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes 2>/dev/null | grep -q "Ready"; do
+      local current_time=$(date +%s)
+      local elapsed=$((current_time - start_time))
+      count=$((count + 1))
+      if [ $elapsed -ge $timeout ] || [ $count -ge 30 ]; then
+        echo "Agent did not join within $timeout seconds or after $count attempts - continuing anyway"
         return 1
       fi
       sleep 1
-      count=$((count + 1))
     done
   fi
 
@@ -262,7 +268,7 @@ wait_for_agent() {
 
 # Function to wait for GPU capacity
 wait_for_gpu_capacity() {
-  local timeout=120
+  local timeout=30
   local count=0
   if [ "$DEBUG" = "1" ]; then echo "Waiting for GPU capacity to be added..."; fi
   while ! sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get node nano -o jsonpath='{.status.capacity.nvidia\.com/gpu}' | grep -q '1'; do
@@ -452,37 +458,48 @@ print_divider
 #=============================================================================================================
 step_03(){
 # -------------------------------------------------------------------------
-# STEP 03: Uninstall K3s Agent on SPARK1
+# STEP 03: Uninstall K3s Agent on SPARK2 (Comprehensive Cleanup)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
-    echo "Uninstalling Agent on SPARK1... (Verbose output below)"
+    echo "Uninstalling Agent on SPARK2... (Verbose output below)"
     sleep 5
     # Delete existing deployments and services if they exist to ensure clean uninstall
-    echo "Deleting existing fastapi-spark1 deployment..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-spark1 --ignore-not-found=true
-    echo "Deleting existing fastapi-spark1-service..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark1-service --ignore-not-found=true
-    echo "Deleting existing fastapi-spark1-nodeport..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark1-nodeport --ignore-not-found=true
+    echo "Deleting existing fastapi-spark2 deployment..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete job fastapi-spark2 --ignore-not-found=true
+    echo "Deleting existing fastapi-spark2-service..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark2-service --ignore-not-found=true
+    echo "Deleting existing fastapi-spark2-nodeport..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark2-nodeport --ignore-not-found=true
+    echo "Deleting stale spark2 node entry from cluster..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete node spark2 --ignore-not-found=true
     # Check if k3s binaries exist before attempting uninstall
-    echo "Checking for k3s-agent-uninstall.sh on SPARK1..."
-    if $SSH_CMD $SSH_USER@$SPARK1_IP "test -x /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
+    echo "Checking for k3s-agent-uninstall.sh on SPARK2..."
+    if $SSH_CMD $SSH_USER@$SPARK2_IP "test -x /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
       echo "Found k3s-agent-uninstall.sh, running uninstall..."
-      $SSH_CMD $SSH_USER@$SPARK1_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh"
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh"
     else
-      echo "k3s-agent-uninstall.sh not found on SPARK1 - no uninstall needed"
+      echo "k3s-agent-uninstall.sh not found on SPARK2 - no uninstall needed"
     fi
+    # Additional manual cleanup
+    echo "Performing additional agent cleanup..."
+    echo "Stopping K3s agent service if running..."
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl stop k3s-agent" >/dev/null 2>&1 || true
+    echo "Removing remaining K3s agent files and directories..."
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo rm -rf /var/lib/rancher/k3s/agent" >/dev/null 2>&1 || true
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo rm -rf /etc/rancher/k3s" >/dev/null 2>&1 || true
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo rm -f /etc/systemd/system/k3s-agent.service" >/dev/null 2>&1 || true
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl daemon-reload" >/dev/null 2>&1 || true
   else
-    step_echo_start "a" "spark1" "$SPARK1_IP" "Uninstalling K3s agent on spark1..."
+    step_echo_start "a" "spark2" "$SPARK2_IP" "Uninstalling K3s agent on spark2 (comprehensive cleanup)..."
     sleep 5
-    # Delete existing deployments and services before uninstalling agent
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-spark1 --ignore-not-found=true > /dev/null 2>&1
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark1-service --ignore-not-found=true > /dev/null 2>&1
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark1-nodeport --ignore-not-found=true > /dev/null 2>&1
-    # Check if k3s binaries exist before attempting uninstall
-    if $SSH_CMD $SSH_USER@$SPARK1_IP "test -x /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
-      if $SSH_CMD $SSH_USER@$SPARK1_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
+    # Delete existing deployments and services if they exist to ensure clean uninstall
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-spark2 --ignore-not-found=true >/dev/null 2>&1 || true
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark2-service --ignore-not-found=true >/dev/null 2>&1 || true
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark2-nodeport --ignore-not-found=true >/dev/null 2>&1 || true
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete node spark2 --ignore-not-found=true >/dev/null 2>&1 || true
+    if $SSH_CMD $SSH_USER@$SPARK2_IP "test -x /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
+      if $SSH_CMD $SSH_USER@$SPARK2_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null 2>&1; then
         echo -e "[32m✅[0m"
       else
         echo -e "[32m✅[0m"  # Print checkmark anyway, as uninstall may have partial success
@@ -490,109 +507,42 @@ if [ "$INSTALL_SPARK2_AGENT" = true ]; then
     else
       echo -e "[32m✅[0m"  # Print checkmark if uninstall script doesn't exist (already uninstalled)
     fi
+    # Additional manual cleanup (silent)
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl stop k3s-agent" >/dev/null 2>&1 || true
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo rm -rf /var/lib/rancher/k3s/agent" >/dev/null 2>&1 || true
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo rm -rf /etc/rancher/k3s" >/dev/null 2>&1 || true
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo rm -f /etc/systemd/system/k3s-agent.service" >/dev/null 2>&1 || true
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl daemon-reload" >/dev/null 2>&1 || true
   fi
 fi
 if [ "$DEBUG" = "1" ]; then
-  echo "K3s agent uninstall on SPARK1 completed."
+  echo "K3s agent uninstall and cleanup on SPARK2 completed."
 fi
 step_increment
 print_divider
 }
 
-
-
-
-
 step_04(){
 # -------------------------------------------------------------------------
-# STEP 04: Reinstall SPARK1 Agent (BINARY TRANSFER INSTALL)
+# STEP 04: Reinstall SPARK2 Agent (BINARY TRANSFER INSTALL)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
-  # Use binary transfer for SPARK1 (curl fails due to network restrictions)
-  K3S_REINSTALL_CMD="export K3S_TOKEN=\"$TOKEN\";
-    scp -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$TOWER_IP:/tmp/k3s-arm64 /tmp/k3s-arm64;
-    sudo chmod +x /tmp/k3s-arm64;
-    sudo cp /tmp/k3s-arm64 /usr/local/bin/k3s;
-    sudo chmod +x /usr/local/bin/k3s;
-    sudo mkdir -p /etc/systemd/system;
-    sudo bash -c 'cat > /etc/systemd/system/k3s-agent.service << EOF
-[Unit]
-Description=Lightweight Kubernetes
-Documentation=https://k3s.io
-Wants=network-online.target
-After=network-online.target
-
-[Install]
-WantedBy=multi-user.target
-
-[Service]
-Type=notify
-EnvironmentFile=-/etc/default/%N
-EnvironmentFile=-/etc/sysconfig/%N
-EnvironmentFile=-/etc/systemd/system/k3s-agent.service.env
-KillMode=process
-Delegate=yes
-User=root
-LimitNOFILE=1048576
-LimitNPROC=infinity
-LimitCORE=infinity
-TasksMax=infinity
-TimeoutStartSec=0
-Restart=always
-RestartSec=5s
-ExecStartPre=-/sbin/modprobe br_netfilter
-ExecStartPre=-/sbin/modprobe overlay
-ExecStart=/usr/local/bin/k3s agent --node-ip $SPARK1_IP
-EOF';
-    echo 'K3S_TOKEN=\"\$K3S_TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null;
-    echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null;
-    sudo ip route add default via 10.1.10.1 dev eno1 2>/dev/null || true;
-    sudo systemctl daemon-reload;
-    sudo systemctl enable k3s-agent;
-    sudo systemctl start k3s-agent"
-
+  # Use the official k3s install script for SPARK2
+  K3S_REINSTALL_CMD="sudo curl -sfL https://get.k3s.io | K3S_URL='https://$TOWER_IP:6443' K3S_TOKEN='$TOKEN' sh -"
+  echo "Installing Agent on SPARK2 using official k3s install script..."
+  sleep 5
   if [ "$DEBUG" = "1" ]; then
-    echo "Reinstalling Agent on SPARK1 with binary transfer..."
-    sleep 5
-    echo "Transferring k3s binary from tower to SPARK1..."
-    echo "Setting up systemd service on SPARK1..."
-    echo "Configuring K3s agent with token and server URL..."
-    $SSH_CMD $SSH_USER@$SPARK1_IP "$K3S_REINSTALL_CMD"
-    # Ensure environment file exists with correct server URL
-    echo "Ensuring environment file has correct server URL..."
-    $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /etc/systemd/system && echo 'K3S_TOKEN=\"$TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null && echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null" 2>/dev/null || true
-    # CRITICAL: Ensure systemd loads environment variables after install
-    echo "Reloading systemd and restarting k3s-agent service..."
-    $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl daemon-reload && sudo systemctl restart k3s-agent" 2>/dev/null || true
-    echo "Waiting for SPARK1 agent to join the cluster..."
-    wait_for_agent spark1
+    echo "Running k3s install script with server URL and token..."
+    echo ""
+    $SSH_CMD $SSH_USER@$SPARK2_IP "$K3S_REINSTALL_CMD"
+    echo "Agent installation completed."
   else
-    step_echo_start "a" "spark1" "$SPARK1_IP" "Reinstalling K3s agent on spark1..."
+    step_echo_start "a" "spark2" "$SPARK2_IP" "Reinstalling K3s agent on spark2..."
     sleep 5
-    # Execute the binary transfer install command
-  if $SSH_CMD $SSH_USER@$SPARK1_IP "$K3S_REINSTALL_CMD" > /dev/null 2>&1; then
-      # Ensure environment file exists with correct server URL
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /etc/systemd/system && echo 'K3S_TOKEN=\"$TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null && echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null" > /dev/null 2>&1
-      # CRITICAL: Ensure systemd loads environment variables after install
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl daemon-reload && sudo systemctl restart k3s-agent" > /dev/null 2>&1
-  wait_for_agent spark1
-      echo -en " ✅[0m
-"
-    else
-      echo -e "[31m❌ Failed to reinstall K3s agent on SPARK1[0m"
-      echo "Debug info:"
-      echo "Reinstalling Agent on SPARK1 with binary transfer..."
-      echo "Transferring k3s binary from tower to SPARK1..."
-      echo "Setting up systemd service on SPARK1..."
-      echo "Configuring K3s agent with token and server URL..."
-      echo "Error details - attempting to show command output:"
-      $SSH_CMD $SSH_USER@$SPARK1_IP "$K3S_REINSTALL_CMD"
-      exit 1
-    fi
+    echo ""
+    $SSH_CMD $SSH_USER@$SPARK2_IP "$K3S_REINSTALL_CMD" 
   fi
-fi
-if [ "$DEBUG" = "1" ]; then
-  echo "K3s agent reinstall on SPARK1 completed."
+  wait_for_agent spark2
 fi
 step_increment
 print_divider
@@ -602,59 +552,59 @@ print_divider
 
 step_05(){
 # =========================================================================
-# STEP 05: Systemd Service Override (force correct server/node IP) SPARK1
+# STEP 05: Systemd Service Override (force correct server/node IP) SPARK2
 # =========================================================================
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
 if [ "$DEBUG" = "1" ]; then
-  echo "Forcing K3s SPARK1 agent to use correct server IP..."
+  echo "Forcing K3s SPARK2 agent to use correct server IP..."
   sleep 5
-  echo "Adding SPARK1 host key to known_hosts..."
-  ssh-keyscan -H $SPARK1_IP >> ~/.ssh/known_hosts 2>/dev/null
+  echo "Adding SPARK2 host key to known_hosts..."
+  ssh-keyscan -H $SPARK2_IP >> ~/.ssh/known_hosts 2>/dev/null
   echo "Creating systemd override directory..."
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /etc/systemd/system/k3s-agent.service.d/"
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /etc/systemd/system/k3s-agent.service.d/"
   echo "Creating systemd override file with correct server URL and node IP..."
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/systemd/system/k3s-agent.service.d/override.conf > /dev/null" << EOF
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /etc/systemd/system/k3s-agent.service.d/override.conf > /dev/null" << EOF
 [Service]
 Environment="K3S_URL=https://$TOWER_IP:6443"
-Environment="K3S_NODE_IP=$SPARK1_IP"
+Environment="K3S_NODE_IP=$SPARK2_IP"
 EOF
   echo "Reloading systemd daemon and restarting k3s-agent..."
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl daemon-reload && sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1
-  echo "Waiting for SPARK1 agent to rejoin with correct configuration..."
-  wait_for_agent spark1
-  echo "SPARK1 agent service override completed successfully"
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl daemon-reload && sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1
+  echo "Waiting for SPARK2 agent to rejoin with correct configuration..."
+  wait_for_agent spark2
+  echo "SPARK2 agent service override completed successfully"
 else
-  step_echo_start "a" "spark1" "$SPARK1_IP" "Forcing K3s spark1 agent to use correct server IP..."
+  step_echo_start "a" "spark2" "$SPARK2_IP" "Forcing K3s spark2 agent to use correct server IP..."
 
-  # Add SPARK1 host key to known_hosts to avoid SSH warning
-  ssh-keyscan -H $SPARK1_IP >> ~/.ssh/known_hosts 2>/dev/null
+  # Add SPARK2 host key to known_hosts to avoid SSH warning
+  ssh-keyscan -H $SPARK2_IP >> ~/.ssh/known_hosts 2>/dev/null
 
   # Create systemd override directory and file directly instead of using systemctl edit
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /etc/systemd/system/k3s-agent.service.d/" > /dev/null 2>&1
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /etc/systemd/system/k3s-agent.service.d/" > /dev/null 2>&1
 
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/systemd/system/k3s-agent.service.d/override.conf > /dev/null" << EOF
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /etc/systemd/system/k3s-agent.service.d/override.conf > /dev/null" << EOF
 [Service]
 Environment="K3S_URL=https://$TOWER_IP:6443"
-Environment="K3S_NODE_IP=$SPARK1_IP"
+Environment="K3S_NODE_IP=$SPARK2_IP"
 EOF
 
   # Reload daemon and restart the service
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl daemon-reload && sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl daemon-reload && sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1
 
   # Check the exit status of the SSH command
   if [ $? -eq 0 ]; then
       # Wait for the agent to re-join and be ready
-    wait_for_agent spark1
+    wait_for_agent spark2
     echo -e "✅\x1b[0m"
   else
     echo -e "❌\x1b[0m"
-    echo -e "\x1b[31mFATAL: Failed to overwrite SPARK1 service file.\x1b[0m"
+    echo -e "\x1b[31mFATAL: Failed to overwrite SPARK2 service file.\x1b[0m"
     exit 1
   fi
 fi
 fi
 if [ "$DEBUG" = "1" ]; then
-  echo "K3s SPARK1 agent service override completed."
+  echo "K3s SPARK2 agent service override completed."
 fi
 step_increment
 print_divider
@@ -665,22 +615,22 @@ print_divider
 
 step_06(){
 # -------------------------------------------------------------------------
-# STEP 06: Create Registry Config Directory SPARK1
+# STEP 06: Create Registry Config Directory SPARK2
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
-    echo "Creating registry configuration directory on SPARK1..."
+    echo "Creating registry configuration directory on SPARK2..."
     sleep 5
     echo "Creating /etc/rancher/k3s/ directory for registry configuration..."
-    $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /etc/rancher/k3s/"
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /etc/rancher/k3s/"
     echo "Registry config directory created successfully"
   else
-    step_echo_start "a" "spark1" "$SPARK1_IP" "Creating spark1 registry configuration directory..."
+    step_echo_start "a" "spark2" "$SPARK2_IP" "Creating spark2 registry configuration directory..."
     sleep 5
-    if $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
+    if $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /etc/rancher/k3s/" > /dev/null 2>&1; then
       echo -en " ✅\033[0m\n"
     else
-      echo -e "\033[31m❌ Failed to create registry configuration directory on SPARK1\033[0m"
+      echo -e "\033[31m❌ Failed to create registry configuration directory on SPARK2\033[0m"
       exit 1
     fi
   fi
@@ -698,17 +648,17 @@ fi
 
 step_07(){
 # -------------------------------------------------------------------------
-# STEP 07: Configure Registry for SPARK1
+# STEP 07: Configure Registry for SPARK2
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
-    echo "Configuring registry for SPARK1..."
+    echo "Configuring registry for SPARK2..."
     sleep 5
     echo "Registry protocol: $REGISTRY_PROTOCOL"
     echo "Registry IP: $REGISTRY_IP:$REGISTRY_PORT"
     if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
       echo "Setting up HTTPS registry configuration..."
-      $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 mirrors:
   \"$REGISTRY_IP:$REGISTRY_PORT\":
     endpoint:
@@ -723,9 +673,9 @@ configs:
 EOF
 " && \
       echo "Creating containerd certs directory..." && \
-      $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" && \
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" && \
       echo "Creating containerd hosts.toml file..." && \
-      $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
 [host.\"https://$REGISTRY_IP:$REGISTRY_PORT\"]
   capabilities = [\"pull\", \"resolve\", \"push\"]
   ca = \"/etc/docker/certs.d/$REGISTRY_IP/ca.crt\"
@@ -734,7 +684,7 @@ EOF
 "
     else
       echo "Setting up HTTP registry configuration..."
-      $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 mirrors:
   \"$REGISTRY_IP:$REGISTRY_PORT\":
     endpoint:
@@ -747,9 +697,9 @@ configs:
 EOF
 " && \
       echo "Creating containerd certs directory..." && \
-      $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" && \
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" && \
       echo "Creating containerd hosts.toml file..." && \
-      $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
 [host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
   capabilities = [\"pull\", \"resolve\", \"push\"]
 EOF
@@ -757,10 +707,10 @@ EOF
     fi
     echo "Registry configuration completed"
   else
-    step_echo_start "a" "spark1" "$SPARK1_IP" "Configuring registry for spark1..."
+    step_echo_start "a" "spark2" "$SPARK2_IP" "Configuring registry for spark2..."
     sleep 5
     if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 mirrors:
   \"$REGISTRY_IP:$REGISTRY_PORT\":
     endpoint:
@@ -774,8 +724,8 @@ configs:
       key_file: \"/etc/docker/certs.d/$REGISTRY_IP/registry.key\"
 EOF
 " > /dev/null 2>&1 && \
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1 && \
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1 && \
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
 [host.\"https://$REGISTRY_IP:$REGISTRY_PORT\"]
   capabilities = [\"pull\", \"resolve\", \"push\"]
   ca = \"/etc/docker/certs.d/$REGISTRY_IP/ca.crt\"
@@ -783,7 +733,7 @@ EOF
 EOF
 " > /dev/null 2>&1
     else
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 mirrors:
   \"$REGISTRY_IP:$REGISTRY_PORT\":
     endpoint:
@@ -795,8 +745,8 @@ configs:
       insecure_skip_verify: true
 EOF
 " > /dev/null 2>&1 && \
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1 && \
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT" > /dev/null 2>&1 && \
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/certs.d/$REGISTRY_IP:$REGISTRY_PORT/hosts.toml > /dev/null <<EOF
 [host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
   capabilities = [\"pull\", \"resolve\", \"push\"]
 EOF
@@ -805,13 +755,13 @@ EOF
     if [ $? -eq 0 ]; then
       echo -e "\e[32m✅\e[0m"
     else
-      echo -e "\e[31m❌ Failed to configure registry for SPARK1\e[0m"
+      echo -e "\e[31m❌ Failed to configure registry for SPARK2\e[0m"
       exit 1
     fi
   fi
 fi
 if [ "$DEBUG" = "1" ]; then
-  echo "Registry configuration for SPARK1 completed."
+  echo "Registry configuration for SPARK2 completed."
 fi
 step_increment
 print_divider
@@ -823,23 +773,23 @@ print_divider
 
 step_08(){
 # -------------------------------------------------------------------------
-# STEP 08: Restart Agent After Registry Config SPARK1
+# STEP 08: Restart Agent After Registry Config SPARK2
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Restarting K3s agent after registry configuration..."
     sleep 5
-    echo "Running: sudo systemctl restart k3s-agent on SPARK1"
-    $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl restart k3s-agent"
-    echo "Waiting for SPARK1 agent to be ready after restart..."
-    wait_for_agent spark1
-    echo "SPARK1 agent restarted successfully"
+    echo "Running: sudo systemctl restart k3s-agent on SPARK2"
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl restart k3s-agent"
+    echo "Waiting for SPARK2 agent to be ready after restart..."
+    wait_for_agent spark2
+    echo "SPARK2 agent restarted successfully"
   else
-  step_echo_start "a" "spark1" "$SPARK1_IP" "Restarting K3s agent after registry config..."
+  step_echo_start "a" "spark2" "$SPARK2_IP" "Restarting K3s agent after registry config..."
   sleep 5
   # Use timeout to prevent hanging on systemctl restart
-  if $SSH_CMD $SSH_USER@$SPARK1_IP "sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1; then
-    wait_for_agent spark1
+  if $SSH_CMD $SSH_USER@$SPARK2_IP "sudo timeout 30 systemctl restart k3s-agent" > /dev/null 2>&1; then
+    wait_for_agent spark2
     echo -e "✅"
   else
     echo -e "[31m❌ Service restart failed or timed out[0m"
@@ -861,24 +811,24 @@ print_divider
 
 step_09(){
 # --------------------------------------------------------------------------------
-# STEP 09: Restart K3s agent on SPARK1 (workaround for containerd config)
+# STEP 09: Restart K3s agent on SPARK2 (workaround for containerd config)
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
 if [ "$DEBUG" = "1" ]; then
-  echo "Restarting K3s agent on SPARK1 after containerd configuration..."
+  echo "Restarting K3s agent on SPARK2 after containerd configuration..."
   sleep 5
   echo "Stopping k3s-agent service..."
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl stop k3s-agent"
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl stop k3s-agent"
   echo "Starting k3s-agent service..."
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl start k3s-agent"
-  echo "Waiting for SPARK1 agent to be ready..."
-  wait_for_agent spark1
-  echo "SPARK1 agent restart completed successfully"
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl start k3s-agent"
+  echo "Waiting for SPARK2 agent to be ready..."
+  wait_for_agent spark2
+  echo "SPARK2 agent restart completed successfully"
 else
-  step_echo_start "a" "spark1" "$SPARK1_IP" "Restarting K3s agent after containerd config..."
+  step_echo_start "a" "spark2" "$SPARK2_IP" "Restarting K3s agent after containerd config..."
   sleep 5
-  if $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl stop k3s-agent" > /dev/null 2>&1 && $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl start k3s-agent" > /dev/null 2>&1; then
-    wait_for_agent spark1
+  if $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl stop k3s-agent" > /dev/null 2>&1 && $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl start k3s-agent" > /dev/null 2>&1; then
+    wait_for_agent spark2
     echo -e "[32m✅[0m"
   else
     echo -e "[31m❌ Failed to restart K3s agent after containerd config[0m"
@@ -895,9 +845,130 @@ print_divider
 
 
 
+
 step_10(){
 # --------------------------------------------------------------------------------
-# STEP 10: Install NVIDIA Device Plugin for GPU Support
+# STEP 09 (CLEANUP): Force-delete ALL conflicting components (NVIDIA + App)
+# --------------------------------------------------------------------------------
+if [ "$DEBUG" = "1" ]; then
+  echo "Force-deleting all conflicting NVIDIA GPU components..."
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete namespace gpu-operator --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset -n default -l app=gpu-operator-node-feature-discovery --grace-period=0 --force --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset nvidia-device-plugin-spark2 -n kube-system --grace-period=0 --force --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset -n kube-system -l app.kubernetes.io/name=nvidia-device-plugin --grace-period=0 --force --ignore-not-found=true
+  
+  echo "Force-deleting all old 'fastapi-spark2' application components..."
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-spark2 -n default --grace-period=0 --force --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod -n default -l app=fastapi-spark2 --grace-period=0 --force --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark2-service -n default --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark2-nodeport -n default --ignore-not-found=true
+
+  echo "Waiting for all old components to terminate..."
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds -n default -l app=gpu-operator-node-feature-discovery --timeout=60s --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds nvidia-device-plugin-spark2 -n kube-system --timeout=60s --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds -n kube-system -l app.kubernetes.io/name=nvidia-device-plugin --timeout=60s --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete namespace gpu-operator --timeout=120s --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete deployment fastapi-spark2 -n default --timeout=60s --ignore-not-found=true
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete pod -n default -l app=fastapi-spark2 --timeout=60s --ignore-not-found=true
+  echo "All components terminated."
+
+else
+  step_echo_start "s" "tower" "$TOWER_IP" "Force-deleting all conflicting components (NVIDIA + App)..."
+  sleep 5
+  
+  # --- NVIDIA Cleanup ---
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete namespace gpu-operator --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset -n default -l app=gpu-operator-node-feature-discovery --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset nvidia-device-plugin-spark2 -n kube-system --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset -n kube-system -l app.kubernetes.io/name=nvidia-device-plugin --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
+
+  # --- FastAPI App Cleanup ---
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-spark2 -n spark2 --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod -n spark2 -l app=fastapi-spark2 --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark2-service -n spark2 --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark2-nodeport -n spark2 --ignore-not-found=true > /dev/null 2>&1
+
+  echo -e "\nWaiting for old components to terminate (this may take a minute)..."
+  # --- Wait for NVIDIA ---
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds -n default -l app=gpu-operator-node-feature-discovery --timeout=60s --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds nvidia-device-plugin-spark2 -n kube-system --timeout=60s --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds -n kube-system -l app.kubernetes.io/name=nvidia-device-plugin --timeout=60s --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete namespace gpu-operator --timeout=120s --ignore-not-found=true > /dev/null 2>&1
+  
+  # --- Wait for App ---
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete deployment fastapi-spark2 -n spark2 --timeout=60s --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete pod -n spark2 -l app=fastapi-spark2 --timeout=60s --ignore-not-found=true > /dev/null 2>&1
+  
+  echo -e "✅"
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "NVIDIA & App component cleanup completed."
+fi
+step_increment
+print_divider
+}
+
+step_11(){
+# --------------------------------------------------------------------------------
+# STEP 11: Force Restart K3s Agent and Containerd on SPARK2
+# --------------------------------------------------------------------------------
+if [ "$DEBUG" = "1" ]; then
+  echo "Performing forceful restart of k3s-agent and containerd on SPARK2..."
+  sleep 5
+  
+  echo "Stopping k3s-agent service..."
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl stop k3s-agent"
+  sleep 5
+  
+  echo "Forcefully killing remaining k3s/containerd processes..."
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo pkill -9 k3s"
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo pkill -9 containerd"
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo pkill -9 containerd-shim"
+  sleep 5
+  
+  echo "Starting k3s-agent service..."
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl start k3s-agent"
+  
+  echo "Waiting 60 seconds for agent to stabilize..."
+  sleep 60
+  echo "Checking agent status..."
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl status k3s-agent --no-pager"
+
+else
+  step_echo_start "a" "spark2" "$SPARK2_IP" "Force restarting K3s agent & containerd..."
+  
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl stop k3s-agent" > /dev/null 2>&1
+  sleep 5
+  
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo pkill -9 k3s" > /dev/null 2>&1
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo pkill -9 containerd" > /dev/null 2>&1
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo pkill -9 containerd-shim" > /dev/null 2>&1
+  sleep 5
+  
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl start k3s-agent" > /dev/null 2>&1
+  
+  echo -e "\nWaiting 60 seconds for agent to stabilize..."
+  sleep 60
+  
+  # Check status in silent mode too, maybe just check for active state
+  if $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl is-active k3s-agent" | grep -q "active"; then
+    echo -e "✅ Agent restarted successfully."
+  else
+    echo -e "❌ Agent failed to restart after forceful stop."
+    # Optionally add exit 1 here if this is critical
+  fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "Forceful agent restart completed."
+fi
+step_increment
+print_divider
+}
+
+
+step_12(){
+# --------------------------------------------------------------------------------
+# STEP 12: Install NVIDIA Device Plugin for GPU Support
 # --------------------------------------------------------------------------------
   if [ "$DEBUG" = "1" ]; then
     echo "Installing NVIDIA Device Plugin for GPU support..."
@@ -935,7 +1006,7 @@ spec:
           value: nvml
         - name: FAIL_ON_INIT_ERROR
           value: "false"
-        image: nvcr.io/nvidia/k8s-device-plugin:v0.14.1
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.18.0
         name: nvidia-device-plugin-ctr
         securityContext:
           privileged: true
@@ -1091,20 +1162,20 @@ step_increment
 print_divider
 }
 
-step_11(){
+step_13(){
 # --------------------------------------------------------------------------------
-# STEP 11: Clean up FastAPI SPARK2 Docker image tags
+# STEP 13: Clean up FastAPI SPARK2 Docker image tags
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Cleaning up FastAPI SPARK2 Docker image tags..."
   sleep 5
   echo "Removing existing Docker images for fastapi-spark2..."
-  sudo docker rmi "$REGISTRY_IP:$REGISTRY_PORT/fastapi-spark2:latest" > /dev/null 2>&1
+  sudo docker rmi "$REGISTRY_IP:$REGISTRY_PORT/spark2:latest" > /dev/null 2>&1
   echo "Docker image cleanup complete"
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Cleaning up FastAPI SPARK2 Docker image tags..."
   sleep 5
-  if sudo docker rmi "$REGISTRY_IP:$REGISTRY_PORT/fastapi-spark2:latest" > /dev/null 2>&1; then
+  if sudo docker rmi "$REGISTRY_IP:$REGISTRY_PORT/spark2:latest" > /dev/null 2>&1; then
     echo -e "✅"
   else
     echo -e "✅" # Always show success, even if image didn't exist
@@ -1118,15 +1189,15 @@ print_divider
 }
 
 
-step_12(){
+step_14(){
 # --------------------------------------------------------------------------------
-# STEP 12: Build SPARK2 Docker image
+# STEP 14: Build SPARK2 Docker image
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Building SPARK2 Docker image..."
   sleep 5
   echo "Running docker build for fastapi-spark2..."
-  sudo docker build -f dockerfile.spark2.req -t fastapi-spark2:latest .
+  sudo docker build -f dockerfile.spark2.wheels -t spark2:latest .
   if [ $? -eq 0 ]; then
     echo "SPARK2 Docker image built successfully"
   else
@@ -1134,9 +1205,9 @@ if [ "$DEBUG" = "1" ]; then
     exit 1
   fi
 else
-  step_echo_start "s" "tower" "$TOWER_IP" "Building SPARK2 Docker image..."
+  step_echo_start "s" "tower" "$TOWER_IP" "Building SPARK2 Docker image for ARM64 and AMD64..."
   sleep 5
-  output=$(sudo docker build -f dockerfile.spark2.req -t fastapi-spark2:latest . 2>&1)
+  output=$(sudo docker buildx build --platform linux/arm64 -f dockerfile.spark2.wheels -t spark2:latest . --load 2>&1)
   if [ $? -eq 0 ]; then
     echo -e "✅"
   else
@@ -1153,15 +1224,15 @@ print_divider
 }
 
 
-step_13(){
+step_15(){
 # --------------------------------------------------------------------------------
-# STEP 13: Tag SPARK2 Docker image
+# STEP 15: Tag SPARK2 Docker image
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Tagging SPARK2 Docker image..."
   sleep 5
-  echo "Tagging fastapi-spark2:latest as $REGISTRY_IP:$REGISTRY_PORT/fastapi-spark2:latest"
-  sudo docker tag fastapi-spark2:latest "$REGISTRY_IP:$REGISTRY_PORT/fastapi-spark2:latest"
+  echo "Tagging spark2:latest as $REGISTRY_IP:$REGISTRY_PORT/spark2:latest"
+  sudo docker tag spark2:latest "$REGISTRY_IP:$REGISTRY_PORT/spark2:latest"
   if [ $? -eq 0 ]; then
     echo "SPARK2 Docker image tagged successfully"
   else
@@ -1171,7 +1242,7 @@ if [ "$DEBUG" = "1" ]; then
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Tagging SPARK2 Docker image..."
   sleep 5
-  if sudo docker tag fastapi-spark2:latest "$REGISTRY_IP:$REGISTRY_PORT/fastapi-spark2:latest" > /dev/null 2>&1; then
+  if sudo docker tag spark2:latest "$REGISTRY_IP:$REGISTRY_PORT/spark2:latest" > /dev/null 2>&1; then
     echo -e "✅"
   else
     echo -e "❌"
@@ -1186,15 +1257,15 @@ print_divider
 }
 
 
-step_14(){
+step_16(){
 # --------------------------------------------------------------------------------
-# STEP 14: Push Docker image to registry
+# STEP 16: Push Docker image to registry
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing Docker image to registry..."
   sleep 5
-  echo "Pushing $REGISTRY_IP:$REGISTRY_PORT/fastapi-spark2:latest"
-  sudo docker push "$REGISTRY_IP:$REGISTRY_PORT/fastapi-spark2:latest"
+  echo "Pushing $REGISTRY_IP:$REGISTRY_PORT/spark2:latest"
+  sudo docker push "$REGISTRY_IP:$REGISTRY_PORT/spark2:latest"
   if [ $? -eq 0 ]; then
     echo "Docker image pushed successfully"
   else
@@ -1204,7 +1275,7 @@ if [ "$DEBUG" = "1" ]; then
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Pushing Docker image to registry..."
   sleep 5
-  if sudo docker push "$REGISTRY_IP:$REGISTRY_PORT/fastapi-spark2:latest" > /dev/null 2>&1; then
+  if sudo docker push "$REGISTRY_IP:$REGISTRY_PORT/spark2:latest" > /dev/null 2>&1; then
     echo -e "✅"
   else
     echo -e "❌"
@@ -1221,9 +1292,9 @@ print_divider
 
 
 
-step_15(){
+step_17(){
 # --------------------------------------------------------------------------------
-# STEP 15: Deploy FastAPI to SPARK2
+# STEP 17: Deploy FastAPI to SPARK2
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -1262,9 +1333,9 @@ print_divider
 
 
 
-step_16(){
+step_18(){
 # --------------------------------------------------------------------------------
-# STEP 16: SPARK2 GPU CAPACITY VERIFICATION
+# STEP 18: SPARK2 GPU CAPACITY VERIFICATION
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
   step_echo_start "a" "spark2" "$SPARK2_IP" "Verifying SPARK2 GPU capacity..."
@@ -1283,238 +1354,665 @@ print_divider
 
 
 
-step_17(){
+step_19(){
 # --------------------------------------------------------------------------------
-# STEP 17: SPARK2 GPU RESOURCE CLEANUP
+# STEP 19: SPARK2 GPU RESOURCE CLEANUP
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK2_AGENT" = true ]; then
   step_echo_start "a" "spark2" "$SPARK2_IP" "Cleaning up SPARK2 GPU resources for deployment..."
 
-  # Force-delete any existing deployment and pods for fastapi-spark2
-  echo "Deleting existing fastapi-spark2 deployment and pods..."
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-spark2 -n default --ignore-not-found=true > /dev/null 2>&1
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod -l app=fastapi-spark2 -n default --force --grace-period=0 --ignore-not-found=true > /dev/null 2>&1
-  
   # Allow time for resources to be released
-  sleep 5 
-  echo -e "[32m✅[0m"
+  sleep 5
 
-  # Reinstall NVIDIA Container Toolkit on SPARK2 for GPU support
-  echo "Reinstalling NVIDIA Container Toolkit on SPARK2..."
-  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo apt-get purge -y nvidia-docker2 && sudo apt-get update && sudo apt-get install -y nvidia-docker2" > /dev/null 2>&1
-  
-  echo "Configuring containerd for NVIDIA runtime..."
-  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd" > /dev/null 2>&1
-  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee /var/lib/rancher/k3s/agent/etc/containerd/config.toml > /dev/null <<'EOF'
-[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.nvidia]
-  runtime_type = \"io.containerd.runtimes.nvidia.v1\"
-[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.nvidia.options]
-  BinaryName = \"/usr/bin/nvidia-container-runtime\"
-EOF"
-  
-  echo "Restarting K3s agent..."
-  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl restart k3s-agent" > /dev/null 2>&1
-  echo "NVIDIA Container Toolkit reinstalled and containerd configured on SPARK2"
-fi
-step_increment
-print_divider
-}
-
-
-
-
-step_18(){
-# --------------------------------------------------------------------------------
-# STEP 18: SPARK2 GPU-ENABLED AI WORKLOAD DEPLOYMENT
-# --------------------------------------------------------------------------------
-if [ "$INSTALL_SPARK2_AGENT" = true ]; then
-  step_echo_start "a" "spark2" "$SPARK2_IP" "Deploying GPU-enabled AI Workload on SPARK2..."
-  echo -e "[32m✅[0m"
-
-  # Deploy SPARK2 AI Workload with GPU resources and services
-  cat > /tmp/fastapi-spark2-gpu.yaml <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: fastapi-spark2
-  labels:
-    app: fastapi-spark2
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: fastapi-spark2
-  template:
-    metadata:
-      labels:
-        app: fastapi-spark2
-    spec:
-      runtimeClassName: nvidia-cdi
-      nodeSelector:
-        kubernetes.io/hostname: spark2
-      tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-      containers:
-      - name: fastapi
-        image: $REGISTRY_IP:$REGISTRY_PORT/fastapi-spark2:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8000
-          name: http
-        - containerPort: 8888
-          name: jupyter
-        - containerPort: 8001
-          name: llm-api
-        resources:
-          requests:
-            memory: "2Gi"
-            cpu: "500m"
-            nvidia.com/gpu: 1
-          limits:
-            memory: "4Gi"
-            cpu: "2000m"
-            nvidia.com/gpu: 1
-        env:
-        - name: DEVICE_TYPE
-          value: "spark2"
-        - name: GPU_ENABLED
-          value: "true"
-        - name: FORCE_GPU_CHECKS
-          value: "true"
-        - name: LLM_ENABLED
-          value: "true"
-        - name: RAG_ENABLED
-          value: "true"
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        volumeMounts:
-        - name: vmstore
-          mountPath: /mnt/vmstore
-        - name: spark2-home
-          mountPath: /home/spark2
-        - name: spark2-config
-          mountPath: /app/app/config
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8000
-          initialDelaySeconds: 10
-          periodSeconds: 10
-      volumes:
-      - name: vmstore
-        nfs:
-          server: $TOWER_IP
-          path: /export/vmstore
-      - name: spark2-home
-        nfs:
-          server: $TOWER_IP
-          path: /export/vmstore/spark2_home
-      - name: spark2-config
-        nfs:
-          server: $TOWER_IP
-          path: /export/vmstore/tower_home/kubernetes/agent/spark2/app/config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: fastapi-spark2-service
-  namespace: default
-  labels:
-    app: fastapi-spark2
-    device: spark2
-spec:
-  selector:
-    app: fastapi-spark2
-  ports:
-  - port: 8000
-    targetPort: 8000
-    protocol: TCP
-    name: http
-  - port: 8888
-    targetPort: 8888
-    protocol: TCP
-    name: jupyter
-  - port: 8001
-    targetPort: 8001
-    protocol: TCP
-    name: llm-api
-  type: ClusterIP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: fastapi-spark2-nodeport
-  namespace: default
-  labels:
-    app: fastapi-spark2
-    device: spark2
-spec:
-  selector:
-    app: fastapi-spark2
-  ports:
-  - port: 8000
-    targetPort: 8000
-    nodePort: 30007
-    protocol: TCP
-    name: http
-  - port: 8888
-    targetPort: 8888
-    nodePort: 30008
-    protocol: TCP
-    name: jupyter
-  - port: 8001
-    targetPort: 8001
-    nodePort: 30009
-    protocol: TCP
-    name: llm-api
-  type: NodePort
-EOF
-
-  if [ "$DEBUG" = "1" ]; then
-    echo "Applying GPU-enabled SPARK2 FastAPI deployment..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-spark2-gpu.yaml
-    apply_exit=$?
-  else
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f /tmp/fastapi-spark2-gpu.yaml > /dev/null 2>&1
-    apply_exit=$?
-  fi
-
-  if [ $apply_exit -eq 0 ]; then
-    # Wait for GPU-enabled pod to be running
-    echo -e "\nWaiting for GPU-enabled FastAPI pod to be ready..."
-    for i in {1..60}; do
-      if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -l app=fastapi-spark2 -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
-        echo -e "✅ GPU-enabled AI Workload pod is running on SPARK2"
-        break
+  # Function to backup containerd configuration
+  backup_containerd_config() {
+    local backup_file="/var/lib/rancher/k3s/agent/etc/containerd/config.toml.backup.$(date +%Y%m%d_%H%M%S)"
+    if $SSH_CMD $SSH_USER@$SPARK2_IP "sudo test -f /var/lib/rancher/k3s/agent/etc/containerd/config.toml"; then
+      if [ "$DEBUG" = "1" ]; then
+        echo "Backing up existing containerd config to $backup_file"
       fi
-      sleep 5
-    done
-    if [ $i -eq 60 ]; then
-      echo -e "❌ GPU-enabled AI Workload pod did not start within 5 minutes"
-      exit 1
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo cp /var/lib/rancher/k3s/agent/etc/containerd/config.toml $backup_file" 2>/dev/null || true
+      echo "$backup_file"
+    else
+      echo ""
     fi
-  else
-    echo -e "❌ Failed to deploy GPU-enabled AI Workload on SPARK2"
+  }
+
+  # Function to restore containerd configuration
+  restore_containerd_config() {
+    local backup_file="$1"
+    if [ -n "$backup_file" ] && $SSH_CMD $SSH_USER@$SPARK2_IP "sudo test -f $backup_file"; then
+      if [ "$DEBUG" = "1" ]; then
+        echo "Restoring containerd config from $backup_file"
+      fi
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo cp $backup_file /var/lib/rancher/k3s/agent/etc/containerd/config.toml" 2>/dev/null || true
+    fi
+  }
+
+  # Function to validate NVIDIA container runtime installation
+  validate_nvidia_installation() {
+    # Check if nvidia-container-runtime is available
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "which nvidia-container-runtime" >/dev/null 2>&1; then
+      return 1
+    fi
+    # Check if at least one NVIDIA runtime binary exists
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "test -x /usr/bin/nvidia-container-runtime || test -x /usr/local/nvidia/toolkit/nvidia-container-runtime" >/dev/null 2>&1; then
+      return 1
+    fi
+    return 0
+  }
+
+  # Function to validate containerd configuration
+  validate_containerd_config() {
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo test -f /var/lib/rancher/k3s/agent/etc/containerd/config.toml"; then
+      return 1
+    fi
+    # Check if NVIDIA runtime is configured with correct format
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo grep -q \"plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia'\" /var/lib/rancher/k3s/agent/etc/containerd/config.toml" >/dev/null 2>&1; then
+      return 1
+    fi
+    # Check if BinaryName is set
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo grep -A 5 \"plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia'\" /var/lib/rancher/k3s/agent/etc/containerd/config.toml | grep -q 'BinaryName'" >/dev/null 2>&1; then
+      return 1
+    fi
+    return 0
+  }
+
+  # Function to restart k3s-agent with timeout
+  restart_k3s_agent_with_timeout() {
+    local timeout=60
+    local count=0
+
+    if [ "$DEBUG" = "1" ]; then
+      echo "Restarting k3s-agent service with $timeout second timeout..."
+    fi
+
+    # Start the restart in background
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl restart k3s-agent" &
+    local pid=$!
+
+    # Wait for completion or timeout
+    while kill -0 $pid 2>/dev/null; do
+      if [ $count -ge $timeout ]; then
+        if [ "$DEBUG" = "1" ]; then
+          echo "Restart command timed out, killing process..."
+        fi
+        kill -9 $pid 2>/dev/null || true
+        return 1
+      fi
+      sleep 2
+      count=$((count + 2))
+    done
+
+    # Check if systemctl command succeeded
+    wait $pid
+    local exit_code=$?
+
+    if [ $exit_code -ne 0 ]; then
+      if [ "$DEBUG" = "1" ]; then
+        echo "systemctl restart failed with exit code $exit_code"
+      fi
+      return 1
+    fi
+
+    return 0
+  }
+
+  # Function to perform comprehensive preflight validation
+  preflight_gpu_validation() {
+    local validation_errors=0
+
+    echo "🔍 Performing comprehensive GPU preflight validation..."
+    echo
+
+    # 1. GPU Hardware Detection
+    echo "1. Checking GPU Hardware..."
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "nvidia-smi --query-gpu=name --format=csv,noheader | grep -q 'NVIDIA'"; then
+      echo "❌ CRITICAL: No NVIDIA GPU detected on spark2"
+      validation_errors=$((validation_errors + 1))
+    else
+      local gpu_model
+      gpu_model=$($SSH_CMD $SSH_USER@$SPARK2_IP "nvidia-smi --query-gpu=name --format=csv,noheader")
+      echo "✅ GPU detected: $gpu_model"
+    fi
+
+    # 2. Device Node Permissions
+    echo "2. Checking GPU Device Permissions..."
+    local device_check_passed=true
+    for device in /dev/nvidia0 /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-modeset; do
+      if ! $SSH_CMD $SSH_USER@$SPARK2_IP "test -c $device && ls -la $device | grep -q 'crw-rw-rw-'"; then
+        echo "❌ Device $device not accessible or has wrong permissions"
+        device_check_passed=false
+        validation_errors=$((validation_errors + 1))
+      fi
+    done
+    if $device_check_passed; then
+      echo "✅ All GPU device nodes accessible with correct permissions"
+    fi
+
+    # 3. CUDA Libraries
+    echo "3. Checking CUDA Libraries..."
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "test -L /usr/lib/aarch64-linux-gnu/libcuda.so || test -f /usr/lib/aarch64-linux-gnu/libcuda.so"; then
+      echo "❌ CUDA libraries not found at expected location"
+      validation_errors=$((validation_errors + 1))
+    else
+      echo "✅ CUDA libraries available"
+    fi
+
+    # 4. NVIDIA Container Runtime
+    echo "4. Checking NVIDIA Container Runtime..."
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "which nvidia-container-runtime >/dev/null 2>&1"; then
+      echo "❌ nvidia-container-runtime binary not found"
+      validation_errors=$((validation_errors + 1))
+    elif ! $SSH_CMD $SSH_USER@$SPARK2_IP "nvidia-container-runtime --version >/dev/null 2>&1"; then
+      echo "❌ nvidia-container-runtime not functional"
+      validation_errors=$((validation_errors + 1))
+    else
+      local runtime_version
+      runtime_version=$($SSH_CMD $SSH_USER@$SPARK2_IP "nvidia-container-runtime --version | head -1")
+      echo "✅ NVIDIA container runtime functional: $runtime_version"
+    fi
+
+    # 5. Containerd Service Status
+    echo "5. Checking Containerd Service..."
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl is-active --quiet containerd"; then
+      echo "❌ Containerd service not active"
+      validation_errors=$((validation_errors + 1))
+    else
+      echo "✅ Containerd service active"
+    fi
+
+    # 6. Containerd NVIDIA Configuration
+    echo "6. Checking Containerd NVIDIA Configuration..."
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo test -f /var/lib/rancher/k3s/agent/etc/containerd/config.toml"; then
+      echo "❌ Containerd config file not found"
+      validation_errors=$((validation_errors + 1))
+    elif ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo grep -q \"plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia'\" /var/lib/rancher/k3s/agent/etc/containerd/config.toml"; then
+      echo "⚠️ NVIDIA runtime not configured in containerd (will be configured by script)"
+    else
+      echo "✅ NVIDIA runtime already configured in containerd"
+    fi
+
+    # 7. K3s Agent Status
+    echo "7. Checking K3s Agent Status..."
+    local agent_status
+    agent_status=$($SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl is-active k3s-agent 2>/dev/null || echo 'not-active'")
+    if [ "$agent_status" = "active" ]; then
+      echo "✅ K3s agent active"
+    elif [ "$agent_status" = "activating" ]; then
+      echo "⚠️ K3s agent activating (normal for new agent)"
+    else
+      echo "❌ K3s agent not running"
+      validation_errors=$((validation_errors + 1))
+    fi
+
+    # 8. Runtime Class Availability
+    echo "8. Checking Runtime Class Availability..."
+    if ! sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get runtimeclass nvidia >/dev/null 2>&1; then
+      echo "❌ Runtime class 'nvidia' not available in cluster"
+      validation_errors=$((validation_errors + 1))
+    else
+      echo "✅ Runtime class 'nvidia' available"
+    fi
+
+    # 9. Deployment YAML Validation
+    echo "9. Validating Deployment YAML..."
+    if ! sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f fastapi-deployment-spark2.yaml --dry-run=server >/dev/null 2>&1; then
+      echo "❌ Deployment YAML validation failed"
+      validation_errors=$((validation_errors + 1))
+    else
+      echo "✅ Deployment YAML validates successfully"
+    fi
+
+    # 10. Manual GPU Mounting Configuration
+    echo "10. Checking Manual GPU Mounting Configuration..."
+    local required_mounts=("/dev/nvidia0" "/dev/nvidiactl" "/dev/nvidia-uvm" "/dev/nvidia-modeset")
+    local mount_check_passed=true
+
+    for mount_path in "${required_mounts[@]}"; do
+      if ! grep -q "path:.*$mount_path" fastapi-deployment-spark2.yaml; then
+        echo "❌ Required mount $mount_path not found in deployment YAML"
+        mount_check_passed=false
+        validation_errors=$((validation_errors + 1))
+      fi
+    done
+
+    if $mount_check_passed; then
+      echo "✅ All required GPU mounts configured in deployment"
+    fi
+
+    # Summary
+    echo
+    if [ $validation_errors -eq 0 ]; then
+      echo "🎉 PREFLIGHT VALIDATION PASSED - All systems ready for GPU setup!"
+      echo "The manual GPU mounting approach will work successfully."
+      return 0
+    else
+      echo "❌ PREFLIGHT VALIDATION FAILED - $validation_errors critical issues found"
+      echo "Manual GPU mounting may not work. Please resolve issues before proceeding."
+      return 1
+    fi
+  }
+
+  # Function to validate and setup NVIDIA package repository
+  setup_nvidia_repository() {
+    # Check if NVIDIA Docker repository is already configured
+    if $SSH_CMD $SSH_USER@$SPARK2_IP "grep -q 'nvidia.github.io' /etc/apt/sources.list.d/*.list 2>/dev/null"; then
+      if [ "$DEBUG" = "1" ]; then
+        echo "NVIDIA Docker repository already configured"
+      fi
+      return 0
+    fi
+
+    if [ "$DEBUG" = "1" ]; then
+      echo "Setting up NVIDIA Docker repository..."
+    fi
+
+    # Get distribution info
+    local distribution
+    distribution=$($SSH_CMD $SSH_USER@$SPARK2_IP ". /etc/os-release; echo \$ID\$VERSION_ID")
+
+    # Add NVIDIA GPG key
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -"; then
+      echo "Failed to add NVIDIA GPG key"
+      return 1
+    fi
+
+    # Add NVIDIA Docker repository
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "curl -s -L https://nvidia.github.io/nvidia-docker/\$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list"; then
+      echo "Failed to add NVIDIA Docker repository"
+      return 1
+    fi
+
+    # Update package lists
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo apt-get update"; then
+      echo "Failed to update package lists after repository setup"
+      return 1
+    fi
+
+    return 0
+  }
+
+  # Function to monitor package health
+  monitor_package_health() {
+    local package_status
+    local package_version
+    local repository_status
+
+    # Check package installation status
+    package_status=$($SSH_CMD $SSH_USER@$SPARK2_IP "dpkg -l nvidia-docker2 2>/dev/null | grep '^ii' | awk '{print \$1,\$2,\$3}'" || echo "NOT_INSTALLED")
+
+    # Check package version and repository
+    package_version=$($SSH_CMD $SSH_USER@$SPARK2_IP "apt-cache policy nvidia-docker2 2>/dev/null | grep 'Installed:' | awk '{print \$2}'" || echo "UNKNOWN")
+
+    # Check repository availability
+    repository_status=$($SSH_CMD $SSH_USER@$SPARK2_IP "apt-cache policy nvidia-docker2 2>/dev/null | grep -c 'nvidia.github.io'" || echo "0")
+
+    if [ "$DEBUG" = "1" ]; then
+      echo "Package Status: $package_status"
+      echo "Package Version: $package_version"
+      echo "Repository Available: $repository_status"
+    fi
+
+    # Validate everything is working
+    if [[ "$package_status" != *"ii nvidia-docker2"* ]]; then
+      echo "nvidia-docker2 package not properly installed"
+      return 1
+    fi
+
+    if [ "$repository_status" -eq 0 ]; then
+      echo "NVIDIA Docker repository not available"
+      return 1
+    fi
+
+    return 0
+  }
+
+  # Comprehensive pre-flight validation
+  if ! preflight_gpu_validation; then
+    echo "❌ CRITICAL: Preflight validation failed. Cannot proceed with GPU setup."
+    echo "Please resolve the issues above before running the script."
+    echo -e "❌"
     exit 1
   fi
+
+  echo
+  echo "🎉 Preflight validation passed - GPU setup complete with privileged mounts!"
+  echo
+
+  # GPU setup skipped - using privileged mounts for direct access
+
+  # Success
+  if [ "$DEBUG" = "1" ]; then
+    echo "GPU resource cleanup completed successfully (NVIDIA Container Toolkit skipped - using privileged mounts)"
+  fi
+  echo -e "✅"
+  return 0
+  if [ "$DEBUG" = "1" ]; then
+    echo "Ensuring NVIDIA Docker repository is configured..."
+  fi
+  if ! setup_nvidia_repository; then
+    echo "Failed to setup NVIDIA Docker repository on SPARK2"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Function to safely manage NVIDIA Container Toolkit
+  manage_nvidia_container_toolkit() {
+    local force_reinstall=${1:-false}
+
+    # Check if nvidia-docker2 is already installed and working
+    if ! $force_reinstall && $SSH_CMD $SSH_USER@$SPARK2_IP "dpkg -l | grep -q '^ii.*nvidia-docker2'" >/dev/null 2>&1; then
+      if [ "$DEBUG" = "1" ]; then
+        echo "nvidia-docker2 already installed, checking if it's working..."
+      fi
+      # Test if the package is functional
+      if $SSH_CMD $SSH_USER@$SPARK2_IP "which nvidia-container-runtime >/dev/null 2>&1 && nvidia-container-runtime --version >/dev/null 2>&1"; then
+        if [ "$DEBUG" = "1" ]; then
+          echo "nvidia-docker2 is already installed and functional"
+        fi
+        return 0
+      else
+        if [ "$DEBUG" = "1" ]; then
+          echo "nvidia-docker2 installed but not functional, will reinstall"
+        fi
+      fi
+    fi
+
+    # Stop any containers using NVIDIA runtime before package operations
+    if [ "$DEBUG" = "1" ]; then
+      echo "Stopping containers that might use NVIDIA runtime..."
+    fi
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo crictl ps --label io.kubernetes.container.name 2>/dev/null | grep -v CONTAINER | awk '{print \$1}' | xargs -r sudo crictl stop" >/dev/null 2>&1 || true
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo crictl ps --label io.kubernetes.pod.name 2>/dev/null | grep -v CONTAINER | awk '{print \$1}' | xargs -r sudo crictl rmd" >/dev/null 2>&1 || true
+
+    # Purge existing package safely
+    if [ "$DEBUG" = "1" ]; then
+      echo "Safely removing existing nvidia-docker2 package..."
+    fi
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo dpkg --purge --force-depends nvidia-docker2" >/dev/null 2>&1; then
+      if [ "$DEBUG" = "1" ]; then
+        echo "dpkg purge failed, trying apt-get purge..."
+      fi
+      $SSH_CMD $SSH_USER@$SPARK2_IP "sudo apt-get purge -y --allow-change-held-packages nvidia-docker2" >/dev/null 2>&1 || true
+    fi
+
+    # Clean up any leftover configuration
+    $SSH_CMD $SSH_USER@$SPARK2_IP "sudo apt-get autoremove -y && sudo apt-get autoclean" >/dev/null 2>&1 || true
+
+    # Install NVIDIA Container Toolkit
+    if [ "$DEBUG" = "1" ]; then
+      echo "Installing NVIDIA Container Toolkit..."
+    fi
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo apt-get install -y --no-install-recommends nvidia-docker2"; then
+      echo "Failed to install NVIDIA Container Toolkit on SPARK2"
+      return 1
+    fi
+
+    # Verify installation
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "which nvidia-container-runtime >/dev/null 2>&1"; then
+      echo "nvidia-container-runtime not found after installation"
+      return 1
+    fi
+
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "nvidia-container-runtime --version >/dev/null 2>&1"; then
+      echo "nvidia-container-runtime not functional after installation"
+      return 1
+    fi
+
+    return 0
+  }
+
+  # Step 1: Manage NVIDIA Container Toolkit safely (SKIPPED - using privileged mounts)
+  # if [ "$DEBUG" = "1" ]; then
+  #   echo "Managing NVIDIA Container Toolkit installation..."
+  # fi
+  # if ! manage_nvidia_container_toolkit; then
+  #   echo "Failed to manage NVIDIA Container Toolkit on SPARK2"
+  #   restore_containerd_config "$BACKUP_FILE"
+  #   echo -e "❌"
+  #   exit 1
+  # fi
+
+  # Step 2: Monitor package health (SKIPPED - using privileged mounts)
+  # if [ "$DEBUG" = "1" ]; then
+  #   echo "Monitoring NVIDIA package health..."
+  # fi
+  # if ! monitor_package_health; then
+  #   echo "NVIDIA package health check failed on SPARK2"
+  #   restore_containerd_config "$BACKUP_FILE"
+  #   echo -e "❌"
+  #   exit 1
+  # fi
+
+  # Step 3: Update package lists
+  if [ "$DEBUG" = "1" ]; then
+    echo "Updating package lists..."
+  fi
+  if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo apt-get update" >/dev/null 2>&1; then
+    echo "Failed to update package lists on SPARK2"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Step 4: Validate NVIDIA installation (SKIPPED - using privileged mounts)
+  # if [ "$DEBUG" = "1" ]; then
+  #   echo "Validating NVIDIA Container Toolkit installation..."
+  # fi
+  # if ! validate_nvidia_installation; then
+  #   echo "NVIDIA Container Toolkit validation failed on SPARK2"
+  #   restore_containerd_config "$BACKUP_FILE"
+  #   echo -e "❌"
+  #   exit 1
+  # fi
+
+  # Step 5: Configure containerd for NVIDIA runtime
+  if [ "$DEBUG" = "1" ]; then
+    echo "Configuring containerd for NVIDIA runtime..."
+  fi
+  if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd" >/dev/null 2>&1; then
+    echo "Failed to create containerd config directory on SPARK2"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Check which NVIDIA runtime path exists and use it
+  if $SSH_CMD $SSH_USER@$SPARK2_IP "test -x /usr/local/nvidia/toolkit/nvidia-container-runtime"; then
+    NVIDIA_RUNTIME_PATH="/usr/local/nvidia/toolkit/nvidia-container-runtime"
+    NVIDIA_CDI_PATH="/usr/local/nvidia/toolkit/nvidia-container-runtime.cdi"
+  elif $SSH_CMD $SSH_USER@$SPARK2_IP "test -x /usr/bin/nvidia-container-runtime"; then
+    NVIDIA_RUNTIME_PATH="/usr/bin/nvidia-container-runtime"
+    NVIDIA_CDI_PATH=""
+  else
+    echo "No NVIDIA container runtime found on SPARK2"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Read existing config and append NVIDIA runtime configuration
+  if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee -a /var/lib/rancher/k3s/agent/etc/containerd/config.toml > /dev/null <<EOF
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia']
+  runtime_type = \"io.containerd.runc.v2\"
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia'.options]
+  BinaryName = \"$NVIDIA_RUNTIME_PATH\"
+  SystemdCgroup = true
+EOF"; then
+    echo "Failed to configure containerd for NVIDIA runtime on SPARK2"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Add CDI runtime if available
+  if [ -n "$NVIDIA_CDI_PATH" ]; then
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo tee -a /var/lib/rancher/k3s/agent/etc/containerd/config.toml > /dev/null <<EOF
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia-cdi']
+  runtime_type = \"io.containerd.runc.v2\"
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia-cdi'.options]
+  BinaryName = \"$NVIDIA_CDI_PATH\"
+  SystemdCgroup = true
+EOF"; then
+      echo "Failed to configure containerd CDI runtime on SPARK2"
+      restore_containerd_config "$BACKUP_FILE"
+      echo -e "❌"
+      exit 1
+    fi
+  fi
+
+  # Step 6: Validate containerd configuration
+  if [ "$DEBUG" = "1" ]; then
+    echo "Validating containerd configuration..."
+  fi
+  if ! validate_containerd_config; then
+    echo "Containerd configuration validation failed on SPARK2"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Step 7: Restart containerd to load NVIDIA runtime
+  if [ "$DEBUG" = "1" ]; then
+    echo "Restarting containerd to load NVIDIA runtime configuration..."
+  fi
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl restart containerd" &
+  local containerd_pid=$!
+  local containerd_timeout=30
+  local containerd_count=0
+
+  # Wait for containerd restart to complete
+  while kill -0 $containerd_pid 2>/dev/null; do
+    if [ $containerd_count -ge $containerd_timeout ]; then
+      if [ "$DEBUG" = "1" ]; then
+        echo "Containerd restart timed out, killing process..."
+      fi
+      kill -9 $containerd_pid 2>/dev/null || true
+      echo "Failed to restart containerd on SPARK2 within timeout"
+      restore_containerd_config "$BACKUP_FILE"
+      echo -e "❌"
+      exit 1
+    fi
+    sleep 2
+    containerd_count=$((containerd_count + 2))
+  done
+
+  # Check if containerd restart succeeded
+  wait $containerd_pid
+  local containerd_exit_code=$?
+  if [ $containerd_exit_code -ne 0 ]; then
+    if [ "$DEBUG" = "1" ]; then
+      echo "containerd restart failed with exit code $containerd_exit_code"
+    fi
+    echo "Failed to restart containerd on SPARK2"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Verify containerd is actually running and configuration is loaded
+  if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl is-active --quiet containerd"; then
+    echo "Containerd service is not active after restart"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Final validation of containerd configuration
+  if ! validate_containerd_config; then
+    echo "Containerd configuration validation failed after restart"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Step 8: Restart K3s agent with timeout
+  if [ "$DEBUG" = "1" ]; then
+    echo "Restarting K3s agent service..."
+  fi
+  if ! restart_k3s_agent_with_timeout; then
+    echo "Failed to restart k3s-agent service on SPARK2 within timeout"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Step 9: Wait for agent to be ready
+  if [ "$DEBUG" = "1" ]; then
+    echo "Waiting for SPARK2 agent to be ready after restart..."
+  fi
+  if ! wait_for_agent spark2; then
+    echo "SPARK2 agent failed to become ready after GPU resource cleanup"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Function to perform final GPU setup health check
+  final_gpu_health_check() {
+    local health_status=0
+
+    if [ "$DEBUG" = "1" ]; then
+      echo "Performing final post-setup GPU health check..."
+    fi
+
+    # Quick verification that setup didn't break anything critical
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "nvidia-smi --query-gpu=name --format=csv,noheader | grep -q 'NVIDIA'"; then
+      echo "❌ GPU hardware not accessible after setup"
+      health_status=1
+    fi
+
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl is-active --quiet containerd"; then
+      echo "❌ Containerd service not healthy after setup"
+      health_status=1
+    fi
+
+    if ! $SSH_CMD $SSH_USER@$SPARK2_IP "sudo systemctl is-active k3s-agent >/dev/null 2>&1"; then
+      echo "❌ K3s agent service not healthy after setup"
+      health_status=1
+    fi
+
+    return $health_status
+  }
+
+  # Step 10: Cleanup old containerd backup files
+  if [ "$DEBUG" = "1" ]; then
+    echo "Cleaning up old containerd backup files..."
+  fi
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo find /var/lib/rancher/k3s/agent/etc/containerd -name 'config.toml.backup.*' -mtime +7 -delete" >/dev/null 2>&1 || true
+
+  # Step 11: Final GPU health check
+  if [ "$DEBUG" = "1" ]; then
+    echo "Performing final GPU setup health check..."
+  fi
+  if ! final_gpu_health_check; then
+    echo "Final GPU health check failed on SPARK2"
+    restore_containerd_config "$BACKUP_FILE"
+    echo -e "❌"
+    exit 1
+  fi
+
+  # Success
+  if [ "$DEBUG" = "1" ]; then
+    echo "GPU resource cleanup completed successfully (NVIDIA Container Toolkit skipped - using privileged mounts)"
+  fi
+  echo -e "✅"
 fi
 step_increment
 print_divider
 }
 
 
-step_19(){
+
+
+step_20(){
 # --------------------------------------------------------------------------------
-# STEP 19: FINAL VERIFICATION - NODE AND POD STATUS
+# STEP 20: FINAL VERIFICATION - NODE AND POD STATUS
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Starting final verification of node and pod status..."
@@ -1573,9 +2071,9 @@ print_divider
 }
 
 
-step_20(){
+step_21(){
 # --------------------------------------------------------------------------------
-# STEP 20: DISPLAY SERVICE ENDPOINTS
+# STEP 21: DISPLAY SERVICE ENDPOINTS
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Starting display of service endpoints..."
@@ -1587,11 +2085,11 @@ if [ "$DEBUG" = "1" ]; then
 fi
 echo ""
 echo "Services Available:"
-echo "FastAPI: http://10.1.10.202:30007"
-echo "Jupyter: http://10.1.10.202:30008"
-echo "LLM API: http://10.1.10.202:30009"
-echo "Health Check: http://10.1.10.202:30007/health"
-echo "Swagger UI: http://10.1.10.202:30007/docs"
+echo "FastAPI: http://10.1.10.202:30010"
+echo "Jupyter: http://10.1.10.202:30011"
+echo "LLM API: http://10.1.10.202:30012"
+echo "Health Check: http://10.1.10.202:30010/health"
+echo "Swagger UI: http://10.1.10.202:30010/docs"
 echo ""
 echo -e "✅ Service endpoints displayed"
 if [ "$DEBUG" = "1" ]; then
@@ -1623,6 +2121,9 @@ step_17
 step_18
 step_19
 step_20
+step_21
+
+
 
 
 

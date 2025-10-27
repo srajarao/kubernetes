@@ -1,173 +1,69 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: fastapi-spark2
-  namespace: default
+  name: spark2
   labels:
-    app: fastapi-spark2
+    app: spark2
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: fastapi-spark2
+  backoffLimit: 0
+  completions: 1
+  parallelism: 1
   template:
     metadata:
       labels:
-        app: fastapi-spark2
-        device: spark2
-        tier: agent
+        app: spark2
     spec:
-      restartPolicy: Always
-      nodeSelector:
-        kubernetes.io/hostname: spark2
+      runtimeClassName: nvidia  # Uses the NVIDIA Container Runtime
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - spark2
+      securityContext:
+        runAsUser: 0            # Runs as root user inside the container
       containers:
-      - name: fastapi-spark2
-        image: 10.1.10.150:30500/fastapi-spark2:latest
-        ports:
-        - containerPort: 8000
-          name: http
-        - containerPort: 8888
-          name: jupyter
-        - containerPort: 8001
-          name: llm
-        startupProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          failureThreshold: 30
-          periodSeconds: 10
-          initialDelaySeconds: 60
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
-            nvidia.com/gpu: 1
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
-            nvidia.com/gpu: 1
-        env:
-        - name: DEVICE_TYPE
-          value: "spark2"
-        - name: GPU_ENABLED
-          value: "true"
-        - name: NVIDIA_VISIBLE_DEVICES
-          value: "all"
-        - name: NVIDIA_DRIVER_CAPABILITIES
-          value: "all"
-        - name: NVIDIA_REQUIRE_CUDA
-          value: "cuda>=11.0"
-        - name: FORCE_GPU_CHECKS
-          value: "true"
-        - name: POSTGRES_HOST
-          value: "postgres-db"
-        - name: POSTGRES_PORT
-          value: "5432"
-        - name: POSTGRES_DB
-          value: "postgres"
-        - name: POSTGRES_USER
-          value: "postgres"
-        - name: POSTGRES_PASSWORD
-          value: "postgres"
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        volumeMounts:
-        - name: vmstore
-          mountPath: /mnt/vmstore
-        - name: spark2-home
-          mountPath: /home/spark2
-        - name: spark2-config
-          mountPath: /app/app/config
-        - name: nvidia-driver
-          mountPath: /usr/lib/aarch64-linux-gnu
-        securityContext:
-          privileged: true
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
+        - name: spark2-healthcheck
+          image: 10.1.10.150:30500/spark2:latest
+          imagePullPolicy: "Always"
+          securityContext:
+            privileged: true         # Required for GPU device access on Jetson
+          env:
+            - name: GPU_ENABLED
+              value: "true"
+            - name: SKIP_DB_CHECK
+              value: "true"
+          resources:
+            limits:
+              cpu: "20"
+              memory: "119Gi"
+            requests:
+              cpu: "16"
+              memory: "96Gi"
+          volumeMounts:
+            - name: nvidia0
+              mountPath: /dev/nvidia0
+            - name: nvidiactl
+              mountPath: /dev/nvidiactl
+            - name: nvidia-uvm
+              mountPath: /dev/nvidia-uvm
+            - name: nvidia-modeset
+              mountPath: /dev/nvidia-modeset
+          command: ["python3", "/app/spark2_app.py"]
       volumes:
-      - name: vmstore
-        nfs:
-          server: 10.1.10.150
-          path: /export/vmstore
-      - name: spark2-home
-        nfs:
-          server: 10.1.10.150
-          path: /export/vmstore/spark2_home
-      - name: spark2-config
-        nfs:
-          server: 10.1.10.150
-          path: /export/vmstore/tower_home/kubernetes/agent/spark2/app/config
-      - name: nvidia-driver
-        hostPath:
-          path: /usr/lib/aarch64-linux-gnu
-      tolerations:
-      - key: "node-role.kubernetes.io/agent"
-        operator: "Exists"
-        effect: "NoSchedule"
-      - key: "CriticalAddonsOnly"
-        operator: "Equal"
-        value: "true"
-        effect: "NoExecute"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: fastapi-spark2-service
-  namespace: default
-  labels:
-    app: fastapi-spark2
-    device: spark2
-spec:
-  selector:
-    app: fastapi-spark2
-  ports:
-  - port: 8000
-    targetPort: 8000
-    protocol: TCP
-    name: http
-  - port: 8888
-    targetPort: 8888
-    protocol: TCP
-    name: jupyter
-  type: ClusterIP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: fastapi-spark2-nodeport
-  namespace: default
-  labels:
-    app: fastapi-spark2
-    device: spark2
-spec:
-  selector:
-    app: fastapi-spark2
-  ports:
-  - port: 8000
-    targetPort: 8000
-    nodePort: 30010
-    protocol: TCP
-    name: http
-  - port: 8888
-    targetPort: 8888
-    nodePort: 30011
-    protocol: TCP
-    name: jupyter
-  - port: 8001
-    targetPort: 8001
-    nodePort: 30012
-    protocol: TCP
-    name: llm
-  type: NodePort
+        - name: nvidia0
+          hostPath:
+            path: /dev/nvidia0
+        - name: nvidiactl
+          hostPath:
+            path: /dev/nvidiactl
+        - name: nvidia-uvm
+          hostPath:
+            path: /dev/nvidia-uvm
+        - name: nvidia-modeset
+          hostPath:
+            path: /dev/nvidia-modeset
