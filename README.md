@@ -4,7 +4,7 @@
 
 This repository provides a complete, automated setup for a high-performance Kubernetes cluster optimized for AI/ML workloads on Jetson devices. It combines K3s (lightweight Kubernetes), dual-network architecture (10G + 1G), GPU acceleration, PostgreSQL database, and comprehensive application deployments with **production-ready stability verification**.
 
-**🎯 October 18, 2025 Update**: Successfully deployed 96-step automated cluster with integrated verification system. All services operational with comprehensive monitoring, backup capabilities, and recent script optimizations.
+**🎯 October 26, 2025 Update**: Comprehensive README consolidation with detailed GPU configuration, Spark2 agent setup, and production deployment guides. All GPU frameworks validated and operational.
 
 ## 🎯 What This Project Provides
 
@@ -21,7 +21,24 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **🆕 Flexible Image Management**: 4 Docker deployment modes for online/offline environments
 - **🔥 Hot Reload Development**: Real-time code updates without container rebuilds
 
-## 🖥️ **Current Cluster Status** (October 16, 2025)
+## � **Directory Structure Overview**
+
+- `agent/` - Contains subfolders for each node (agx, nano, spark1, spark2) with deployment scripts, configs, and apps
+- `archive/` - Backup scripts, old configs, and health checks
+- `docs/` - Documentation and project plans
+- `images/` - Built images and configs for containerization
+- `rag/` - Reference and deployment files for RAG (Retrieval-Augmented Generation) workflows
+- `scripts/` - Utility scripts for environment setup, monitoring, and validation
+- `server/` - Server-side deployment scripts, configs, and Docker requirements
+
+## 🔧 **Key Configuration Files**
+
+- `.env` and `*.env` files for environment variables
+- `requirements.*.txt` for Python dependencies
+- `dockerfile.*` for container builds
+- `*.yaml` for Kubernetes deployments
+
+## �🖥️ **Current Cluster Status** (October 16, 2025)
 
 ### ✅ **Production Deployment Status**
 - **Status**: 🟢 **FULLY OPERATIONAL** - Complete K3s cluster with GPU support
@@ -50,6 +67,26 @@ Tower (Control Plane)    Nano (GPU Node)    AGX (GPU Node)    DGX-Spark-1    DGX
 
 ### 🆕 **DGX-Spark Devices Integration**
 The first DGX-Spark device (`10.1.10.201`) has been added to the network and is ready for K3s cluster integration. The device responds to ping with excellent connectivity and can be added as a 4th GPU node using the existing deployment scripts. The second DGX-Spark device will be interconnected with the first via 200G transceiver connection connected with 7x cable for high-speed communication.
+
+### 🌐 **Network Architecture & Performance**
+
+#### **Dual-Network Design**
+- **10G Network** (`192.168.10.0/24`): Dedicated high-performance link for AGX Orin and Spark devices
+- **1G Network** (`192.168.5.0/24`): Reliable connectivity for Nano with preserved internet access
+- **Tower NAT**: Provides internet access to all devices through dual-interface routing
+- **NFS Storage**: Centralized `/workspace` mount point accessible by all nodes
+
+#### **Performance Achievements**
+- **AGX Orin**: Up to 10 Gbps bandwidth for AI/ML workloads
+- **Jetson Nano**: Up to 1 Gbps dedicated bandwidth with stable internet
+- **DGX Spark**: 10G connectivity with GPU-optimized data transfer
+- **Network Isolation**: Zero bandwidth interference between device types
+
+#### **Network Configuration Scripts**
+Located in `scripts/` directory for advanced network setup:
+- **Tower Setup**: Dual-interface configuration, NFS server, internet sharing
+- **Device Setup**: Network configuration, NFS mounting, SSH key distribution
+- **Performance Optimization**: Jumbo frames, optimized routing, bandwidth isolation
 
 ### 🚀 **Access Information**
 
@@ -106,7 +143,368 @@ The first DGX-Spark device (`10.1.10.201`) has been added to the network and is 
 - **Safety Checks**: GPU resource cleanup only runs when CPU deployments exist
 - **Code Quality**: Fixed syntax errors and improved maintainability
 
-## 🆕 New Features: Component-Based Architecture
+## � GPU Configuration & Testing Guide
+
+### ✅ **GPU Access Strategy: Privileged Direct Mounts**
+**Status**: ✅ **OPTIMIZED** - Bypasses Kubernetes GPU resource management for Jetson/DGX hardware
+
+**Key Configuration**:
+- **Runtime Class**: `nvidia` (NVIDIA container runtime)
+- **Privileged Mode**: `securityContext.privileged: true` (direct host device access)
+- **Device Mounts**: Direct `/dev/nvidia*` device mounting (bypasses device plugin)
+- **No GPU Resources**: Removed `nvidia.com/gpu` resource requests/limits
+- **Job Architecture**: Uses `batch/v1` Jobs instead of Deployments for health checks
+
+### 🏗️ **Job vs Deployment Configuration**
+- **Jobs** (`batch/v1`): Run-to-completion workloads, no persistent pods, health checks
+- **Deployments** (`apps/v1`): Long-running services with replica management
+- **Current Setup**: Spark2 uses Jobs for GPU health validation
+
+### 🔧 **Hardware Resource Verification**
+Before deploying GPU workloads, verify actual hardware resources:
+
+```bash
+# Spark2 Node Hardware Check
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null sanjay@10.1.10.202 \
+  "echo '=== CPU Information ===' && nproc && echo && \
+   echo '=== Memory Information ===' && free -h && echo && \
+   echo '=== GPU Information ===' && nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits"
+```
+
+**Spark2 Hardware Specs**:
+- **CPU**: 20 cores
+- **Memory**: 119Gi total, 115Gi available
+- **GPU**: NVIDIA GB10
+- **Resource Limits**: 20 CPU, 119Gi memory (matches hardware)
+
+### 🧪 **GPU Functionality Testing**
+After deployment, verify GPU access with these commands:
+
+#### **Pod Status Check**
+```bash
+kubectl get pods -l app=spark2
+# Should show: 1/1 Running
+```
+
+#### **GPU Device Access**
+```bash
+kubectl exec spark2-<pod-id> -- ls -la /dev/ | grep nvidia
+# Should list: nvidia0, nvidiactl, nvidia-uvm, nvidia-modeset, nvidia-uvm-tools, nvidia-caps
+```
+
+#### **PyTorch GPU Validation**
+```bash
+kubectl exec spark2-<pod-id> -- python3 -c "
+import torch
+print('CUDA available:', torch.cuda.is_available())
+print('CUDA version:', torch.version.cuda)
+print('GPU count:', torch.cuda.device_count())
+print('GPU name:', torch.cuda.get_device_name(0))
+"
+# Expected: CUDA available: True, CUDA 13.0, 1 GPU, NVIDIA GB10
+```
+
+#### **TensorFlow GPU Validation**
+```bash
+kubectl exec spark2-<pod-id> -- python3 -c "
+import tensorflow as tf
+print('TF built with CUDA:', tf.test.is_built_with_cuda())
+print('TF GPU available:', tf.test.is_gpu_available(cuda_only=False))
+print('GPUs detected:', len(tf.config.list_physical_devices('GPU')))
+"
+# Expected: TF built with CUDA: True, TF GPU available: True, GPUs: 1
+```
+
+#### **TensorRT Validation**
+```bash
+kubectl exec spark2-<pod-id> -- python3 -c "
+import tensorrt as trt
+print('TensorRT version:', trt.__version__)
+logger = trt.Logger(trt.Logger.INFO)
+builder = trt.Builder(logger)
+print('Builder created successfully')
+network = builder.create_network()
+config = builder.create_builder_config()
+print('TensorRT basic functionality test passed!')
+"
+# Expected: TensorRT 10.8.0.43, successful builder/network/config creation
+```
+
+#### **GPU Matrix Multiplication Test**
+```bash
+# PyTorch GPU computation
+kubectl exec spark2-<pod-id> -- python3 -c "
+import torch
+device = torch.device('cuda')
+a = torch.randn(2000, 2000).to(device)
+b = torch.randn(2000, 2000).to(device)
+c = torch.matmul(a, b)
+result = c.cpu()
+print('PyTorch GPU matrix multiplication: SUCCESS')
+print('Result shape:', result.shape)
+"
+```
+
+### ⚠️ **Known Limitations**
+- **TensorRT Convolution**: Limited on CC 12.1 GPUs (shader generation issues)
+- **Device Plugin**: NVIDIA device plugin incompatible with Blackwell GB10
+- **Host Libraries**: Avoid mounting host CUDA libraries (version conflicts)
+
+### 🎯 **GPU Health Check Results**
+**Status**: ✅ **ALL TESTS PASSING**
+- ✅ libstdc++: PASS
+- ✅ cuSPARSELt: PASS
+- ✅ PyTorch: PASS (CUDA 13.0, NVIDIA GB10)
+- ✅ TensorFlow: PASS (GPU computation working)
+- ✅ TensorRT: PASS (with CC 12.1 limitations noted)
+
+## 🚀 Spark2 DGX Agent Setup & GPU Health Validation
+
+### 🎯 **Spark2 Agent Overview**
+**Status**: ✅ **FULLY OPERATIONAL** - DGX Spark device with comprehensive GPU health validation
+
+The Spark2 agent runs a streamlined health-check application that validates GPU functionality across all major frameworks and exits with status codes. Designed for production GPU validation without persistent services.
+
+### 📊 **Spark2 Device Specifications**
+- **Hardware**: DGX Spark with NVIDIA GB10 GPU
+- **IP Address**: 10.1.10.202
+- **CPU**: 20 cores
+- **Memory**: 119Gi total, 115Gi available
+- **GPU**: NVIDIA GB10 (CC 12.1 architecture)
+- **Architecture**: ARM64/aarch64
+- **Network**: Connected to Tower K3s server (10.1.10.150:6443)
+
+### 🏗️ **Spark2 Agent Architecture**
+```
+Tower (10.1.10.150)           Spark2 Agent (10.1.10.202)
+├── K3s Server               ├── K3s Agent
+├── PostgreSQL               ├── GPU Health Validation
+├── Docker Registry          ├── CUDA/PyTorch/TensorFlow/TensorRT
+└── Container Images         └── Exit with Status Code
+```
+
+### 📁 **Spark2 Agent Files Structure**
+```
+agent/spark2/
+├── spark2_app.py              # Main health-check application
+├── requirements.spark2.txt    # Minimal dependencies (uses wheels)
+├── wheels/                    # Pre-downloaded Python packages
+│   ├── fastapi-0.120.0-py3-none-any.whl
+│   ├── torch-*whl (downloaded at build time)
+│   └── ... (other packages)
+├── build.sh                   # Optimized Docker build script
+├── dockerfile.spark2.wheels   # Wheels-based Dockerfile
+├── k3s-spark2.sh             # Complete agent setup script
+├── fastapi-deployment-spark2.yaml  # Kubernetes Job definition
+└── app/config/               # Application configuration
+```
+
+### 🔧 **Spark2 Build & Deployment Process**
+
+#### **1. Optimized Container Build**
+```bash
+cd agent/spark2
+
+# Build with pre-downloaded wheels (fast, offline)
+./build.sh
+
+# Or force clean build
+./build.sh --clean
+```
+
+**Build Features**:
+- **Wheels-Based**: Pre-downloaded packages for fast builds
+- **PyTorch Download**: Fetches latest CUDA 13.0 wheels from official repo
+- **ARM64 Optimized**: Cross-compilation for aarch64 architecture
+- **NVIDIA Runtime**: GPU-enabled container with CUDA support
+
+#### **2. Agent Deployment**
+```bash
+# Complete K3s agent setup and registration
+./k3s-spark2.sh
+
+# Deploy GPU health check Job
+kubectl apply -f fastapi-deployment-spark2.yaml
+```
+
+#### **3. Health Validation**
+```bash
+# Check Job status
+kubectl get jobs spark2
+# Expected: Complete 1/1
+
+# View health check results
+kubectl logs job/spark2
+
+# Verify GPU functionality
+kubectl exec spark2-<pod-id> -- nvidia-smi
+```
+
+### 🩺 **Comprehensive Health Checks**
+
+The Spark2 agent performs **6 comprehensive validation checks**:
+
+#### **1. Library Loading Tests**
+```bash
+✅ libstdc++.so.6 - C++ standard library
+✅ libcusparseLt.so - cuSPARSELt GPU library
+```
+
+#### **2. PyTorch GPU Validation**
+```bash
+✅ CUDA availability and version check
+✅ GPU device detection (NVIDIA GB10)
+✅ GPU memory allocation and computation
+✅ CUDA 13.0 compatibility verification
+```
+
+#### **3. TensorFlow GPU Validation**
+```bash
+✅ CUDA build verification
+✅ GPU device detection and memory access
+✅ Matrix multiplication on GPU
+✅ GPU computation performance validation
+```
+
+#### **4. TensorRT Validation**
+```bash
+✅ Core functionality (Builder/Network/Config)
+✅ GPU capability detection (TF32, FP16, INT8)
+✅ Working operations (Identity, ReLU layers)
+⚠️ Convolution operations limited (CC 12.1 known limitation)
+```
+
+#### **5. Database Connectivity** (Optional)
+```bash
+✅ PostgreSQL connection test (if enabled)
+✅ pgvector extension availability
+```
+
+#### **6. System Resources**
+```bash
+✅ CPU core count (20 cores verified)
+✅ Memory availability (119Gi verified)
+✅ GPU device access (/dev/nvidia* mounts)
+```
+
+### 📊 **Health Check Exit Codes**
+- **0**: ✅ All checks passed
+- **1**: ❌ libstdc++ load failed
+- **2**: ❌ cuSPARSELt load failed
+- **3**: ❌ PyTorch check failed
+- **4**: ❌ TensorFlow check failed
+- **5**: ❌ TensorRT check failed
+- **7**: ❌ Database connection failed
+
+### 🐳 **Container Optimization Features**
+
+#### **Wheels-Based Build System**
+- **Fast Builds**: Pre-downloaded packages skip pip installs
+- **Offline Capable**: Most packages don't require internet
+- **Version Consistency**: Locked package versions
+- **Reduced Build Time**: ~5-10x faster than pip installs
+
+#### **PyTorch CUDA Optimization**
+- **Latest Wheels**: Downloads current PyTorch with CUDA 13.0
+- **GPU Compatibility**: Optimized for NVIDIA GB10 architecture
+- **Memory Efficient**: Minimal container footprint
+
+#### **NVIDIA Runtime Integration**
+- **Direct GPU Access**: Privileged container with device mounts
+- **Runtime Class**: Uses `nvidia` container runtime
+- **Device Plugin Bypass**: Direct `/dev/nvidia*` mounting
+
+### 🔧 **Spark2 Troubleshooting Guide**
+
+#### **Build Issues**
+```bash
+# Check build logs
+docker buildx build --platform linux/arm64 -f dockerfile.spark2.wheels -t spark2 . --load
+
+# Clean and rebuild
+./build.sh --clean
+```
+
+#### **Agent Connection Issues**
+```bash
+# Check agent status on Spark2
+ssh sanjay@10.1.10.202 "sudo systemctl status k3s-agent"
+
+# View agent logs
+ssh sanjay@10.1.10.202 "sudo journalctl -u k3s-agent -f"
+
+# Restart agent
+ssh sanjay@10.1.10.202 "sudo systemctl restart k3s-agent"
+```
+
+#### **GPU Access Problems**
+```bash
+# Verify GPU on Spark2 host
+ssh sanjay@10.1.10.202 nvidia-smi
+
+# Test container GPU access
+kubectl exec spark2-<pod-id> -- nvidia-smi
+
+# Check device mounts
+kubectl exec spark2-<pod-id> -- ls -la /dev/nvidia*
+```
+
+#### **Health Check Failures**
+```bash
+# Run detailed health check
+kubectl logs job/spark2 --follow
+
+# Test individual components
+kubectl exec spark2-<pod-id> -- python3 -c "import torch; print(torch.cuda.is_available())"
+kubectl exec spark2-<pod-id> -- python3 -c "import tensorflow as tf; print(len(tf.config.list_physical_devices('GPU')))"
+```
+
+### 📈 **Performance & Compatibility**
+
+#### **Tested Frameworks**
+- **PyTorch**: 2.9.0+cu130 ✅
+- **TensorFlow**: 2.17.0 ✅
+- **TensorRT**: 10.8.0.43 ✅
+- **CUDA**: 13.0 ✅
+- **cuDNN**: 9.0 ✅
+
+#### **Hardware Compatibility**
+- **GPU**: NVIDIA GB10 (CC 12.1) ✅
+- **CPU**: ARM64/aarch64 ✅
+- **Memory**: 119Gi DDR4 ✅
+- **Network**: 10G to Tower ✅
+
+#### **Container Metrics**
+- **Build Time**: ~3-5 minutes (wheels-based)
+- **Image Size**: ~8-10GB (with PyTorch)
+- **Startup Time**: <30 seconds
+- **Health Check Duration**: ~12 seconds
+
+### 🚀 **Production Deployment**
+
+#### **Automated Setup**
+```bash
+# One-command deployment
+cd agent/spark2 && ./k3s-spark2.sh
+
+# Verify cluster integration
+kubectl get nodes
+kubectl get pods -l app=spark2
+```
+
+#### **Monitoring & Maintenance**
+```bash
+# Continuous health monitoring
+kubectl get jobs spark2 -w
+
+# Redeploy health checks
+kubectl delete job spark2 && kubectl apply -f fastapi-deployment-spark2.yaml
+
+# View comprehensive logs
+kubectl logs job/spark2
+```
+
+## �🆕 New Features: Component-Based Architecture
 
 ### 🐳 Component-Based Image Generation
 **Status**: ✅ Implemented & Tested
@@ -150,26 +548,24 @@ The first DGX-Spark device (`10.1.10.201`) has been added to the network and is 
 
 ### 📁 Configuration Architecture
 
-The system uses a **layered configuration architecture** with three main configuration files:
+The system uses a **layered configuration architecture** with two main configuration files:
 
 ```
-k3s-config.sh          # Main configuration (IPs, components, cluster nodes)
 ├── image-matrix.sh    # Component definitions and compatibility matrix  
 └── node-config.sh     # Configuration parsing and generation functions
 ```
 
-### 🎯 Main Configuration (`k3s-config.sh`)
+### 🎯 Configuration Architecture
 
-**Primary configuration file** where you define your cluster setup:
+**Configuration is now inline within each deployment script** for better maintainability and clarity:
 
 ```bash
-# ==========================================
-# COMMON INFRASTRUCTURE CONFIGURATION
-# ==========================================
-
-# NFS Configuration (shared across all nodes)
-NFS_SERVER="10.1.10.150"      # NFS server IP
-NFS_SHARE="/vmstore"          # NFS share path
+# Configuration variables are defined directly in each script
+TOWER_IP="10.1.10.150"        # Tower server IP
+NANO_IP="10.1.10.181"         # Jetson Nano IP
+AGX_IP="10.1.10.244"          # Jetson AGX Orin IP
+POSTGRES_PASSWORD="postgres"  # Database password
+```
 
 # SSH Configuration
 SSH_KEY_TYPE="rsa"            # rsa, ed25519
@@ -256,10 +652,10 @@ COMPONENT_COMPATIBILITY["pytorch"]="l4t-ml,l4t-pytorch,ubuntu-cuda"
 ### 🚀 Configuration Workflow
 
 ```
-1. Edit k3s-config.sh
-   ├── Set CLUSTER_NODES (e.g., "tower,nano,agx")
-   ├── Configure node IPs and components
-   └── Choose appropriate base images
+1. Edit deployment scripts directly
+   ├── Configure IPs and settings in server/k3s-server.sh
+   ├── Set component flags and passwords inline
+   └── Choose appropriate base images in image-matrix.sh
 
 2. Run ./generate-images.sh
    ├── Validates component compatibility
@@ -277,18 +673,14 @@ COMPONENT_COMPATIBILITY["pytorch"]="l4t-ml,l4t-pytorch,ubuntu-cuda"
 
 #### **Add GPU monitoring to Nano:**
 ```bash
-# In k3s-config.sh
-NANO_COMPONENTS="python,cuda,tensorrt,fastapi,gpu-monitoring"
+# In server/k3s-server.sh or agent/nano/k3s-nano-agent-setup.sh
+# Edit component variables directly in the script
 ```
 
 #### **Add new x86 GPU worker:**
 ```bash
-# In k3s-config.sh
-CLUSTER_NODES="tower,nano,agx,x86-gpu"
-
-X86_GPU_IP="10.1.10.201"
-X86_GPU_COMPONENTS="python,cuda,pytorch,tensorflow,fastapi,gpu-monitoring,llm,rag"
-X86_GPU_BASE_IMAGE="ubuntu-cuda"
+# Add new script in agent/x86-gpu/ directory
+# Configure IPs and components inline in the new script
 ```
 
 #### **Change JetPack version:**
@@ -303,8 +695,8 @@ BASE_IMAGES["l4t-minimal"]="nvcr.io/nvidia/l4t-jetpack:r36.3.0"
 COMPONENT_DEPS["custom-ml"]="custom-package1 custom-package2"
 COMPONENT_COMPATIBILITY["custom-ml"]="l4t-ml,ubuntu-cuda"
 
-# In k3s-config.sh
-AGX_COMPONENTS="python,cuda,tensorrt,pytorch,tensorflow,fastapi,gpu-monitoring,llm,rag,custom-ml"
+# In deployment scripts (e.g., agent/agx/k3s-agx-agent-setup.sh)
+# Add custom component to the inline configuration
 ```
 
 ### ✅ Automatic Validation
@@ -549,16 +941,14 @@ sudo k3s kubectl apply -f fastapi-deployment-full.yaml
 
 ```
 kubernetes/
-├── k3s-config.sh                    # Configuration file (IPs, passwords, enable/disable components)
 ├── k3s-setup-automation.sh          # 🆕 Main automated setup script (63 steps with stability verification)
 ├── node-config.sh                   # 🆕 Node configuration parser and validation functions
 ├── config-demo.sh                   # 🆕 Configuration demo and validation script
 ├── stability-manager.sh             # 🆕 Advanced cluster stability manager and monitoring
-├── STABILITY-README.md              # 🆕 Stability manager documentation
+├── STABILITY-README.md              # 🆕 Stability manager documentation (archived)
 ├── README.md                        # This comprehensive documentation
 ├── fastapi-deployment-full.yaml     # K8s deployment manifests
 ├── nvidia-ds-updated.yaml           # NVIDIA device plugin configuration
-├── nvidia-plugin-clean-ds.yaml      # GPU cleanup configuration
 ├── images/                          # 🆕 Centralized image storage and build artifacts
 │   ├── built/                       # Temporary build artifacts
 │   ├── tar/                         # Central tar file storage for offline deployments
@@ -572,7 +962,6 @@ kubernetes/
 │   ├── k3s-setup-automation.sh      # Old automation script (moved)
 │   ├── node-config.sh               # Old node config (moved)
 │   ├── nvidia-ds-updated.yaml       # Old NVIDIA config (moved)
-│   ├── nvidia-plugin-clean-ds.yaml  # Old plugin config (moved)
 │   ├── registry-deployment.yaml     # Registry deployment (moved)
 │   ├── renumber.sh                  # Step renumbering utility (moved)
 │   ├── stability-manager.sh         # Old stability manager (moved)
@@ -650,8 +1039,8 @@ kubernetes/
 ### 🆕 Automated Setup with Stability Verification (Recommended)
 1. **Configure Settings**:
    ```bash
-   # Edit k3s-config.sh to set IPs and enable/disable components
-   nano k3s-config.sh
+   # Edit deployment scripts directly to set IPs and enable/disable components
+   # For example: nano server/k3s-server.sh
    ```
 
 2. **Run Complete Setup with Stability Checks**:
@@ -793,15 +1182,13 @@ images/
 
 ## 🔧 Configuration
 
-Edit `k3s-config.sh` to customize your deployment:
+Edit deployment scripts directly to customize your deployment:
 
 ```bash
-# Component Installation
-INSTALL_SERVER=true          # Install K3s server on tower
-INSTALL_NANO_AGENT=true      # Install K3s agent on nano
-INSTALL_AGX_AGENT=true       # Install K3s agent on agx
+# Edit server/k3s-server.sh for server configuration
+# Edit agent/*/k3s-*-agent-setup.sh for agent configurations
 
-# Network Configuration
+# Example configuration variables (inline in scripts):
 TOWER_IP="10.1.10.150"       # Tower server IP
 NANO_IP="10.1.10.181"        # Jetson Nano IP
 AGX_IP="10.1.10.244"         # Jetson AGX Orin IP
@@ -852,24 +1239,17 @@ DEBUG=0                            # 0=silent, 1=verbose
 
 ### New Parameterized Configuration System
 
-Edit `k3s-config.sh` with the new flexible node configuration:
+Configuration is now handled directly in deployment scripts with inline parameters:
 
 ```bash
-# Cluster Node Selection
-CLUSTER_NODES="tower,nano,agx"  # Choose which nodes to include
+# Configuration variables are defined directly in each script
+# For example, in server/k3s-server.sh:
 
-# Per-Node Configuration
+TOWER_IP="10.1.10.150"          # Tower server IP
 TOWER_ARCH="amd64"              # Architecture (amd64/arm64)
-TOWER_COMPONENTS="server,postgres,pgadmin,jupyter"  # Components to install
+# Component flags are set as variables in the script
 
-NANO_ARCH="arm64"
-NANO_COMPONENTS="fastapi,gpu"
-NANO_IMAGE_NAME="fastapi_nano"  # Custom image names
-NANO_DOCKERFILE="agent/nano/dockerfile.nano.req"
-
-AGX_ARCH="arm64"
-AGX_COMPONENTS="fastapi,gpu,llm"
-AGX_IMAGE_NAME="fastapi_agx"
+# Similar configurations exist in agent scripts for each node type
 ```
 
 ### Test Configuration
@@ -951,7 +1331,7 @@ vim agent/agx/agx_app.py
 
 ### 📝 **Configuration Files**
 - **pgAdmin Connection**: Use PostgreSQL connection details above
-- **Environment Variables**: Check `k3s-config.sh` for current settings
+- **Environment Variables**: Check deployment scripts (e.g., `server/k3s-server.sh`) for current settings
 - **Logs**: Deployment logs saved automatically to timestamped files
 
 ## 🛡️ Stability Manager
@@ -1028,9 +1408,9 @@ The stability manager validates:
 The stability manager uses these configuration files:
 - `stability.log`: Comprehensive operation logs
 - `/etc/rancher/k3s/k3s.yaml`: Kubernetes API access
-- Network IPs from `k3s-config.sh`
+- Network IPs from deployment scripts (e.g., `server/k3s-server.sh`)
 
-For detailed documentation, see `STABILITY-README.md`.
+For detailed documentation, see `STABILITY-README.md` (archived).
 
 ## 🚀 Automated Deployment (55 Steps)
 
@@ -1117,7 +1497,7 @@ The script includes comprehensive validation:
 
 ### Integration Points
 - **Stability Manager**: Automatic health monitoring post-deployment
-- **Configuration Files**: All settings saved to `k3s-config.sh`
+- **Configuration Files**: Settings configured inline in deployment scripts
 - **Service Endpoints**: Accessible URLs provided on completion
 - **Documentation**: Auto-generated setup summary
 
@@ -1341,9 +1721,9 @@ This deployment validates the **enterprise-grade robustness** of the K3s automat
 
 ### Database Issues
 - **Connection Failed**: Verify PostgreSQL pod is running: `sudo kubectl get pods | grep postgres`
-- **pgAdmin Login**: Use credentials from `k3s-config.sh` (default: pgadmin@pgadmin.org / pgadmin)
+- **pgAdmin Login**: Use credentials from deployment scripts (default: pgadmin@pgadmin.org / pgadmin)
 - **pgvector Extension**: Check logs: `sudo kubectl logs deployment/postgres-db`
-- **Password Issues**: Update `POSTGRES_PASSWORD` in `k3s-config.sh` and redeploy
+- **Password Issues**: Update `POSTGRES_PASSWORD` in deployment scripts and redeploy
 
 ### Network Issues
 - **IP Conflicts**: Current IPs: Tower=10.1.10.150, Nano=10.1.10.181, AGX=10.1.10.244

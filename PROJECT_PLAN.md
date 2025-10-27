@@ -266,11 +266,10 @@ Traefik Dashboard: http://10.1.10.150:9000
 ├── node-config.sh                   # Node configuration parser and validation
 ├── config-demo.sh                   # Configuration demo and validation script
 ├── stability-manager.sh             # 🆕 Advanced cluster stability manager
-├── STABILITY-README.md              # Stability manager documentation
+├── STABILITY-README.md              # Stability manager documentation (archived)
 ├── README.md                        # Comprehensive deployment documentation
 ├── fastapi-deployment-full.yaml     # K8s deployment manifests
 ├── nvidia-ds-updated.yaml           # NVIDIA device plugin configuration
-├── nvidia-plugin-clean-ds.yaml      # GPU cleanup configuration
 ├── images/                          # 🆕 Centralized image storage and build artifacts
 │   ├── built/                       # Temporary build artifacts
 │   ├── tar/                         # Central tar file storage for offline deployments

@@ -19,20 +19,34 @@ spec:
       - key: CriticalAddonsOnly
         operator: Exists
       containers:
-      - image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
+      - image: nvcr.io/nvidia/k8s-device-plugin:v0.18.0
         name: nvidia-device-plugin-ctr
         securityContext:
           privileged: true
         env:
         - name: DEVICE_DISCOVERY_STRATEGY
           value: nvml
+        - name: FAIL_ON_INIT_ERROR
+          value: "false"
+        - name: DEVICE_LIST_STRATEGY
+          value: envvar
+        - name: DEVICE_ID_STRATEGY
+          value: index
+        - name: KUBE_LOG_LEVEL
+          value: "4"
+        - name: NVIDIA_DRIVER_ROOT
+          value: /driver-root
         volumeMounts:
         - name: device-plugin
           mountPath: /var/lib/kubelet/device-plugins
         - name: sys
           mountPath: /sys
         - name: usr-lib
-          mountPath: /usr/lib
+          mountPath: /driver-root/usr/lib
+        - name: dev
+          mountPath: /dev
+        - name: etc
+          mountPath: /driver-root/etc
       volumes:
       - name: device-plugin
         hostPath:
@@ -43,3 +57,9 @@ spec:
       - name: usr-lib
         hostPath:
           path: /usr/lib
+      - name: dev
+        hostPath:
+          path: /dev
+      - name: etc
+        hostPath:
+          path: /etc

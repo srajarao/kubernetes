@@ -53,7 +53,7 @@ echo
 
 # External access summary
 echo "6. External Access Summary:"
-echo "   PostgreSQL: 10.1.10.150:30432"
-echo "   pgAdmin:    http://10.1.10.150:30080"
+echo "   ✅ PostgreSQL: 10.1.10.150:30432"
+echo "   ✅ pgAdmin:    http://10.1.10.150:30080"
 echo
 echo -e "\033[32m=== Verification Complete ===\033[0m"

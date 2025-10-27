@@ -68,7 +68,7 @@ fi
 CURRENT_STEP=1
 
 # NOTE: Total steps count is 36 (includes nano and AGX GPU enablement)
-TOTAL_STEPS=35
+TOTAL_STEPS=39
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.
@@ -380,7 +380,41 @@ print_divider
 
 step_02(){
 # -------------------------------------------------------------------------
-# STEP 02: Start iperf3 server
+# STEP 02: Complete K3s Cleanup
+# -------------------------------------------------------------------------
+step_echo_start "s" "tower" "$TOWER_IP" "Complete K3s cleanup..."
+
+# Stop and disable k3s-agent service (ignore errors if service doesn't exist)
+sudo systemctl stop k3s-agent || true
+sudo systemctl disable k3s-agent || true
+sudo rm -f /etc/systemd/system/k3s-agent.service
+sudo rm -rf /etc/systemd/system/k3s-agent.service.d
+sudo systemctl daemon-reload
+
+# Remove k3s binaries and directories (including agent)
+sudo rm -rf /etc/rancher/k3s /var/lib/rancher/k3s /usr/local/bin/k3s /usr/local/bin/k3s-agent
+
+# Stop and disable k3s service (server) - ignore errors if service doesn't exist
+sudo systemctl stop k3s || true
+sudo systemctl disable k3s || true
+sudo rm -f /etc/systemd/system/k3s.service
+sudo rm -rf /etc/systemd/system/k3s.service.d
+sudo systemctl daemon-reload
+sudo rm -rf /etc/rancher/k3s /var/lib/rancher/k3s /usr/local/bin/k3s
+
+# Remove all k3s related files and directories
+sudo rm -rf /etc/k3s /var/log/k3s /var/lib/kubelet /var/log/pods /var/lib/cni /run/flannel /etc/cni /opt/cni /etc/rancher /var/lib/rancher /etc/systemd/system/k3s* /etc/systemd/system/k3s-agent* /etc/systemd/system/k3s-server*
+sudo systemctl daemon-reload
+
+echo -e "[32m✅ Complete K3s cleanup finished[0m"
+echo ""
+step_increment
+print_divider
+}
+
+step_03(){
+# -------------------------------------------------------------------------
+# STEP 03: Start iperf3 server
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Starting iperf3 server for network testing..."
 if [ "$AGX_INTERFACE_AVAILABLE" = true ]; then
@@ -398,9 +432,9 @@ step_increment
 }
 
 
-step_03(){
+step_04(){
 # --------------------------------------------------------------------------------
-# STEP 03: FIX NFS VOLUME PATHS (Addresses 'No such file or directory' error)
+# STEP 04: FIX NFS VOLUME PATHS (Addresses 'No such file or directory' error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Setting up NFS volumes..."
 NFS_BASE="/export/vmstore"
@@ -425,9 +459,9 @@ print_divider
 
 
 
-step_04(){
+step_05(){
 # -------------------------------------------------------------------------
-# STEP 04: Delete FastAPI AGX Services
+# STEP 05: Delete FastAPI AGX Services
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI AGX services..."
 if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete service fastapi-agx-service fastapi-agx-nodeport -n default --ignore-not-found=true > /dev/null 2>&1; then
@@ -439,9 +473,9 @@ print_divider
 step_increment
 }
 
-step_05(){
+step_06(){
 # -------------------------------------------------------------------------
-# STEP 05: Delete FastAPI Nano Services
+# STEP 06: Delete FastAPI Nano Services
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI Nano services..."
 if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete service fastapi-nano-service fastapi-nano-nodeport -n default --ignore-not-found=true > /dev/null 2>&1; then
@@ -455,9 +489,9 @@ step_increment
 
 
 
-step_06(){
+step_07(){
 # -------------------------------------------------------------------------
-# STEP 06: Delete FastAPI Spark1 Services
+# STEP 07: Delete FastAPI Spark1 Services
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI Spark1 services..."
 if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete service fastapi-spark1-service fastapi-spark1-nodeport -n default --ignore-not-found=true > /dev/null 2>&1; then
@@ -470,9 +504,25 @@ step_increment
 }
 
 
-step_07(){
+
+
+step_08(){
 # -------------------------------------------------------------------------
-# STEP 07: Delete FastAPI AGX Deployment
+# STEP 08: Delete FastAPI Spark2 Services
+# -------------------------------------------------------------------------
+step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI Spark2 services..."
+if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete service fastapi-spark2-service fastapi-spark2-nodeport -n default --ignore-not-found=true > /dev/null 2>&1; then
+  echo -e "[32m✅[0m"
+else
+  echo -e "[32m✅[0m"  # Mark as success if no cluster or delete fails (nothing to delete)
+fi
+print_divider
+step_increment
+}
+
+step_09(){
+# -------------------------------------------------------------------------
+# STEP 09: Delete FastAPI AGX Deployment
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI AGX deployment..."
 if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-agx -n default --ignore-not-found=true > /dev/null 2>&1; then
@@ -484,9 +534,9 @@ print_divider
 step_increment
 }
 
-step_08(){
+step_10(){
 # -------------------------------------------------------------------------
-# STEP 08: Delete FastAPI Nano Deployment
+# STEP 10: Delete FastAPI Nano Deployment
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI Nano deployment..."
 if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-nano -n default --ignore-not-found=true > /dev/null 2>&1; then
@@ -498,9 +548,9 @@ print_divider
 step_increment
 }
 
-step_09(){
+step_11(){
 # -------------------------------------------------------------------------
-# STEP 09: Delete FastAPI Spark1 Deployment
+# STEP 11: Delete FastAPI Spark1 Deployment
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI Spark1 deployment..."
 if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-spark1 -n default --ignore-not-found=true > /dev/null 2>&1; then
@@ -513,9 +563,24 @@ step_increment
 }
 
 
-step_10(){
+
+step_12(){
 # -------------------------------------------------------------------------
-# STEP 10: Delete FastAPI AGX Node
+# STEP 12: Delete FastAPI Spark2 Deployment
+# -------------------------------------------------------------------------
+step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI Spark2 deployment..."
+if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete deployment fastapi-spark2 -n default --ignore-not-found=true > /dev/null 2>&1; then
+  echo -e "[32m✅[0m"
+else
+  echo -e "[32m✅[0m"  # Mark as success if no cluster or delete fails (nothing to delete)
+fi
+print_divider
+step_increment
+}
+
+step_13(){
+# -------------------------------------------------------------------------
+# STEP 13: Delete FastAPI AGX Node
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI AGX node..."
 if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete node agx --ignore-not-found=true > /dev/null 2>&1; then
@@ -527,9 +592,9 @@ print_divider
 step_increment
 }
 
-step_11(){
+step_14(){
 # -------------------------------------------------------------------------
-# STEP 11: Delete FastAPI Nano Node
+# STEP 14: Delete FastAPI Nano Node
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI Nano node..."
 if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete node nano --ignore-not-found=true > /dev/null 2>&1; then
@@ -541,9 +606,10 @@ print_divider
 step_increment
 }
 
-step_12(){
+
+step_15(){
 # -------------------------------------------------------------------------
-# STEP 12: Delete FastAPI Spark1 Node
+# STEP 15: Delete FastAPI Spark1 Node
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI Spark1 node..."
 if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete node spark1 --ignore-not-found=true > /dev/null 2>&1; then
@@ -558,9 +624,23 @@ step_increment
 
 
 
-step_13(){
+step_16(){
 # -------------------------------------------------------------------------
-# STEP 13: Uninstall Server
+# STEP 16: Delete FastAPI Spark2 Node
+# -------------------------------------------------------------------------
+step_echo_start "s" "tower" "$TOWER_IP" "Deleting FastAPI Spark2 node..."
+if cluster_running && sudo KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete node spark2 --ignore-not-found=true > /dev/null 2>&1; then
+  echo -e "[32m✅[0m"
+else
+  echo -e "[32m✅[0m"  # Mark as success if no cluster or delete fails (nothing to delete)
+fi
+print_divider
+step_increment
+}
+
+step_17(){
+# -------------------------------------------------------------------------
+# STEP 17: Uninstall Server
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Uninstalling Server... (Verbose output below)"
@@ -583,9 +663,9 @@ step_increment
 }
 
 
-step_14(){
+step_18(){
 # -------------------------------------------------------------------------
-# STEP 14: Install Server
+# STEP 18: Install Server
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SERVER" = true ]; then
   step_echo_start "s" "tower" "$TOWER_IP" "Installing K3s server..."
@@ -607,9 +687,9 @@ fi
 
 
 
-step_15(){
+step_19(){
 # -------------------------------------------------------------------------
-# STEP 15: Correct K3s Network Configuration (SIMPLIFIED MESSAGE)
+# STEP 19: Correct K3s Network Configuration (SIMPLIFIED MESSAGE)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SERVER" = true ]; then
   step_echo_start "s" "tower" "$TOWER_IP" "Correcting K3s network configuration..."
@@ -648,9 +728,9 @@ fi
 
 
 
-step_16(){
+step_20(){
 # --------------------------------------------------------------------------------
-# STEP 16: FIX KUBECONFIG IP (Addresses the 'i/o timeout' error)
+# STEP 20: FIX KUBECONFIG IP (Addresses the 'i/o timeout' error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Patching Kubeconfig with correct API IP..."
 # Fix the old/incorrect IP (e.g., 192.168.5.1) to the current static IP (10.1.10.150)
@@ -667,9 +747,9 @@ print_divider
 
 
 
-step_17(){
+step_21(){
 # --------------------------------------------------------------------------------
-# STEP 17: COPY UPDATED KUBECONFIG TO LOCAL USER
+# STEP 21: COPY UPDATED KUBECONFIG TO LOCAL USER
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Copying Kubeconfig to local user..."
 # Copy the patched kubeconfig to the user's local kubeconfig directory
@@ -695,9 +775,9 @@ print_divider
 
 
 
-step_18(){
+step_22(){
 # -------------------------------------------------------------------------
-# STEP 18: Restart Server (Final Check)
+# STEP 22: Restart Server (Final Check)
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Restarting Server... (Verbose output below)"
@@ -722,9 +802,9 @@ print_divider
 
 
 
-step_19(){
+step_23(){
 # -------------------------------------------------------------------------
-# STEP 19: Install NVIDIA RuntimeClass
+# STEP 23: Install NVIDIA RuntimeClass
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Installing NVIDIA RuntimeClass..."
@@ -756,9 +836,9 @@ print_divider
 }
 
 
-step_20(){
+step_24(){
 # -------------------------------------------------------------------------
-# STEP 53: Install NVIDIA Device Plugin
+# STEP 24: Install NVIDIA Device Plugin
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Installing NVIDIA Device Plugin... (Verbose output below)"
@@ -781,9 +861,9 @@ print_divider
 
 
 
-step_21(){
+step_25(){
 # -------------------------------------------------------------------------
-# STEP 54: FIX NVIDIA DEVICE PLUGIN NODE AFFINITY (NEW SELF-HEALING STEP)
+# STEP 25: FIX NVIDIA DEVICE PLUGIN NODE AFFINITY (NEW SELF-HEALING STEP)
 # -------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Configuring NVIDIA node affinity..."
 sleep 5
@@ -811,9 +891,9 @@ print_divider
 }
 
 
-step_22(){
+step_26(){
 # --------------------------------------------------------------------------------
-# STEP 22: Deploy Docker Registry
+# STEP 26: Deploy Docker Registry and Configure K3s Private Registry
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SERVER" = true ]; then
   cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
@@ -823,15 +903,38 @@ if [ "$INSTALL_SERVER" = true ]; then
   if sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f registry-deployment.yaml > /dev/null 2>&1; then
     # Verify registry pod readiness
     if verify_pod_readiness "registry" 30; then
-      echo -e " ✅ Docker registry deployed and ready"
+      echo -e "\n ✅ Docker registry deployed and ready"
       # Configure Docker insecure registry for the NodePort
       sudo tee /etc/docker/daemon.json > /dev/null <<EOF
 {
-  "insecure-registries": ["10.1.10.150:30500"]
+  "insecure-registries": ["$REGISTRY_IP:$REGISTRY_PORT"]
 }
 EOF
       sudo systemctl restart docker
       sleep 10
+
+      # Configure K3s private registry
+      sudo mkdir -p /etc/rancher/k3s
+      sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
+mirrors:
+  "$REGISTRY_IP:$REGISTRY_PORT":
+    endpoint:
+      - "http://$REGISTRY_IP:$REGISTRY_PORT"
+configs:
+  "$REGISTRY_IP:$REGISTRY_PORT":
+    tls:
+      insecure_skip_verify: true
+EOF
+
+      # Restart k3s to pick up registry configuration
+      if sudo systemctl restart k3s > /dev/null 2>&1; then
+        wait_for_server
+        echo -e "   ✅ K3s private registry configured"
+      else
+        echo -e "   ❌ Failed to restart K3s after registry configuration"
+        echo -e "[31m❌[0m"
+        exit 1
+      fi
     else
       echo -e "  ❌ Docker registry health check failed"
       echo -e "[31m❌[0m"
@@ -847,9 +950,9 @@ step_increment
 print_divider
 }
 
-step_23(){
+step_27(){
 # --------------------------------------------------------------------------------
-# STEP 23: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
+# STEP 27: ROBUST APPLICATION CLEANUP (Fixes stuck pods and 'Allocate failed' GPU error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Cleaning up stuck pods and old deployments..."
 
@@ -873,9 +976,9 @@ print_divider
 }
 
 
-step_24(){
+step_28(){
 # -------------------------------------------------------------------------
-# STEP 24: Create PostgreSQL Initialization ConfigMap
+# STEP 28: Create PostgreSQL Initialization ConfigMap
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SERVER" = true ]; then
   step_echo_start "s" "tower" "$TOWER_IP" "Creating PostgreSQL init configmap..."
@@ -898,9 +1001,9 @@ print_divider
 }
 
 
-step_25(){
+step_29(){
 # --------------------------------------------------------------------------------
-# STEP 25: Build PostgreSQL Docker Image
+# STEP 29: Build PostgreSQL Docker Image
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SERVER" = true ]; then
   cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
@@ -924,9 +1027,9 @@ print_divider
 }
 
 
-step_26(){
+step_30(){
 # --------------------------------------------------------------------------------
-# STEP 26: Tag PostgreSQL Docker Image
+# STEP 30: Tag PostgreSQL Docker Image
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SERVER" = true ]; then
   cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
@@ -959,9 +1062,9 @@ step_increment
 print_divider
 }
 
-step_27(){
+step_31(){
 # --------------------------------------------------------------------------------
-# STEP 27: Push PostgreSQL Docker Image to Registry
+# STEP 31: Push PostgreSQL Docker Image to Registry
 # --------------------------------------------------------------------------------
 cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
 if [ "$DEBUG" = "1" ]; then
@@ -982,9 +1085,9 @@ step_increment
 print_divider
 }
 
-step_28(){
+step_32(){
 # -------------------------------------------------------------------------
-# STEP 28: Deploy PostgreSQL Database with Robust Error Handling
+# STEP 32: Deploy PostgreSQL Database with Robust Error Handling
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SERVER" = true ]; then
   cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
@@ -1025,9 +1128,9 @@ step_increment
 print_divider
 }
 
-step_29(){
+step_33(){
 # -------------------------------------------------------------------------
-# STEP 29: Update FastAPI Database Configuration
+# STEP 33: Update FastAPI Database Configuration
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SERVER" = true ]; then
   step_echo_start "s" "tower" "$TOWER_IP" "Updating FastAPI database config..."
@@ -1058,9 +1161,9 @@ step_increment
 print_divider
 }
 
-step_30(){
+step_34(){
 # --------------------------------------------------------------------------------
-# STEP 30: Build pgAdmin Docker Image
+# STEP 34: Build pgAdmin Docker Image
 # --------------------------------------------------------------------------------
 cd "$SCRIPT_DIR"  # Ensure we're in the correct directory
 if [ "$DEBUG" = "1" ]; then
@@ -1081,9 +1184,9 @@ step_increment
 print_divider
 }
 
-step_31(){
+step_35(){
 # --------------------------------------------------------------------------------
-# STEP 31: Tag pgAdmin Docker Image
+# STEP 35: Tag pgAdmin Docker Image
 # --------------------------------------------------------------------------------
 # Ensure Docker insecure registry is configured
 sudo tee /etc/docker/daemon.json > /dev/null <<EOF
@@ -1112,9 +1215,9 @@ step_increment
 print_divider
 }
 
-step_32(){
+step_36(){
 # --------------------------------------------------------------------------------
-# STEP 32: Push pgAdmin Docker Image to Registry
+# STEP 36: Push pgAdmin Docker Image to Registry
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing pgAdmin Docker image to registry... (Verbose output below)"
@@ -1138,9 +1241,9 @@ print_divider
 
 
 
-step_33(){
+step_37(){
 # -------------------------------------------------------------------------
-# STEP 33: Deploy pgAdmin
+# STEP 37: Deploy pgAdmin
 # -------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Deploying pgAdmin... (Verbose output below)"
@@ -1167,9 +1270,9 @@ print_divider
 
 
 
-step_34(){
+step_38(){
   # --------------------------------------------------------------------------------
-  # STEP 34: Verify PostgreSQL and pgAdmin Deployment
+  # STEP 38: Verify PostgreSQL and pgAdmin Deployment
   # --------------------------------------------------------------------------------
   step_echo_start "s" "tower" "$TOWER_IP" "Verifying PostgreSQL and pgAdmin..."
 
@@ -1195,9 +1298,9 @@ step_34(){
 
 
 
-step_35(){
+step_39(){
 # ------------------------------------------------------------------------
-# STEP 35: Final Success Message
+# STEP 39: Final Success Message
 # ------------------------------------------------------------------------
 
 # Final success message
@@ -1249,6 +1352,12 @@ step_32
 step_33
 step_34
 step_35
-# End of script
+step_36
+step_37
+step_38
+step_39
+#End
+
+
 
 

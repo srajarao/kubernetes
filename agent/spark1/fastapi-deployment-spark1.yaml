@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-spark1
+  namespace: default
+  labels:
+    app: fastapi-spark1
+    device: spark1
+    tier: agent
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 600
+  selector:
+    matchLabels:
+      app: fastapi-spark1
+  template:
+    metadata:
+      labels:
+        app: fastapi-spark1
+        device: spark1
+        tier: agent
+    spec:
+      restartPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: spark1
+      containers:
+      - name: fastapi-spark1
+        image: 10.1.10.150:30500/fastapi-spark1:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 8888
+          name: jupyter
+        - containerPort: 8001
+          name: llm
+        env:
+        - name: PYTHONPATH
+          value: "/workspace"
+        command: ["/bin/sh", "-c", "sleep 3600"]
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: vmstore
+          mountPath: /workspace/vmstore
+        - name: spark1-home
+          mountPath: /workspace/spark1_home
+        - name: spark1-config
+          mountPath: /workspace/config
+        - name: nvidia-dev
+          mountPath: /dev/nvidia0
+        - name: nvidia-ctl
+          mountPath: /dev/nvidiactl
+        - name: nvidia-uvm
+          mountPath: /dev/nvidia-uvm
+        - name: nvidia-modeset
+          mountPath: /dev/nvidia-modeset
+        - name: nvidia-lib
+          mountPath: /usr/lib/aarch64-linux-gnu
+      volumes:
+      - name: vmstore
+        nfs:
+          server: 10.1.10.150
+          path: /export/vmstore
+      - name: spark1-home
+        nfs:
+          server: 10.1.10.150
+          path: /export/vmstore/spark1_home
+      - name: spark1-config
+        nfs:
+          server: 10.1.10.150
+          path: /export/vmstore/tower_home/kubernetes/agent/spark1/app/config
+      - name: nvidia-dev
+        hostPath:
+          path: /dev/nvidia0
+      - name: nvidia-ctl
+        hostPath:
+          path: /dev/nvidiactl
+      - name: nvidia-uvm
+        hostPath:
+          path: /dev/nvidia-uvm
+      - name: nvidia-modeset
+        hostPath:
+          path: /dev/nvidia-modeset
+      - name: nvidia-lib
+        hostPath:
+          path: /usr/lib/aarch64-linux-gnu
+      tolerations:
+      - key: "node-role.kubernetes.io/agent"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "CriticalAddonsOnly"
+        operator: "Equal"
+        value: "true"
+        effect: "NoExecute"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-spark1-service
+  namespace: default
+  labels:
+    app: fastapi-spark1
+    device: spark1
+spec:
+  selector:
+    app: fastapi-spark1
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 8888
+    targetPort: 8888
+    protocol: TCP
+    name: jupyter
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-spark1-nodeport
+  namespace: default
+  labels:
+    app: fastapi-spark1
+    device: spark1
+spec:
+  selector:
+    app: fastapi-spark1
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30010
+    protocol: TCP
+    name: http
+  - port: 8888
+    targetPort: 8888
+    nodePort: 30011
+    protocol: TCP
+    name: jupyter
+  - port: 8001
+    targetPort: 8001
+    nodePort: 30012
+    protocol: TCP
+    name: llm
+  type: NodePort
