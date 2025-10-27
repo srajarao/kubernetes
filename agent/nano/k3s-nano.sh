@@ -545,96 +545,25 @@ print_divider
 
 step_04(){
 # -------------------------------------------------------------------------
-# STEP 04: Reinstall Nano Agent (BINARY TRANSFER INSTALL)
+# STEP 04: Reinstall Nano Agent (OFFICIAL K3S INSTALL)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_NANO_AGENT" = true ]; then
-  # Use binary transfer for Nano (curl fails due to network restrictions)
-  K3S_REINSTALL_CMD="export K3S_TOKEN=\"$TOKEN\";
-    scp -o StrictHostKeyChecking=no -o LogLevel=ERROR -i ~/.ssh/id_ed25519 sanjay@$TOWER_IP:/tmp/k3s-arm64 /tmp/k3s-arm64;
-    sudo chmod +x /tmp/k3s-arm64;
-    sudo cp /tmp/k3s-arm64 /usr/local/bin/k3s;
-    sudo chmod +x /usr/local/bin/k3s;
-    sudo mkdir -p /etc/systemd/system;
-    sudo bash -c 'cat > /etc/systemd/system/k3s-agent.service << EOF
-[Unit]
-Description=Lightweight Kubernetes
-Documentation=https://k3s.io
-Wants=network-online.target
-After=network-online.target
-
-[Install]
-WantedBy=multi-user.target
-
-[Service]
-Type=notify
-EnvironmentFile=-/etc/default/%N
-EnvironmentFile=-/etc/sysconfig/%N
-EnvironmentFile=-/etc/systemd/system/k3s-agent.service.env
-KillMode=process
-Delegate=yes
-User=root
-LimitNOFILE=1048576
-LimitNPROC=infinity
-LimitCORE=infinity
-TasksMax=infinity
-TimeoutStartSec=0
-Restart=always
-RestartSec=5s
-ExecStartPre=-/sbin/modprobe br_netfilter
-ExecStartPre=-/sbin/modprobe overlay
-ExecStart=/usr/local/bin/k3s agent --node-ip $NODE_IP
-EOF';
-    echo 'K3S_TOKEN=\"\$K3S_TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null;
-    echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null;
-    sudo ip route add default via 10.1.10.1 dev eno1 2>/dev/null || true;
-    sudo systemctl daemon-reload;
-    sudo systemctl enable k3s-agent;
-    sudo systemctl start k3s-agent"
-
+  # Use the official k3s install script for Nano
+  K3S_REINSTALL_CMD="sudo curl -sfL https://get.k3s.io | K3S_URL='https://$TOWER_IP:6443' K3S_TOKEN='$TOKEN' sh -"
+  echo "Installing Agent on Nano using official k3s install script..."
+  sleep 5
   if [ "$DEBUG" = "1" ]; then
-    echo "Reinstalling Agent on Nano with binary transfer..."
-  $SSH_CMD $SSH_USER@$NODE_IP "$K3S_REINSTALL_CMD"
-    # Ensure environment file exists with correct server URL
-  $SSH_CMD $SSH_USER@$NODE_IP "sudo mkdir -p /etc/systemd/system && echo 'K3S_TOKEN=\"$TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null && echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null" 2>/dev/null || true
-    # CRITICAL: Ensure systemd loads environment variables after install
-  $SSH_CMD $SSH_USER@$NODE_IP "sudo systemctl daemon-reload && sudo systemctl restart k3s-agent" 2>/dev/null || true
-  wait_for_agent $NODE_NAME
+    echo "Running k3s install script with server URL and token..."
+    echo ""
+    $SSH_CMD $SSH_USER@$NODE_IP "$K3S_REINSTALL_CMD"
+    echo "Agent installation completed."
   else
     step_echo_start "a" "$NODE_NAME" "$NODE_IP" "Reinstalling K3s agent on $NODE_NAME..."
     sleep 5
-    # Execute the binary transfer install command
-  if [ "$DEBUG" = "1" ]; then
-    echo "Running K3s agent install command on $NODE_DISPLAY..."
+    echo ""
+    $SSH_CMD $SSH_USER@$NODE_IP "$K3S_REINSTALL_CMD"
   fi
-  if $SSH_CMD $SSH_USER@$NODE_IP "$K3S_REINSTALL_CMD" > /dev/null 2>&1; then
-      # Ensure environment file exists with correct server URL
-  if [ "$DEBUG" = "1" ]; then
-    echo "Setting up K3s environment files on $NODE_DISPLAY..."
-  fi
-  $SSH_CMD $SSH_USER@$NODE_IP "sudo mkdir -p /etc/systemd/system && echo 'K3S_TOKEN=\"$TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null && echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null" > /dev/null 2>&1
-      # CRITICAL: Ensure systemd loads environment variables after install
-  if [ "$DEBUG" = "1" ]; then
-    echo "Reloading systemd and restarting k3s-agent on $NODE_DISPLAY..."
-  fi
-  $SSH_CMD $SSH_USER@$NODE_IP "sudo systemctl daemon-reload && sudo systemctl restart k3s-agent" > /dev/null 2>&1
   wait_for_agent $NODE_NAME
-      echo -en " ✅[0m
-"
-    else
-      echo -e "[31m❌ Failed to reinstall K3s agent on $NODE_DISPLAY[0m"
-      echo "Debug info:"
-      echo "Reinstalling Agent on $NODE_DISPLAY with binary transfer..."
-      echo "Transferring k3s binary from tower to $NODE_DISPLAY..."
-      echo "Setting up systemd service on $NODE_DISPLAY..."
-      echo "Configuring K3s agent with token and server URL..."
-      echo "Error details - attempting to show command output:"
-      $SSH_CMD $SSH_USER@$NODE_IP "$K3S_REINSTALL_CMD"
-      exit 1
-    fi
-  fi
-fi
-if [ "$DEBUG" = "1" ]; then
-  echo "K3s agent reinstall on $NODE_DISPLAY completed."
 fi
 step_increment
 print_divider

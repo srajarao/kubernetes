@@ -504,6 +504,172 @@ kubectl delete job spark2 && kubectl apply -f fastapi-deployment-spark2.yaml
 kubectl logs job/spark2
 ```
 
+
+## 🚀 AGX Orin Agent Setup & FastAPI Deployment
+
+### 🎯 **AGX Agent Overview**
+**Status**: ✅ **FULLY OPERATIONAL** - AGX Orin device with FastAPI/LLM services and GPU acceleration
+
+The AGX agent runs comprehensive FastAPI services with GPU-accelerated AI/ML workloads, including LLM inference and RAG capabilities. Designed for production AI inference without Jupyter dependencies.
+
+### 📊 **AGX Device Specifications**
+- **Hardware**: NVIDIA Jetson AGX Orin 64GB
+- **IP Address**: 10.1.10.244
+- **CPU**: 12-core ARM64
+- **Memory**: 64GB LPDDR5
+- **GPU**: NVIDIA Ampere (2048 CUDA cores)
+- **Architecture**: ARM64/aarch64
+- **Network**: 10G dedicated link to Tower (10.1.10.150:6443)
+
+### 🏗️ **AGX Agent Architecture**
+```
+Tower (10.1.10.150)          AGX Agent (10.1.10.244)
+├── K3s Server               ├── K3s Agent
+├── PostgreSQL               ├── FastAPI Services
+├── Docker Registry          ├── GPU-Accelerated AI/ML
+├── Token Distribution       ├── LLM Inference & RAG
+└── Container Images         └── REST API Endpoints
+```
+
+### 📁 **AGX Agent Files Structure**
+```
+agent/agx/
+├── agx_app.py                # FastAPI application with GPU acceleration
+├── requirements.agx.txt      # Python dependencies (GPU libraries)
+├── setup_fastapi_agx.sh      # Complete agent setup script
+├── fastapi-deployment-agx.yaml  # Kubernetes deployment
+├── dockerfile.agx.req        # Requirements-based Dockerfile
+├── agx-config.env           # AGX-specific configuration
+└── app/config/              # Application configuration
+```
+
+### 🔧 **AGX Device Configuration**
+
+#### **Network Settings**
+- **Tower Access**: 192.168.10.1 (AGX subnet)
+- **Node Name**: agx
+- **API Server**: https://192.168.10.1:6443
+
+#### **Storage Paths**
+- **Tokens**: `/mnt/vmstore/agx_home/containers/fastapi/.token/`
+- **Config**: `/mnt/vmstore/agx_home/containers/fastapi/`
+- **Workspace**: `/mnt/vmstore/tower_home/kubernetes/agent/agx`
+
+#### **Service Endpoints**
+- **FastAPI HTTP**: Port 8000
+- **LLM API**: Port 8001
+- **PostgreSQL**: 192.168.10.1:5432
+- **Docker Registry**: 192.168.10.1:30500
+
+### 🚀 **AGX Setup Process**
+
+#### **Automated Setup**
+```bash
+# Complete AGX agent setup
+cd agent/agx && ./setup_fastapi_agx.sh
+
+# Verify deployment
+kubectl get nodes
+kubectl get pods -l app=fastapi-agx
+```
+
+#### **Manual Setup Steps**
+```bash
+# 1. Configure environment
+vi agx-config.env
+
+# 2. Run agent setup
+./setup_fastapi_agx.sh
+
+# 3. Validate setup
+kubectl get nodes
+kubectl describe node agx
+```
+
+### 🔧 **AGX Troubleshooting Guide**
+
+#### **Agent Connection Issues**
+```bash
+# Check agent status on AGX
+ssh sanjay@10.1.10.244 "sudo systemctl status k3s-agent"
+
+# View agent logs
+ssh sanjay@10.1.10.244 "sudo journalctl -u k3s-agent -f"
+
+# Restart agent
+ssh sanjay@10.1.10.244 "sudo systemctl restart k3s-agent"
+```
+
+#### **FastAPI Deployment Issues**
+```bash
+# Check pod status
+kubectl get pods -l app=fastapi-agx
+
+# View FastAPI logs
+kubectl logs -l app=fastapi-agx --tail=100
+
+# Test FastAPI endpoints
+curl http://10.1.10.244:30004/health
+curl http://10.1.10.244:30005/health/gpu
+```
+
+#### **GPU Access Problems**
+```bash
+# Verify GPU on AGX host
+ssh sanjay@10.1.10.244 nvidia-smi
+
+# Test container GPU access
+kubectl exec fastapi-agx-<pod-id> -- nvidia-smi
+
+# Check device mounts
+kubectl exec fastapi-agx-<pod-id> -- ls -la /dev/nvidia*
+```
+
+### 📈 **AGX Performance & Compatibility**
+
+#### **AI/ML Frameworks**
+- **PyTorch**: 2.5.0 ✅ (CUDA optimized)
+- **TensorFlow**: 2.16.1 ✅ (GPU acceleration)
+- **TensorRT**: 8.6.2 ✅ (Inference optimization)
+- **CUDA**: 12.2 ✅
+- **cuDNN**: 8.9.4 ✅
+
+#### **Service Endpoints**
+- **Health Check**: `/health` - Basic FastAPI health
+- **GPU Health**: `/health/gpu` - GPU validation
+- **LLM API**: `/v1/chat/completions` - LLM inference
+- **RAG API**: `/v1/rag/search` - Document retrieval
+
+#### **Container Metrics**
+- **Build Time**: ~15-20 minutes (requirements-based)
+- **Image Size**: ~12-15GB (with GPU libraries)
+- **Startup Time**: <60 seconds
+- **Memory Usage**: ~4-6GB baseline + model loading
+
+### 🚀 **AGX Production Deployment**
+
+#### **Complete Setup**
+```bash
+# One-command deployment
+cd agent/agx && ./setup_fastapi_agx.sh
+
+# Verify cluster integration
+kubectl get nodes
+kubectl get pods -l app=fastapi-agx
+```
+
+#### **Monitoring & Maintenance**
+```bash
+# Check FastAPI status
+kubectl get deployments fastapi-agx
+
+# View service endpoints
+kubectl get services -l app=fastapi-agx
+
+# Redeploy if needed
+kubectl rollout restart deployment fastapi-agx
+```
+
 ## �🆕 New Features: Component-Based Architecture
 
 ### 🐳 Component-Based Image Generation
