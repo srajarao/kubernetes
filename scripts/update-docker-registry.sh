@@ -4,7 +4,7 @@ set -e
 # Script to update Docker insecure registry configuration on all devices
 # Run this from Tower to update AGX and Nano
 
-TOWER_IP="10.1.10.150"
+TOWER_IP="192.168.1.150"
 REGISTRY_PORT="5000"
 
 echo "🔧 Updating Docker insecure registry configuration..."

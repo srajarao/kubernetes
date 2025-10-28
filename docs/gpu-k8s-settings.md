@@ -103,7 +103,7 @@ volumeMounts:
 Before deploying GPU workloads, verify the actual hardware resources on the target node:
 
 ```bash
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null sanjay@10.1.10.202 "echo '=== CPU Information ===' && nproc && echo && echo '=== Memory Information ===' && free -h && echo && echo '=== GPU Information ===' && nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits"
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null sanjay@192.168.1.202 "echo '=== CPU Information ===' && nproc && echo && echo '=== Memory Information ===' && free -h && echo && echo '=== GPU Information ===' && nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits"
 ```
 
 Expected output for spark2 node:

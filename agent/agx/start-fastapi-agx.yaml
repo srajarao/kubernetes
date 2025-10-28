@@ -29,7 +29,7 @@ spec:
         runAsUser: 0            # Runs as root user inside the container
       containers:
         - name: fastapi
-          image: 10.1.10.150:5000/fastapi-agx:latest
+          image: 192.168.1.150:5000/fastapi-agx:latest
        
           # -------------------------------------------------------------------
           # FIX 1: Pull from registry with insecure config
@@ -51,7 +51,7 @@ spec:
             - name: PYTHONPATH
               value: "/workspace"
             - name: DB_HOST
-              value: "10.1.10.150"
+              value: "192.168.1.150"
             - name: DB_NAME
               value: "postgres"
             - name: DB_USER

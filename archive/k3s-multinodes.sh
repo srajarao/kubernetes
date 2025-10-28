@@ -28,14 +28,14 @@ INSTALL_SPARK1_AGENT=false
 INSTALL_SPARK2_AGENT=true
 
 # IP addresses
-TOWER_IP="10.1.10.150"
-NANO_IP="10.1.10.181"   # <-- Use the correct, reachable IP
-AGX_IP="10.1.10.244"
-SPARK1_IP="10.1.10.201"
-SPARK2_IP="10.1.10.202"
+TOWER_IP="192.168.1.150"
+NANO_IP="192.168.1.181"   # <-- Use the correct, reachable IP
+AGX_IP="192.168.1.244"
+SPARK1_IP="192.168.1.201"
+SPARK2_IP="192.168.1.202"
 
 # Registry settings
-REGISTRY_IP="10.1.10.150"
+REGISTRY_IP="192.168.1.150"
 REGISTRY_PORT="30500"
 REGISTRY_PROTOCOL="http"  # "http" or "https"
 
@@ -734,11 +734,11 @@ EOF
       echo "Setting up HTTP registry configuration..."
       $SSH_CMD $SSH_USER@$AGX_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 mirrors:
-  \"10.1.10.150:5000\":
+  \"192.168.1.150:5000\":
     endpoint:
-      - \"http://10.1.10.150:30500\"
+      - \"http://192.168.1.150:30500\"
 configs:
-  \"10.1.10.150:30500\":
+  \"192.168.1.150:30500\":
     tls:
       insecure_skip_verify: true
 EOF
@@ -1748,11 +1748,11 @@ if [ "$DEBUG" = "1" ]; then
 fi
 echo ""
 echo "Services Available:"
-echo "FastAPI: http://10.1.10.244:30004"
-echo "Jupyter: http://10.1.10.244:30005"
-echo "LLM API: http://10.1.10.244:30006"
-echo "Health Check: http://10.1.10.244:30004/health"
-echo "Swagger UI: http://10.1.10.244:30004/docs"
+echo "FastAPI: http://192.168.1.244:30004"
+echo "Jupyter: http://192.168.1.244:30005"
+echo "LLM API: http://192.168.1.244:30006"
+echo "Health Check: http://192.168.1.244:30004/health"
+echo "Swagger UI: http://192.168.1.244:30004/docs"
 echo ""
 echo -e "✅ Service endpoints displayed"
 if [ "$DEBUG" = "1" ]; then
@@ -1782,7 +1782,7 @@ echo "Swagger UI (30004/docs): ✅ Working - Returns HTTP 200"
 echo "Jupyter (30005): ✅ Working - Returns HTTP 302 (redirect to lab interface at /jupyter/lab)"
 echo "LLM API (30006): ❌ Not implemented yet - The app doesn't have LLM endpoints, so it returns 404/connection failure"
 echo ""
-echo "The NodePort services are properly exposing the container ports (8000→30004, 8888→30005, 8001→30006). Jupyter is configured with a base URL of /jupyter, so access it at http://10.1.10.244:30005/jupyter. If you need the LLM API added, let me know!"
+echo "The NodePort services are properly exposing the container ports (8000→30004, 8888→30005, 8001→30006). Jupyter is configured with a base URL of /jupyter, so access it at http://192.168.1.244:30005/jupyter. If you need the LLM API added, let me know!"
 echo ""
 echo -e "✅ Port forward verification complete"
 if [ "$DEBUG" = "1" ]; then

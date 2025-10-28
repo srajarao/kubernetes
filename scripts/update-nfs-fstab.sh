@@ -4,7 +4,7 @@ set -e
 # Script to update NFS mounts in /etc/fstab with correct Tower IP
 # Run this on each device (Tower, AGX, Nano) after IP address changes
 
-TOWER_IP="10.1.10.150"
+TOWER_IP="192.168.1.150"
 MOUNT_POINT="/mnt/vmstore"
 NFS_EXPORT="/export/vmstore"
 

@@ -26,7 +26,7 @@ spec:
         kubernetes.io/hostname: agx
       containers:
       - name: fastapi-agx
-        image: 10.1.10.150:30500/fastapi-agx:latest
+        image: 192.168.1.150:30500/fastapi-agx:latest
         imagePullPolicy: Always
         command: ["/opt/venv/bin/python", "agx_app.py"]
         ports:
@@ -88,15 +88,15 @@ spec:
       volumes:
       - name: vmstore
         nfs:
-          server: 10.1.10.150
+          server: 192.168.1.150
           path: /export/vmstore
       - name: agx-home
         nfs:
-          server: 10.1.10.150
+          server: 192.168.1.150
           path: /export/vmstore/agx_home
       - name: agx-workspace
         nfs:
-          server: 10.1.10.150
+          server: 192.168.1.150
           path: /export/vmstore/tower_home/kubernetes/agent/agx
       tolerations:
       - key: "node-role.kubernetes.io/agent"

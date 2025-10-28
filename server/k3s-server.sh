@@ -28,14 +28,14 @@ INSTALL_SPARK1_AGENT=false
 INSTALL_SPARK2_AGENT=false
 
 # IP addresses
-TOWER_IP="10.1.10.150"
-NANO_IP="10.1.10.181"   # <-- Use the correct, reachable IP
-AGX_IP="10.1.10.244"
-SPARK1_IP="10.1.10.201"
-SPARK2_IP="10.1.10.202"
+TOWER_IP="192.168.1.150"
+NANO_IP="192.168.1.181"   # <-- Use the correct, reachable IP
+AGX_IP="192.168.1.244"
+SPARK1_IP="192.168.1.201"
+SPARK2_IP="192.168.1.202"
 
 # Registry settings
-REGISTRY_IP="10.1.10.150"
+REGISTRY_IP="192.168.1.150"
 REGISTRY_PORT="30500"
 REGISTRY_PROTOCOL="http"  # "http" or "https"
 
@@ -733,8 +733,8 @@ step_20(){
 # STEP 20: FIX KUBECONFIG IP (Addresses the 'i/o timeout' error)
 # --------------------------------------------------------------------------------
 step_echo_start "s" "tower" "$TOWER_IP" "Patching Kubeconfig with correct API IP..."
-# Fix the old/incorrect IP (e.g., 192.168.5.1) to the current static IP (10.1.10.150)
-if sudo sed -i 's/192.168.5.1/10.1.10.150/g' /etc/rancher/k3s/k3s.yaml > /dev/null 2>&1; then
+# Fix the old/incorrect IP (e.g., 192.168.5.1) to the current static IP (192.168.1.150)
+if sudo sed -i 's/192.168.5.1/192.168.1.150/g' /etc/rancher/k3s/k3s.yaml > /dev/null 2>&1; then
   echo -e "[32m✅[0m"
 else
   echo -e "[31m❌[0m"

@@ -16,7 +16,7 @@ spec:
         kubernetes.io/hostname: tower
       containers:
       - name: pgadmin
-        image: 10.1.10.150:5000/pgadmin:latest
+        image: 192.168.1.150:5000/pgadmin:latest
         env:
         - name: PGADMIN_DEFAULT_EMAIL
           value: "pgadmin@pgadmin.org"

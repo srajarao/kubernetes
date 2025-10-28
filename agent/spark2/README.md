@@ -30,9 +30,9 @@ The Spark2 agent runs a streamlined health-check application that validates GPU 
 ## Spark2 Device Configuration
 
 ### Network Settings
-- **IP Address**: 10.1.10.202
+- **IP Address**: 192.168.1.202
 - **Node Name**: spark2
-- **K3s Server**: 10.1.10.150:6443
+- **K3s Server**: 192.168.1.150:6443
 
 ### GPU Requirements
 - NVIDIA GPU with CUDA support
@@ -97,7 +97,7 @@ The application validates:
 ## Architecture
 
 ```
-Tower (10.1.10.150)           Spark2 Agent (10.1.10.202)
+Tower (192.168.1.150)           Spark2 Agent (192.168.1.202)
 ├── k3s server               ├── k3s agent
 ├── PostgreSQL               ├── GPU health validation
 ├── Docker Registry          ├── CUDA/PyTorch/TensorFlow checks

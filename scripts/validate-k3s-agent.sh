@@ -78,8 +78,8 @@ else
 fi
 
 # Check for local subnet route
-if ! ip route show | grep -q "10.1.10.0/24"; then
-    echo -e "${RED}❌ No route to local subnet 10.1.10.0/24!${NC}"
+if ! ip route show | grep -q "192.168.1.0/24"; then
+    echo -e "${RED}❌ No route to local subnet 192.168.1.0/24!${NC}"
     exit 1
 else
     echo -e "${GREEN}✅ Local subnet route exists${NC}"

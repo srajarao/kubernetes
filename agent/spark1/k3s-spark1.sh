@@ -22,14 +22,14 @@ INSTALL_NANO_AGENT=false
 INSTALL_SPARK1_AGENT=true
 
 # IP addresses
-TOWER_IP="10.1.10.150"
-NANO_IP="10.1.10.181"   # <-- Use the correct, reachable IP
-AGX_IP="10.1.10.244"
-SPARK1_IP="10.1.10.201"
-SPARK2_IP="10.1.10.202"
+TOWER_IP="192.168.1.150"
+NANO_IP="192.168.1.181"   # <-- Use the correct, reachable IP
+AGX_IP="192.168.1.244"
+SPARK1_IP="192.168.1.201"
+SPARK2_IP="192.168.1.202"
 
 # Registry settings
-REGISTRY_IP="10.1.10.150"
+REGISTRY_IP="192.168.1.150"
 REGISTRY_PORT="30500"
 REGISTRY_PROTOCOL="http"  # "http" or "https"
 
@@ -2085,11 +2085,11 @@ if [ "$DEBUG" = "1" ]; then
 fi
 echo ""
 echo "Services Available:"
-echo "FastAPI: http://10.1.10.201:30013"
-echo "Jupyter: http://10.1.10.201:30014"
-echo "LLM API: http://10.1.10.201:30015"
-echo "Health Check: http://10.1.10.201:30013/health"
-echo "Swagger UI: http://10.1.10.201:30013/docs"
+echo "FastAPI: http://192.168.1.201:30013"
+echo "Jupyter: http://192.168.1.201:30014"
+echo "LLM API: http://192.168.1.201:30015"
+echo "Health Check: http://192.168.1.201:30013/health"
+echo "Swagger UI: http://192.168.1.201:30013/docs"
 echo ""
 echo -e "✅ Service endpoints displayed"
 if [ "$DEBUG" = "1" ]; then

@@ -8,7 +8,7 @@ We're really excited about the Blackwell GB10 GPUs and trying to get them workin
 We have a DGX Spark system with Blackwell GB10 GPUs running in a K3s cluster. The GPUs work great at the host level, but we're having trouble getting them to schedule properly in Kubernetes pods.
 
 ## Our Setup
-- **Hardware**: Blackwell GB10 GPU on spark2 node (10.1.10.202)
+- **Hardware**: Blackwell GB10 GPU on spark2 node (192.168.1.202)
 - **Software**: Ubuntu 22.04 LTS, NVIDIA driver 580.95.05, K3s v1.30.x
 - **What we've tried**: Device plugin v0.18.0 (both standalone and via GPU Operator)
 

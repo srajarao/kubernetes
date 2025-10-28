@@ -9,7 +9,7 @@ cd "$SCRIPT_DIR" || exit 1
 clear
 
 # IP addresses
-TOWER_IP="10.1.10.150"
+TOWER_IP="192.168.1.150"
 
 # Debug mode (0 for silent, 1 for verbose)
 DEBUG=0

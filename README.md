@@ -53,20 +53,20 @@ Tower (Control Plane)    Nano (GPU Node)    AGX (GPU Node)    DGX-Spark-1    DGX
 ├── Docker Registry     ├── Jupyter Lab    ├── Jupyter Lab   │   Operational │   Operational
 ├── PostgreSQL          ├── GPU Runtime    ├── GPU Runtime   │               │
 ├── pgAdmin             ├── NVIDIA GPU     └── NVIDIA GPU    │               │
-└── NFS Server          └── Node Affinity  └── Node Affinity └── 10.1.10.201 └── 10.1.10.202
+└── NFS Server          └── Node Affinity  └── Node Affinity └── 192.168.1.201 └── 192.168.1.202
 ```
 
 ### 📊 **Cluster Nodes**
 | Node           | IP Address    | Role                            | GPU Support      | Status          |
 |----------------|--------------|----------------------------------|------------------|-----------------|
-| **Tower**      | 10.1.10.150  | Control Plane, Registry, Storage | -                | ✅ Operational  |
-| **Nano**       | 10.1.10.181  | GPU Worker Node                  | Jetson Nano GPU  | ✅ Operational  |
-| **AGX**        | 10.1.10.244  | GPU Worker Node                  | AGX Orin GPU     | ✅ Operational  |
-| **DGX-Spark-1**| 10.1.10.201  | GPU Worker Node                  | GB10 GPU         | ✅ Operational  |
-| **DGX-Spark-2**| 10.1.10.202  | GPU Worker Node                  | GB10 GPU         | ✅ Operational  |
+| **Tower**      | 192.168.1.150  | Control Plane, Registry, Storage | -                | ✅ Operational  |
+| **Nano**       | 192.168.1.181  | GPU Worker Node                  | Jetson Nano GPU  | ✅ Operational  |
+| **AGX**        | 192.168.1.244  | GPU Worker Node                  | AGX Orin GPU     | ✅ Operational  |
+| **DGX-Spark-1**| 192.168.1.201  | GPU Worker Node                  | GB10 GPU         | ✅ Operational  |
+| **DGX-Spark-2**| 192.168.1.202  | GPU Worker Node                  | GB10 GPU         | ✅ Operational  |
 
 ### 🆕 **DGX-Spark Devices Integration**
-The first DGX-Spark device (`10.1.10.201`) has been added to the network and is ready for K3s cluster integration. The device responds to ping with excellent connectivity and can be added as a 4th GPU node using the existing deployment scripts. The second DGX-Spark device will be interconnected with the first via 200G transceiver connection connected with 7x cable for high-speed communication.
+The first DGX-Spark device (`192.168.1.201`) has been added to the network and is ready for K3s cluster integration. The device responds to ping with excellent connectivity and can be added as a 4th GPU node using the existing deployment scripts. The second DGX-Spark device will be interconnected with the first via 200G transceiver connection connected with 7x cable for high-speed communication.
 
 ### 🌐 **Network Architecture & Performance**
 
@@ -91,27 +91,27 @@ Located in `scripts/` directory for advanced network setup:
 ### 🚀 **Access Information**
 
 #### **PostgreSQL Database**
-- **Direct Access**: `10.1.10.150:30432`
+- **Direct Access**: `192.168.1.150:30432`
 - **Username**: `postgres`
 - **Password**: `postgres`
 - **Status**: ✅ Connected and verified
 
 #### **pgAdmin Management Interface**
-- **Web UI**: `http://10.1.10.150:30080`
+- **Web UI**: `http://192.168.1.150:30080`
 - **Username**: `pgadmin@pgadmin.org`
 - **Password**: `pgadmin`
 - **Status**: ✅ Accessible (HTTP 302 redirect normal)
 
 #### **FastAPI Applications**
-- **Nano GPU API**: `http://10.1.10.150:30002`
-  - Health: `http://10.1.10.150:30002/health` ✅
-  - Docs: `http://10.1.10.150:30002/docs` ✅
-  - Jupyter: `http://10.1.10.150:30003` ✅
-- **AGX GPU API**: `http://10.1.10.150:30004`
-  - Health: `http://10.1.10.150:30004/health` ✅
-  - Docs: `http://10.1.10.150:30004/docs` ✅
-  - Jupyter: `http://10.1.10.150:30005` ✅
-  - LLM API: `http://10.1.10.150:30006` ⚠️ (Not implemented)
+- **Nano GPU API**: `http://192.168.1.150:30002`
+  - Health: `http://192.168.1.150:30002/health` ✅
+  - Docs: `http://192.168.1.150:30002/docs` ✅
+  - Jupyter: `http://192.168.1.150:30003` ✅
+- **AGX GPU API**: `http://192.168.1.150:30004`
+  - Health: `http://192.168.1.150:30004/health` ✅
+  - Docs: `http://192.168.1.150:30004/docs` ✅
+  - Jupyter: `http://192.168.1.150:30005` ✅
+  - LLM API: `http://192.168.1.150:30006` ⚠️ (Not implemented)
 
 #### **Verification & Monitoring**
 - **Comprehensive Report**: `./server/verify_all_fixed.sh` (standalone verification)
@@ -165,7 +165,7 @@ Before deploying GPU workloads, verify actual hardware resources:
 
 ```bash
 # Spark2 Node Hardware Check
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null sanjay@10.1.10.202 \
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null sanjay@192.168.1.202 \
   "echo '=== CPU Information ===' && nproc && echo && \
    echo '=== Memory Information ===' && free -h && echo && \
    echo '=== GPU Information ===' && nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits"
@@ -267,16 +267,16 @@ The Spark2 agent runs a streamlined health-check application that validates GPU 
 
 ### 📊 **Spark2 Device Specifications**
 - **Hardware**: DGX Spark with NVIDIA GB10 GPU
-- **IP Address**: 10.1.10.202
+- **IP Address**: 192.168.1.202
 - **CPU**: 20 cores
 - **Memory**: 119Gi total, 115Gi available
 - **GPU**: NVIDIA GB10 (CC 12.1 architecture)
 - **Architecture**: ARM64/aarch64
-- **Network**: Connected to Tower K3s server (10.1.10.150:6443)
+- **Network**: Connected to Tower K3s server (192.168.1.150:6443)
 
 ### 🏗️ **Spark2 Agent Architecture**
 ```
-Tower (10.1.10.150)           Spark2 Agent (10.1.10.202)
+Tower (192.168.1.150)           Spark2 Agent (192.168.1.202)
 ├── K3s Server               ├── K3s Agent
 ├── PostgreSQL               ├── GPU Health Validation
 ├── Docker Registry          ├── CUDA/PyTorch/TensorFlow/TensorRT
@@ -428,19 +428,19 @@ docker buildx build --platform linux/arm64 -f dockerfile.spark2.wheels -t spark2
 #### **Agent Connection Issues**
 ```bash
 # Check agent status on Spark2
-ssh sanjay@10.1.10.202 "sudo systemctl status k3s-agent"
+ssh sanjay@192.168.1.202 "sudo systemctl status k3s-agent"
 
 # View agent logs
-ssh sanjay@10.1.10.202 "sudo journalctl -u k3s-agent -f"
+ssh sanjay@192.168.1.202 "sudo journalctl -u k3s-agent -f"
 
 # Restart agent
-ssh sanjay@10.1.10.202 "sudo systemctl restart k3s-agent"
+ssh sanjay@192.168.1.202 "sudo systemctl restart k3s-agent"
 ```
 
 #### **GPU Access Problems**
 ```bash
 # Verify GPU on Spark2 host
-ssh sanjay@10.1.10.202 nvidia-smi
+ssh sanjay@192.168.1.202 nvidia-smi
 
 # Test container GPU access
 kubectl exec spark2-<pod-id> -- nvidia-smi
@@ -514,16 +514,16 @@ The AGX agent runs comprehensive FastAPI services with GPU-accelerated AI/ML wor
 
 ### 📊 **AGX Device Specifications**
 - **Hardware**: NVIDIA Jetson AGX Orin 64GB
-- **IP Address**: 10.1.10.244
+- **IP Address**: 192.168.1.244
 - **CPU**: 12-core ARM64
 - **Memory**: 64GB LPDDR5
 - **GPU**: NVIDIA Ampere (2048 CUDA cores)
 - **Architecture**: ARM64/aarch64
-- **Network**: 10G dedicated link to Tower (10.1.10.150:6443)
+- **Network**: 10G dedicated link to Tower (192.168.1.150:6443)
 
 ### 🏗️ **AGX Agent Architecture**
 ```
-Tower (10.1.10.150)          AGX Agent (10.1.10.244)
+Tower (192.168.1.150)          AGX Agent (192.168.1.244)
 ├── K3s Server               ├── K3s Agent
 ├── PostgreSQL               ├── FastAPI Services
 ├── Docker Registry          ├── GPU-Accelerated AI/ML
@@ -591,13 +591,13 @@ kubectl describe node agx
 #### **Agent Connection Issues**
 ```bash
 # Check agent status on AGX
-ssh sanjay@10.1.10.244 "sudo systemctl status k3s-agent"
+ssh sanjay@192.168.1.244 "sudo systemctl status k3s-agent"
 
 # View agent logs
-ssh sanjay@10.1.10.244 "sudo journalctl -u k3s-agent -f"
+ssh sanjay@192.168.1.244 "sudo journalctl -u k3s-agent -f"
 
 # Restart agent
-ssh sanjay@10.1.10.244 "sudo systemctl restart k3s-agent"
+ssh sanjay@192.168.1.244 "sudo systemctl restart k3s-agent"
 ```
 
 #### **FastAPI Deployment Issues**
@@ -609,14 +609,14 @@ kubectl get pods -l app=fastapi-agx
 kubectl logs -l app=fastapi-agx --tail=100
 
 # Test FastAPI endpoints
-curl http://10.1.10.244:30004/health
-curl http://10.1.10.244:30005/health/gpu
+curl http://192.168.1.244:30004/health
+curl http://192.168.1.244:30005/health/gpu
 ```
 
 #### **GPU Access Problems**
 ```bash
 # Verify GPU on AGX host
-ssh sanjay@10.1.10.244 nvidia-smi
+ssh sanjay@192.168.1.244 nvidia-smi
 
 # Test container GPU access
 kubectl exec fastapi-agx-<pod-id> -- nvidia-smi
@@ -727,9 +727,9 @@ The system uses a **layered configuration architecture** with two main configura
 
 ```bash
 # Configuration variables are defined directly in each script
-TOWER_IP="10.1.10.150"        # Tower server IP
-NANO_IP="10.1.10.181"         # Jetson Nano IP
-AGX_IP="10.1.10.244"          # Jetson AGX Orin IP
+TOWER_IP="192.168.1.150"        # Tower server IP
+NANO_IP="192.168.1.181"         # Jetson Nano IP
+AGX_IP="192.168.1.244"          # Jetson AGX Orin IP
 POSTGRES_PASSWORD="postgres"  # Database password
 ```
 
@@ -750,16 +750,16 @@ CLUSTER_NODES="tower,nano,agx"
 # ==========================================
 
 # Tower (Server) Configuration
-TOWER_IP="10.1.10.150"
+TOWER_IP="192.168.1.150"
 TOWER_COMPONENTS="server,postgres,pgadmin,jupyter"
 
 # Jetson Nano Configuration
-NANO_IP="10.1.10.181"
+NANO_IP="192.168.1.181"
 NANO_COMPONENTS="python,cuda,tensorrt,fastapi,gpu-monitoring"
 NANO_BASE_IMAGE="l4t-minimal"
 
 # Jetson AGX Configuration
-AGX_IP="10.1.10.244"
+AGX_IP="192.168.1.244"
 AGX_COMPONENTS="python,cuda,tensorrt,pytorch,tensorflow,fastapi,gpu-monitoring,llm,rag"
 AGX_BASE_IMAGE="l4t-ml"
 ```
@@ -879,7 +879,7 @@ The system automatically validates:
 
 #### 1. **Image Pull Protocol Mismatch** ❌➡️✅
 **Symptoms:**
-- `ErrImagePull: failed to pull and unpack image "10.1.10.150:5000/fastapi_nano:latest"`
+- `ErrImagePull: failed to pull and unpack image "192.168.1.150:5000/fastapi_nano:latest"`
 - `http: server gave HTTP response to HTTPS client`
 
 **Root Cause:**
@@ -892,7 +892,7 @@ Local Docker registry configured for HTTP but containerd expecting HTTPS.
    sudo cat /etc/rancher/k3s/registries.yaml
    # Should show:
    configs:
-     "10.1.10.150:5000":
+     "192.168.1.150:5000":
        insecure_skip_verify: true
        http: true
    ```
@@ -900,9 +900,9 @@ Local Docker registry configured for HTTP but containerd expecting HTTPS.
 2. **Verify Containerd Configuration:**
    ```bash
    # On each agent node
-   sudo cat /var/lib/rancher/k3s/agent/etc/containerd/certs.d/10.1.10.150:5000/hosts.toml
+   sudo cat /var/lib/rancher/k3s/agent/etc/containerd/certs.d/192.168.1.150:5000/hosts.toml
    # Should show:
-   [host."http://10.1.10.150:5000"]
+   [host."http://192.168.1.150:5000"]
      capabilities = ["pull", "resolve", "push"]
    ```
 
@@ -915,7 +915,7 @@ Local Docker registry configured for HTTP but containerd expecting HTTPS.
 #### 2. **Agent-to-Master Connectivity Issues** ❌➡️✅
 **Symptoms:**
 - `Failed to connect to proxy. Empty dialer response`
-- `dial tcp 10.1.10.150:6443: connect: connection refused`
+- `dial tcp 192.168.1.150:6443: connect: connection refused`
 - `apiserver not ready` errors
 
 **Root Cause:**
@@ -925,7 +925,7 @@ Network connectivity issues or K3s service instability.
 1. **Test Network Connectivity:**
    ```bash
    # From agent nodes
-   nc -vz 10.1.10.150 6443
+   nc -vz 192.168.1.150 6443
    # Should show: Connection succeeded!
    ```
 
@@ -1006,16 +1006,16 @@ ping <target-ip>
 nslookup kubernetes.default.svc.cluster.local
 
 # Test service accessibility
-curl -v http://10.1.10.150:30002/health
+curl -v http://192.168.1.150:30002/health
 ```
 
 **Service-Specific Checks:**
 ```bash
 # PostgreSQL connectivity
-psql -h 10.1.10.150 -p 30432 -U postgres
+psql -h 192.168.1.150 -p 30432 -U postgres
 
 # Registry accessibility
-curl -v http://10.1.10.150:5000/v2/
+curl -v http://192.168.1.150:5000/v2/
 
 # NFS mount status
 df -h | grep nfs
@@ -1082,10 +1082,10 @@ sudo k3s kubectl apply -f fastapi-deployment-full.yaml
 ### Network Topology
 ```
                     TOWER (Ubuntu Server)
-                    ├── 10G Port: enp1s0f1 (10.1.10.150)
-                    │   └── AGX Orin (10.1.10.244) - High-performance AI
+                    ├── 10G Port: enp1s0f1 (192.168.1.150)
+                    │   └── AGX Orin (192.168.1.244) - High-performance AI
                     └── 1G Port: eno2 (192.168.5.1)
-                        └── Jetson Nano (10.1.10.181) - IoT/Monitoring
+                        └── Jetson Nano (192.168.1.181) - IoT/Monitoring
 ```
 
 ### Cluster Components
@@ -1355,10 +1355,10 @@ Edit deployment scripts directly to customize your deployment:
 # Edit agent/*/k3s-*-agent-setup.sh for agent configurations
 
 # Example configuration variables (inline in scripts):
-TOWER_IP="10.1.10.150"       # Tower server IP
-NANO_IP="10.1.10.181"        # Jetson Nano IP
-AGX_IP="10.1.10.244"         # Jetson AGX Orin IP
-REGISTRY_IP="10.1.10.150"    # Docker registry IP
+TOWER_IP="192.168.1.150"       # Tower server IP
+NANO_IP="192.168.1.181"        # Jetson Nano IP
+AGX_IP="192.168.1.244"         # Jetson AGX Orin IP
+REGISTRY_IP="192.168.1.150"    # Docker registry IP
 REGISTRY_PORT="5000"         # Docker registry port
 REGISTRY_PROTOCOL="http"     # "http" or "https" for registry security
 
@@ -1411,7 +1411,7 @@ Configuration is now handled directly in deployment scripts with inline paramete
 # Configuration variables are defined directly in each script
 # For example, in server/k3s-server.sh:
 
-TOWER_IP="10.1.10.150"          # Tower server IP
+TOWER_IP="192.168.1.150"          # Tower server IP
 TOWER_ARCH="amd64"              # Architecture (amd64/arm64)
 # Component flags are set as variables in the script
 
@@ -1434,27 +1434,27 @@ After successful deployment, all access information is automatically displayed a
 ### 🖥️ **Management Interfaces**
 | Service | URL | Credentials | Description |
 |---------|-----|-------------|-------------|
-| **pgAdmin** | http://10.1.10.150:30080 | pgadmin@pgadmin.org / pgadmin | PostgreSQL web admin interface |
-| **Traefik Dashboard** | http://10.1.10.150:9000 | - | Kubernetes ingress dashboard |
+| **pgAdmin** | http://192.168.1.150:30080 | pgadmin@pgadmin.org / pgadmin | PostgreSQL web admin interface |
+| **Traefik Dashboard** | http://192.168.1.150:9000 | - | Kubernetes ingress dashboard |
 
 ### 🗄️ **Database Services**
 | Service | Connection | Credentials | Description |
 |---------|------------|-------------|-------------|
-| **PostgreSQL** | 10.1.10.150:30432 | postgres / postgres | Primary database with pgvector |
-| **PostgreSQL (Alt)** | 10.1.10.150:32432 | postgres / postgres | Alternative port access |
+| **PostgreSQL** | 192.168.1.150:30432 | postgres / postgres | Primary database with pgvector |
+| **PostgreSQL (Alt)** | 192.168.1.150:32432 | postgres / postgres | Alternative port access |
 
 ### 🤖 **FastAPI Applications**
 | Service | URL | GPU Support | Description |
 |---------|-----|-------------|-------------|
-| **FastAPI (Nano)** | http://10.1.10.150:30002 | GPU Enabled | Lightweight API on Jetson Nano |
-| **FastAPI (AGX)** | http://10.1.10.150:30004 | GPU + LLM | AI/ML workloads on Jetson AGX Orin |
-| **LLM Inference API** | http://10.1.10.150:30006 | GPU + LLM | Large Language Model inference endpoints |
-| **Health Check (Nano)** | http://10.1.10.150:30002/health | - | Nano application health monitoring |
-| **Health Check (AGX)** | http://10.1.10.150:30004/health | - | AGX application health monitoring |
-| **API Docs (Nano)** | http://10.1.10.150:30002/docs | - | Nano interactive Swagger/OpenAPI docs |
-| **API Docs (AGX)** | http://10.1.10.150:30004/docs | - | AGX interactive Swagger/OpenAPI docs |
-| **Jupyter Lab (Nano)** | http://10.1.10.150:30003 | - | Nano interactive development environment |
-| **Jupyter Lab (AGX)** | http://10.1.10.150:30005 | - | AGX interactive development environment |
+| **FastAPI (Nano)** | http://192.168.1.150:30002 | GPU Enabled | Lightweight API on Jetson Nano |
+| **FastAPI (AGX)** | http://192.168.1.150:30004 | GPU + LLM | AI/ML workloads on Jetson AGX Orin |
+| **LLM Inference API** | http://192.168.1.150:30006 | GPU + LLM | Large Language Model inference endpoints |
+| **Health Check (Nano)** | http://192.168.1.150:30002/health | - | Nano application health monitoring |
+| **Health Check (AGX)** | http://192.168.1.150:30004/health | - | AGX application health monitoring |
+| **API Docs (Nano)** | http://192.168.1.150:30002/docs | - | Nano interactive Swagger/OpenAPI docs |
+| **API Docs (AGX)** | http://192.168.1.150:30004/docs | - | AGX interactive Swagger/OpenAPI docs |
+| **Jupyter Lab (Nano)** | http://192.168.1.150:30003 | - | Nano interactive development environment |
+| **Jupyter Lab (AGX)** | http://192.168.1.150:30005 | - | AGX interactive development environment |
 
 ### 🔥 **Hot Reload Development**
 **Status**: ✅ **ENABLED** - Real-time code updates without container rebuilds
@@ -1758,13 +1758,13 @@ Run comprehensive validation after deployment:
 ### Database-Specific Checks:
 ```bash
 # Test PostgreSQL connection
-psql -h 10.1.10.150 -p 30432 -U postgres
+psql -h 192.168.1.150 -p 30432 -U postgres
 
 # Verify pgvector extension
-psql -h 10.1.10.150 -p 30432 -U postgres -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+psql -h 192.168.1.150 -p 30432 -U postgres -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
 
 # Access pgAdmin web interface
-open http://10.1.10.150:30080
+open http://192.168.1.150:30080
 ```
 
 ## 🎉 Latest Successful Deployment (October 13, 2025)
@@ -1782,8 +1782,8 @@ open http://10.1.10.150:30080
 ### 🔧 Key Deployment Stages Completed
 
 #### Phase 1: Infrastructure Setup (Steps 1-10)
-- ✅ Tower network verification (10.1.10.150)
-- ✅ SSH connectivity to nano (10.1.10.181) and agx (10.1.10.244)
+- ✅ Tower network verification (192.168.1.150)
+- ✅ SSH connectivity to nano (192.168.1.181) and agx (192.168.1.244)
 - ✅ Network reachability and ARP/ping tests
 - ✅ iperf3 server for bandwidth testing
 
@@ -1817,16 +1817,16 @@ open http://10.1.10.150:30080
 
 | Service | Endpoint | Status | Credentials |
 |---------|----------|--------|-------------|
-| **PostgreSQL** | `10.1.10.150:30432` | ✅ Accessible | `postgres` / `postgres` |
-| **pgAdmin** | `http://10.1.10.150:30080` | ✅ Accessible | `pgadmin@pgadmin.org` / `pgadmin` |
-| **FastAPI (Nano)** | `http://10.1.10.150:30002` | ✅ Accessible | - |
-| **FastAPI (AGX)** | `http://10.1.10.150:30004` | ✅ Accessible | - |
-| **LLM Inference API** | `http://10.1.10.150:30006` | ✅ Accessible | - |
-| **Health Check (Nano)** | `http://10.1.10.150:30002/health` | ✅ Accessible | - |
-| **Health Check (AGX)** | `http://10.1.10.150:30004/health` | ✅ Accessible | - |
-| **API Docs (Nano)** | `http://10.1.10.150:30002/docs` | ✅ Accessible | - |
-| **API Docs (AGX)** | `http://10.1.10.150:30004/docs` | ✅ Accessible | - |
-| **Jupyter Lab (Nano)** | `http://10.1.10.150:30003` | ✅ Accessible | Open access |
+| **PostgreSQL** | `192.168.1.150:30432` | ✅ Accessible | `postgres` / `postgres` |
+| **pgAdmin** | `http://192.168.1.150:30080` | ✅ Accessible | `pgadmin@pgadmin.org` / `pgadmin` |
+| **FastAPI (Nano)** | `http://192.168.1.150:30002` | ✅ Accessible | - |
+| **FastAPI (AGX)** | `http://192.168.1.150:30004` | ✅ Accessible | - |
+| **LLM Inference API** | `http://192.168.1.150:30006` | ✅ Accessible | - |
+| **Health Check (Nano)** | `http://192.168.1.150:30002/health` | ✅ Accessible | - |
+| **Health Check (AGX)** | `http://192.168.1.150:30004/health` | ✅ Accessible | - |
+| **API Docs (Nano)** | `http://192.168.1.150:30002/docs` | ✅ Accessible | - |
+| **API Docs (AGX)** | `http://192.168.1.150:30004/docs` | ✅ Accessible | - |
+| **Jupyter Lab (Nano)** | `http://192.168.1.150:30003` | ✅ Accessible | Open access |
 
 ### 🔍 Verification Results
 
@@ -1850,10 +1850,10 @@ open http://10.1.10.150:30080
 
 #### Network Configuration
 ```
-✅ Tower: 10.1.10.150 (enp1s0f1)
-✅ Nano: 10.1.10.181 (SSH + K3s agent)
-✅ AGX: 10.1.10.244 (SSH + K3s agent)
-✅ Registry: 10.1.10.150:5000 (HTTP mode)
+✅ Tower: 192.168.1.150 (enp1s0f1)
+✅ Nano: 192.168.1.181 (SSH + K3s agent)
+✅ AGX: 192.168.1.244 (SSH + K3s agent)
+✅ Registry: 192.168.1.150:5000 (HTTP mode)
 ```
 
 ### 📈 Performance Metrics
@@ -1892,7 +1892,7 @@ This deployment validates the **enterprise-grade robustness** of the K3s automat
 - **Password Issues**: Update `POSTGRES_PASSWORD` in deployment scripts and redeploy
 
 ### Network Issues
-- **IP Conflicts**: Current IPs: Tower=10.1.10.150, Nano=10.1.10.181, AGX=10.1.10.244
+- **IP Conflicts**: Current IPs: Tower=192.168.1.150, Nano=192.168.1.181, AGX=192.168.1.244
 - **Network Diagnostics**: Run `./bridgenfs/inconsistencyCheck.sh`
 - **Configuration Restore**: Use `./bridgenfs/restore_backup.sh`
 - **Backup Location**: Check `/tmp/` for automatic backup files
@@ -1910,9 +1910,9 @@ This deployment validates the **enterprise-grade robustness** of the K3s automat
 - **Resource Allocation**: Check `nvidia.com/gpu: 1` in pod specs
 
 ### Application Issues
-- **FastAPI Health**: Check http://10.1.10.150:30002/health
-- **API Documentation**: Visit http://10.1.10.150:30002/docs
-- **Jupyter Access**: http://10.1.10.150:30003 (token required)
+- **FastAPI Health**: Check http://192.168.1.150:30002/health
+- **API Documentation**: Visit http://192.168.1.150:30002/docs
+- **Jupyter Access**: http://192.168.1.150:30003 (token required)
 - **Port Conflicts**: Verify NodePort assignments (30002, 30003, 30080, 30432)
 
 ### Common Recovery Steps
@@ -1929,8 +1929,8 @@ This document contains the verified steps and commands used to configure and tes
 
 | Hostname | Cluster Interconnect IP (200 GbE) | Cluster Interface (200 GbE) | Management IP (10 GbE) | Management Interface (10 GbE) |
 |----------|-----------------------------------|-----------------------------|------------------------|-------------------------------|
-| spark1   | 192.168.1.201                     | enP2p1s0f0np0               | 10.1.10.201            | enP7s7                        |
-| spark2   | 192.168.1.202                     | enP2p1s0f0np0               | 10.1.10.202            | enP7s7                        |
+| spark1   | 192.168.1.201                     | enP2p1s0f0np0               | 192.168.1.201            | enP7s7                        |
+| spark2   | 192.168.1.202                     | enP2p1s0f0np0               | 192.168.1.202            | enP7s7                        |
 
 ---
 
@@ -1946,7 +1946,7 @@ network:
       match:
         name: "enP7s7"
       addresses:
-      - "10.1.10.201/24"
+      - "192.168.1.201/24"
       nameservers:
         addresses:
         - 8.8.8.8

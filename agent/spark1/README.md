@@ -20,9 +20,9 @@ This directory contains all files needed for setting up and managing the Spark1 
 ## Spark1 Device Configuration
 
 ### Network Settings
-- **IP Address**: 10.1.10.201
+- **IP Address**: 192.168.1.201
 - **Node Name**: spark1
-- **API Server**: https://10.1.10.150:6443
+- **API Server**: https://192.168.1.150:6443
 
 ### Hardware
 - **GPU**: NVIDIA GB10
@@ -30,9 +30,9 @@ This directory contains all files needed for setting up and managing the Spark1 
 - **CUDA**: 13.0 support
 
 ### Service Access
-- **PostgreSQL**: 10.1.10.150:30432
-- **pgAdmin**: http://10.1.10.150:30080
-- **Docker Registry**: 10.1.10.150:30500
+- **PostgreSQL**: 192.168.1.150:30432
+- **pgAdmin**: http://192.168.1.150:30080
+- **Docker Registry**: 192.168.1.150:30500
 
 ## Setup Process
 
@@ -60,7 +60,7 @@ kubectl apply -f fastapi-deployment-spark1.yaml
 kubectl get pods -l app=fastapi-spark1
 
 # Check health endpoint
-curl http://10.1.10.150:30001/health
+curl http://192.168.1.150:30001/health
 ```
 ```bash
 # Validate setup

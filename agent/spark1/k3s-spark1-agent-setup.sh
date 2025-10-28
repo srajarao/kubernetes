@@ -53,7 +53,7 @@ TOKEN_DIR="${TOKEN_DIR:-/mnt/vmstore/spark1_home/containers/fastapi/.token}"  # 
 PROJECT_DIR="${PROJECT_DIR:-/home/sanjay/containers/fastapi}"              # SPARK1: Main project directory
 IMAGE_DIR="${IMAGE_DIR:-/mnt/vmstore/spark1_home/containers/fastapi}"         # SPARK1: Save build images for server
 TOWER_IP="${TOWER_IP:-192.168.10.1}"                                      # Tower server IP
-SPARK1_IP="${SPARK1_IP:-10.1.10.201}"                                        # SPARK1 device IP
+SPARK1_IP="${SPARK1_IP:-192.168.1.201}"                                        # SPARK1 device IP
 
 function cleanup_k3s_agent_installation() {
     debug_msg "Running cleanup_k3s_agent_installation"

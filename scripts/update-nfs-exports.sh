@@ -23,7 +23,7 @@ sudo tee /etc/exports > /dev/null << 'EXPORTS_EOF'
 # /srv/nfs4        gss/krb5i(rw,sync,fsid=0,crossmnt,no_subtree_check)
 # /srv/nfs4/homes  gss/krb5i(rw,sync,no_subtree_check)
 #
-/export/vmstore 10.1.10.150(rw,sync,no_subtree_check,no_root_squash) 10.1.10.244(rw,sync,no_subtree_check,no_root_squash) 10.1.10.181(rw,sync,no_subtree_check,no_root_squash) 10.1.10.201(rw,sync,no_subtree_check,no_root_squash) 10.1.10.202(rw,sync,no_subtree_check,no_root_squash)
+/export/vmstore 192.168.1.150(rw,sync,no_subtree_check,no_root_squash) 192.168.1.244(rw,sync,no_subtree_check,no_root_squash) 192.168.1.181(rw,sync,no_subtree_check,no_root_squash) 192.168.1.201(rw,sync,no_subtree_check,no_root_squash) 192.168.1.202(rw,sync,no_subtree_check,no_root_squash)
 EXPORTS_EOF
 
 # Reload exports

@@ -29,7 +29,7 @@ This log captured critical connectivity issues between K3s agents (nano and AGX)
 **Original Error Messages**:
 ```
 Failed to connect to proxy. Root cause: connect: connection refused
-dial tcp 10.1.10.150:6443: connect: connection refused
+dial tcp 192.168.1.150:6443: connect: connection refused
 ```
 
 **Affected Components**:
@@ -84,10 +84,10 @@ The core problem was that **k3s-agent services were started without the K3S_URL 
 **Evidence**:
 ```bash
 # Service was running with:
-ExecStart=/usr/local/bin/k3s agent --node-ip 10.1.10.181  # ❌ No server URL
+ExecStart=/usr/local/bin/k3s agent --node-ip 192.168.1.181  # ❌ No server URL
 
 # Environment file existed but wasn't loaded:
-K3S_URL='https://10.1.10.150:6443'  # ✅ Correct URL present
+K3S_URL='https://192.168.1.150:6443'  # ✅ Correct URL present
 ```
 
 ### Secondary Issues:
@@ -104,7 +104,7 @@ K3S_URL='https://10.1.10.150:6443'  # ✅ Correct URL present
 1. **Created proper environment files** on agent nodes:
    ```bash
    echo 'K3S_TOKEN="K104dfc03e3ade4f5558f8adc20b0d2d239e62e61fadc3270823319d20f57415b8b::server:931e8edccb6a0fcdc5f5a360a34b503e"' | sudo tee /etc/systemd/system/k3s-agent.service.env
-   echo 'K3S_URL="https://10.1.10.150:6443"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env
+   echo 'K3S_URL="https://192.168.1.150:6443"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env
    ```
 
 2. **Reloaded systemd configuration**:

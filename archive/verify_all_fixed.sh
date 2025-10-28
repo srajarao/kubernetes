@@ -53,30 +53,30 @@ echo "🌐 SERVICE ENDPOINTS:"
 echo "---------------------"
 
 # Test PostgreSQL database connectivity (not HTTP)
-test_db_connection "PostgreSQL Database" "10.1.10.150" "30432" "postgres" "postgres" "postgres"
+test_db_connection "PostgreSQL Database" "192.168.1.150" "30432" "postgres" "postgres" "postgres"
 
 # Test pgAdmin (302 redirect is normal - redirects to login)
-test_http_endpoint "pgAdmin Web UI" "http://10.1.10.150:30080" "200|302"
+test_http_endpoint "pgAdmin Web UI" "http://192.168.1.150:30080" "200|302"
 
 # Test Nano FastAPI endpoints
-test_http_endpoint "Nano FastAPI Health" "http://10.1.10.150:30002/health"
-test_http_endpoint "Nano FastAPI Docs" "http://10.1.10.150:30002/docs"
-test_http_endpoint "Nano Jupyter" "http://10.1.10.150:30003/jupyter" "200|302"
+test_http_endpoint "Nano FastAPI Health" "http://192.168.1.150:30002/health"
+test_http_endpoint "Nano FastAPI Docs" "http://192.168.1.150:30002/docs"
+test_http_endpoint "Nano Jupyter" "http://192.168.1.150:30003/jupyter" "200|302"
 
 # Test AGX FastAPI endpoints
-test_http_endpoint "AGX FastAPI Health" "http://10.1.10.150:30004/health"
-test_http_endpoint "AGX FastAPI Status" "http://10.1.10.150:30004/status"
-test_http_endpoint "AGX FastAPI Docs" "http://10.1.10.150:30004/docs"
-test_http_endpoint "AGX Jupyter" "http://10.1.10.150:30005/jupyter" "200|302"
+test_http_endpoint "AGX FastAPI Health" "http://192.168.1.150:30004/health"
+test_http_endpoint "AGX FastAPI Status" "http://192.168.1.150:30004/status"
+test_http_endpoint "AGX FastAPI Docs" "http://192.168.1.150:30004/docs"
+test_http_endpoint "AGX Jupyter" "http://192.168.1.150:30005/jupyter" "200|302"
 
 # Test Spark1 FastAPI endpoints
-test_http_endpoint "Spark1 FastAPI Health" "http://10.1.10.150:30007/health"
-test_http_endpoint "Spark1 FastAPI Docs" "http://10.1.10.150:30007/docs"
-test_http_endpoint "Spark1 Jupyter" "http://10.1.10.150:30008/jupyter" "200|302"
+test_http_endpoint "Spark1 FastAPI Health" "http://192.168.1.150:30007/health"
+test_http_endpoint "Spark1 FastAPI Docs" "http://192.168.1.150:30007/docs"
+test_http_endpoint "Spark1 Jupyter" "http://192.168.1.150:30008/jupyter" "200|302"
 
 # Note: AGX LLM API (port 30006) and Spark1 LLM API (port 30009) are not implemented yet
-echo "Testing AGX LLM API (http://10.1.10.150:30006/docs)... ⚠️  SKIP (Not implemented)"
-echo "Testing Spark1 LLM API (http://10.1.10.150:30009/docs)... ⚠️  SKIP (Not implemented)"
+echo "Testing AGX LLM API (http://192.168.1.150:30006/docs)... ⚠️  SKIP (Not implemented)"
+echo "Testing Spark1 LLM API (http://192.168.1.150:30009/docs)... ⚠️  SKIP (Not implemented)"
 
 echo ""
 

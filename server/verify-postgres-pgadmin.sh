@@ -16,9 +16,9 @@ echo
 
 # Test pgAdmin web access
 echo "3. Testing pgAdmin web access..."
-PGADMIN_RESPONSE=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" http://10.1.10.150:30080)
+PGADMIN_RESPONSE=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" http://192.168.1.150:30080)
 if [ "$PGADMIN_RESPONSE" = "302" ] || [ "$PGADMIN_RESPONSE" = "200" ]; then
-    echo "✅ pgAdmin accessible at http://10.1.10.150:30080"
+    echo "✅ pgAdmin accessible at http://192.168.1.150:30080"
     echo "   Login: pgadmin@pgadmin.org / pgadmin"
 else
     echo "❌ pgAdmin not accessible (HTTP $PGADMIN_RESPONSE)"
@@ -53,7 +53,7 @@ echo
 
 # External access summary
 echo "6. External Access Summary:"
-echo "   ✅ PostgreSQL: 10.1.10.150:30432"
-echo "   ✅ pgAdmin:    http://10.1.10.150:30080"
+echo "   ✅ PostgreSQL: 192.168.1.150:30432"
+echo "   ✅ pgAdmin:    http://192.168.1.150:30080"
 echo
 echo -e "\033[32m=== Verification Complete ===\033[0m"

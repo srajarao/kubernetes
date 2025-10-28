@@ -5,7 +5,7 @@ set -e
 # Run this from Tower to update AGX and Nano
 
 echo "🔧 Updating NFS mounts in /etc/fstab on all devices..."
-echo "   New Tower IP: 10.1.10.150"
+echo "   New Tower IP: 192.168.1.150"
 
 # First, update NFS exports on Tower
 echo ""

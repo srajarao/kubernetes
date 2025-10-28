@@ -31,11 +31,11 @@ INSTALL_SPARK2_AGENT=true
 SSH_ENABLED=true
 
 # IP addresses
-TOWER_IP="10.1.10.150"
-NANO_IP="10.1.10.181"   # <-- Use the correct, reachable IP
-AGX_IP="10.1.10.244"
-SPARK1_IP="10.1.10.201"
-SPARK2_IP="10.1.10.202"
+TOWER_IP="192.168.1.150"
+NANO_IP="192.168.1.181"   # <-- Use the correct, reachable IP
+AGX_IP="192.168.1.244"
+SPARK1_IP="192.168.1.201"
+SPARK2_IP="192.168.1.202"
 
 # Set node variables based on which agent is enabled
 if [ "$INSTALL_NANO_AGENT" = true ]; then
@@ -1016,10 +1016,10 @@ if [ "$DEBUG" = "1" ]; then
     sudo apt-get update && sudo apt-get install -y jq >/dev/null 2>&1
   fi
   if [ -f /etc/docker/daemon.json ] && command -v jq >/dev/null 2>&1; then
-    sudo jq '.["insecure-registries"] = ["10.1.10.150:30500", "10.1.10.244:30500", "10.1.10.181:30500", "10.1.10.201:30500", "10.1.10.202:30500"]' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp > /dev/null
+    sudo jq '.["insecure-registries"] = ["192.168.1.150:30500", "192.168.1.244:30500", "192.168.1.181:30500", "192.168.1.201:30500", "192.168.1.202:30500"]' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp > /dev/null
     sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
   else
-    echo '{"insecure-registries": ["10.1.10.150:30500", "10.1.10.244:30500", "10.1.10.181:30500", "10.1.10.201:30500", "10.1.10.202:30500"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+    echo '{"insecure-registries": ["192.168.1.150:30500", "192.168.1.244:30500", "192.168.1.181:30500", "192.168.1.201:30500", "192.168.1.202:30500"]}' | sudo tee /etc/docker/daemon.json > /dev/null
   fi
   if sudo systemctl restart docker; then
     echo "Docker daemon restarted successfully"
@@ -1034,10 +1034,10 @@ else
     sudo apt-get update && sudo apt-get install -y jq >/dev/null 2>&1
   fi
   if [ -f /etc/docker/daemon.json ] && command -v jq >/dev/null 2>&1; then
-    sudo jq '.["insecure-registries"] = ["10.1.10.150:30500", "10.1.10.244:30500", "10.1.10.181:30500", "10.1.10.201:30500", "10.1.10.202:30500"]' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp > /dev/null
+    sudo jq '.["insecure-registries"] = ["192.168.1.150:30500", "192.168.1.244:30500", "192.168.1.181:30500", "192.168.1.201:30500", "192.168.1.202:30500"]' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp > /dev/null
     sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
   else
-    echo '{"insecure-registries": ["10.1.10.150:30500", "10.1.10.244:30500", "10.1.10.181:30500", "10.1.10.201:30500", "10.1.10.202:30500"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+    echo '{"insecure-registries": ["192.168.1.150:30500", "192.168.1.244:30500", "192.168.1.181:30500", "192.168.1.201:30500", "192.168.1.202:30500"]}' | sudo tee /etc/docker/daemon.json > /dev/null
   fi
   output=$(sudo systemctl restart docker 2>&1)
   if [ $? -eq 0 ]; then

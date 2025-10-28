@@ -28,7 +28,7 @@ spec:
         runAsUser: 0            # Runs as root user inside the container
       containers:
       - name: spark1
-        image: 10.1.10.150:30500/spark1:latest
+        image: 192.168.1.150:30500/spark1:latest
         imagePullPolicy: "Always"
         securityContext:
           privileged: true         # Required for GPU device access on Jetson

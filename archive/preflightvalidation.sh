@@ -162,8 +162,8 @@ else
 fi
 
 # Check for local subnet route
-if ! ip route show | grep -q "10.1.10.0/24"; then
-    echo "   ❌ WARNING: No route to local subnet 10.1.10.0/24!"
+if ! ip route show | grep -q "192.168.1.0/24"; then
+    echo "   ❌ WARNING: No route to local subnet 192.168.1.0/24!"
     echo "   💡 This will prevent communication with other cluster nodes."
 else
     echo "   ✅ Local subnet route exists"

@@ -40,7 +40,7 @@ Tower (K3s Server) ←1G→ Jetson Nano (API Services)   FastAPI + Health Monito
   - NFS storage server for persistent volumes
   - Docker registry (local) for image management
   - Traefik ingress controller
-- **Network**: 10.1.10.150 (10G), 192.168.5.1 (1G)
+- **Network**: 192.168.1.150 (10G), 192.168.5.1 (1G)
 - **Status**: ✅ **FULLY OPERATIONAL**
 
 #### 🖥️ **AGX Orin (GPU-Accelerated AI Workloads)**
@@ -51,7 +51,7 @@ Tower (K3s Server) ←1G→ Jetson Nano (API Services)   FastAPI + Health Monito
   - AI workload processing (agx_app.py)
   - Health endpoints with detailed GPU status
   - Jupyter notebook server for development
-- **Network**: 10.1.10.244 (10G to Tower)
+- **Network**: 192.168.1.244 (10G to Tower)
 - **Status**: ✅ **FULLY OPERATIONAL**
 
 #### 🚀 **Jetson Nano (API Services & Monitoring)**
@@ -62,7 +62,7 @@ Tower (K3s Server) ←1G→ Jetson Nano (API Services)   FastAPI + Health Monito
   - Health monitoring for core GPU modules
   - Jupyter notebook server
   - Lightweight AI processing capabilities
-- **Network**: 10.1.10.181 (1G to Tower)
+- **Network**: 192.168.1.181 (1G to Tower)
 - **Status**: ✅ **FULLY OPERATIONAL**
 
 ## 📋 Implementation Phases
@@ -168,17 +168,17 @@ Registry: Local Docker registry (HTTP)
 
 # Node Specifications
 Tower (Server):
-  IP: 10.1.10.150
+  IP: 192.168.1.150
   Role: Control plane, database, storage
   Services: K3s server, PostgreSQL, pgAdmin, NFS, Registry
 
 AGX Orin (Agent):
-  IP: 10.1.10.244
+  IP: 192.168.1.244
   Role: GPU workloads, AI inference
   Services: FastAPI (agx_app.py), Jupyter, GPU monitoring
 
 Jetson Nano (Agent):
-  IP: 10.1.10.181
+  IP: 192.168.1.181
   Role: API services, monitoring
   Services: FastAPI, Jupyter, health monitoring
 ```
@@ -211,11 +211,11 @@ GET  /                        # Root endpoint
 
 #### Management Interfaces
 ```
-PostgreSQL: 10.1.10.150:30432 (postgres/postgres)
-pgAdmin: http://10.1.10.150:30080 (pgadmin@pgadmin.org/pgadmin)
-Jupyter Nano: http://10.1.10.150:30003
-Jupyter AGX: http://10.1.10.150:30005
-Traefik Dashboard: http://10.1.10.150:9000
+PostgreSQL: 192.168.1.150:30432 (postgres/postgres)
+pgAdmin: http://192.168.1.150:30080 (pgadmin@pgadmin.org/pgadmin)
+Jupyter Nano: http://192.168.1.150:30003
+Jupyter AGX: http://192.168.1.150:30005
+Traefik Dashboard: http://192.168.1.150:9000
 ```
 
 ## 📊 Performance Targets & Achievements
