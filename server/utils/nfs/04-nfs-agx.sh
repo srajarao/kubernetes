@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================="
-echo "🔍 NFS Client Validation on Spark1"
+echo "🔍 NFS Client Validation on AGX"
 echo "=========================================="
 
 # Colors for output
@@ -27,7 +27,7 @@ print_status() {
     fi
 }
 
-echo "Validating NFS client setup on Spark1..."
+echo "Validating NFS client setup on AGX..."
 echo "Server: $NFS_SERVER, Share: $NFS_SHARE, Mount: $MOUNT_POINT"
 echo ""
 
@@ -148,7 +148,7 @@ echo ""
 echo "=========================================="
 echo "🎉 NFS Client Validation Complete!"
 echo "=========================================="
-echo "If all checks passed, NFS client is properly configured on Spark1."
+echo "If all checks passed, NFS client is properly configured on AGX."
 echo "The share should be accessible at $MOUNT_POINT"
 echo ""
 echo "Manual mount commands:"
