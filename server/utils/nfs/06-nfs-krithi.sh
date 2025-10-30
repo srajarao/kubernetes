@@ -102,8 +102,11 @@ fi
 # 7. Test NFS mount
 echo ""
 echo "7. Testing NFS mount..."
-if sudo mount -t nfs "$NFS_SERVER:$NFS_SHARE" "$MOUNT_POINT" 2>/dev/null; then
-    print_status 0 "Successfully mounted $NFS_SERVER:$NFS_SHARE to $MOUNT_POINT"
+
+# Check if already mounted
+if mount | grep -q "$MOUNT_POINT"; then
+    print_status 0 "NFS share is already mounted at $MOUNT_POINT"
+    echo "   Skipping mount test since share is already active"
 
     # Check if mount is accessible
     if ls "$MOUNT_POINT" &>/dev/null; then
@@ -113,16 +116,30 @@ if sudo mount -t nfs "$NFS_SERVER:$NFS_SHARE" "$MOUNT_POINT" 2>/dev/null; then
     else
         print_status 1 "Mount point $MOUNT_POINT is NOT accessible"
     fi
-
-    # Unmount test mount
-    if sudo umount "$MOUNT_POINT" 2>/dev/null; then
-        print_status 0 "Successfully unmounted test mount"
-    else
-        print_status 1 "Failed to unmount test mount"
-    fi
 else
-    print_status 1 "Failed to mount $NFS_SERVER:$NFS_SHARE to $MOUNT_POINT"
-    echo "   Check NFS server exports and client permissions"
+    # Try to mount if not already mounted
+    if sudo mount -t nfs "$NFS_SERVER:$NFS_SHARE" "$MOUNT_POINT" 2>/dev/null; then
+        print_status 0 "Successfully mounted $NFS_SERVER:$NFS_SHARE to $MOUNT_POINT"
+
+        # Check if mount is accessible
+        if ls "$MOUNT_POINT" &>/dev/null; then
+            print_status 0 "Mount point $MOUNT_POINT is accessible"
+            echo "   Contents preview:"
+            ls -la "$MOUNT_POINT" | head -5
+        else
+            print_status 1 "Mount point $MOUNT_POINT is NOT accessible"
+        fi
+
+        # Unmount test mount
+        if sudo umount "$MOUNT_POINT" 2>/dev/null; then
+            print_status 0 "Successfully unmounted test mount"
+        else
+            print_status 1 "Failed to unmount test mount"
+        fi
+    else
+        print_status 1 "Failed to mount $NFS_SERVER:$NFS_SHARE to $MOUNT_POINT"
+        echo "   Check NFS server exports and client permissions"
+    fi
 fi
 
 # 8. Check /etc/fstab for persistent mount
