@@ -1,9 +1,10 @@
 #!/bin/bash
 # Backup /home/sanjay/containers to the appropriate vmstore location based on hostname, excluding cache and temp directories
-# Automatically re-executes with sudo if not run as root
+# Runs rsync as the calling user to avoid NFS root squashing issues
 
-if [ "$EUID" -ne 0 ]; then
-    exec sudo "$0" "$@"
+if [ "$EUID" -eq 0 ]; then
+    echo "This script should not be run as root. Please run as your regular user."
+    exit 1
 fi
 
 SRC="/home/sanjay/containers"
