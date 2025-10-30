@@ -50,7 +50,8 @@ EXCLUDES="--exclude=.git --exclude=.cache --exclude=Cache --exclude=__pycache__ 
 
 # Perform the backup with --delete to remove files from the destination that are not in the source.
 # Use --ignore-errors to continue on permission issues, --no-owner and --no-group to skip chown operations
-rsync -avh --delete --ignore-errors --no-owner --no-group $EXCLUDES "$SRC/" "$DEST/"
+# Use --inplace to avoid creating temporary files that fail on NFS root squashing
+rsync -avh --delete --ignore-errors --no-owner --no-group --inplace $EXCLUDES "$SRC/" "$DEST/"
 
 # Note: chown is skipped on NFS mounts due to root squashing security feature
 # Files will retain their original ownership from the source
@@ -58,8 +59,9 @@ echo "Note: File ownership not changed due to NFS root squashing security policy
 
 # Verify the backup using rsync's --dry-run
 # Use --ignore-errors to handle permission issues gracefully, --no-owner and --no-group to skip chown operations
+# Use --inplace for consistency with the backup command
 echo "Verifying backup for differences..."
-rsync -avn --delete --ignore-errors --no-owner --no-group $EXCLUDES "$SRC/" "$DEST/" 2>/dev/null | grep -E '^<|>|^deleting' &> /tmp/backup_home.log
+rsync -avn --delete --ignore-errors --no-owner --no-group --inplace $EXCLUDES "$SRC/" "$DEST/" 2>/dev/null | grep -E '^<|>|^deleting' &> /tmp/backup_home.log
 
 if [ ! -s /tmp/backup_home.log ]; then
     echo "No differences found between source and backup."
