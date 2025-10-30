@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastapi-agx
+  name: agx
   namespace: default
   labels:
-    app: fastapi-agx
+    app: agx
     device: agx
     tier: agent
 spec:
@@ -13,11 +13,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: fastapi-agx
+      app: agx
   template:
     metadata:
       labels:
-        app: fastapi-agx
+        app: agx
         device: agx
         tier: agent
     spec:
@@ -25,8 +25,8 @@ spec:
       nodeSelector:
         kubernetes.io/hostname: agx
       containers:
-      - name: fastapi-agx
-        image: 192.168.1.150:30500/fastapi-agx:latest
+      - name: agx
+        image: 192.168.1.150:30500/agx:latest
         imagePullPolicy: Always
         command: ["/opt/venv/bin/python", "agx_app.py"]
         ports:

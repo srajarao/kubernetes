@@ -214,17 +214,17 @@ capture_final_log() {
     echo -e "
 --- 5. CRITICAL: NANO K3S AGENT LOG ERRORS (Container Runtime Check) ---" >> "$log_file"
     # CORRECTED LINE 1: Change nsanjay to sanjay
-  echo "Executing: $SSH_CMD $SSH_USER@$NANO_IP 'sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E \"fastapi-nano|Error|Fail\"'" >> "$log_file"
+  echo "Executing: $SSH_CMD $SSH_USER@$NANO_IP 'sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E \"nano|Error|Fail\"'" >> "$log_file"
     # CORRECTED LINE 2: Change nsanjay to sanjay
-  $SSH_CMD $SSH_USER@$NANO_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'fastapi-nano|Error|Fail'" >> "$log_file" 2>/dev/null
+  $SSH_CMD $SSH_USER@$NANO_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'nano|Error|Fail'" >> "$log_file" 2>/dev/null
 
 
     # --- 6. CRITICAL: NANO K3S AGENT LOG ERRORS (Automated SSH Check) ---
     echo -e "
 --- 6. CRITICAL: NANO K3S AGENT LOG ERRORS (Container Runtime Check) ---" >> "$log_file"
-  echo "Executing: $SSH_CMD $SSH_USER@$NODE_IP 'sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E \"fastapi-nano|Error|Fail\"'" >> "$log_file"
+  echo "Executing: $SSH_CMD $SSH_USER@$NODE_IP 'sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E \"nano|Error|Fail\"'" >> "$log_file"
     # Execute SSH command and pipe output directly to the log file
-  $SSH_CMD $SSH_USER@$NODE_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'fastapi-nano|Error|Fail'" >> "$log_file" 2>/dev/null
+  $SSH_CMD $SSH_USER@$NODE_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'nano|Error|Fail'" >> "$log_file" 2>/dev/null
 
     # --- 7. CRITICAL: SPARK1 K3S AGENT LOG ERRORS (Container Runtime Check) ---
     echo -e "
@@ -494,14 +494,14 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Deleting existing Nano deployments and services before agent uninstall..."
   fi
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-nano --ignore-not-found=true > /dev/null 2>&1
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-service --ignore-not-found=true > /dev/null 2>&1
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-nodeport --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment nano --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service nano-service --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service nano-nodeport --ignore-not-found=true > /dev/null 2>&1
   # Also clean up any AGX services that may exist
   if [ "$DEBUG" = "1" ]; then
     echo "Cleaning up any leftover AGX services..."
   fi
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-agx-nodeport --ignore-not-found=true > /dev/null 2>&1
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service agx-nodeport --ignore-not-found=true > /dev/null 2>&1
   if [ "$DEBUG" = "1" ]; then
     echo "Uninstalling Agent on Nano... (Verbose output below)"
     sleep 5
@@ -1062,12 +1062,12 @@ step_12(){
 if [ "$DEBUG" = "1" ]; then
   echo "Cleaning up FastAPI Nano Docker image tags... (Verbose output below)"
   sleep 5
-  # Remove all tags related to fastapi-nano:latest
-  sudo docker images | grep fastapi-nano | awk '{print $1":"$2}' | xargs -r sudo docker rmi
+  # Remove all tags related to nano:latest
+  sudo docker images | grep nano | awk '{print $1":"$2}' | xargs -r sudo docker rmi
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Cleaning up FastAPI Nano Docker image tags..."
   sleep 5
-  output=$(sudo docker images | grep fastapi-nano | awk '{print $1":"$2}' | xargs -r sudo docker rmi 2>&1)
+  output=$(sudo docker images | grep nano | awk '{print $1":"$2}' | xargs -r sudo docker rmi 2>&1)
   if [ $? -eq 0 ]; then
     echo -e "[32m✅[0m"
   else
@@ -1090,11 +1090,11 @@ step_12(){
 if [ "$DEBUG" = "1" ]; then
   echo "Building Nano Docker image... (Verbose output below)"
   sleep 5
-  cd /home/sanjay/containers/kubernetes/agent/nano && sudo docker buildx build --platform linux/arm64 -f dockerfile.nano.req -t fastapi-nano:latest --load .
+  cd /home/sanjay/containers/kubernetes/agent/nano && sudo docker buildx build --platform linux/arm64 -f dockerfile.nano.req -t nano:latest --load .
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Building Nano Docker image..."
   sleep 5
-  output=$(cd /home/sanjay/containers/kubernetes/agent/nano && sudo docker buildx build --platform linux/arm64 -f dockerfile.nano.req -t fastapi-nano:latest --load . 2>&1)
+  output=$(cd /home/sanjay/containers/kubernetes/agent/nano && sudo docker buildx build --platform linux/arm64 -f dockerfile.nano.req -t nano:latest --load . 2>&1)
   if [ $? -eq 0 ]; then
     echo -e "[32m✅[0m"
   else
@@ -1117,11 +1117,11 @@ step_13(){
 if [ "$DEBUG" = "1" ]; then
   echo "Tagging Nano Docker image..."
   sleep 5
-  sudo docker tag fastapi-nano:latest $REGISTRY_IP:$REGISTRY_NODE_PORT/fastapi-nano:latest
+  sudo docker tag nano:latest $REGISTRY_IP:$REGISTRY_NODE_PORT/nano:latest
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Tagging Nano Docker image..."
   sleep 5
-  output=$(sudo docker tag fastapi-nano:latest $REGISTRY_IP:$REGISTRY_NODE_PORT/fastapi-nano:latest 2>&1)
+  output=$(sudo docker tag nano:latest $REGISTRY_IP:$REGISTRY_NODE_PORT/nano:latest 2>&1)
   if [ $? -eq 0 ]; then
     echo -e "[32m✅[0m"
   else
@@ -1145,11 +1145,11 @@ if [ "$DEBUG" = "1" ]; then
   echo "Pushing Image... (Verbose output below)"
 
   sleep 5
-  sudo docker push $REGISTRY_IP:$REGISTRY_NODE_PORT/fastapi-nano:latest
+  sudo docker push $REGISTRY_IP:$REGISTRY_NODE_PORT/nano:latest
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Pushing Docker image to registry..."
   sleep 5
-  output=$(sudo docker push $REGISTRY_IP:$REGISTRY_NODE_PORT/fastapi-nano:latest 2>&1)
+  output=$(sudo docker push $REGISTRY_IP:$REGISTRY_NODE_PORT/nano:latest 2>&1)
   if [ $? -eq 0 ]; then
     echo -e "[32m✅[0m"
   else
@@ -1174,20 +1174,20 @@ if [ "$INSTALL_NANO_AGENT" = true ]; then
     echo "Deploying AI Workload on nano..."
     sleep 5
     # Delete existing deployment and services if they exist to ensure clean apply
-    echo "Deleting existing fastapi-nano deployment..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-nano --ignore-not-found=true
-    echo "Deleting existing fastapi-nano-service..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-service --ignore-not-found=true
-    echo "Deleting existing fastapi-nano-nodeport..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-nodeport --ignore-not-found=true
+    echo "Deleting existing nano deployment..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment nano --ignore-not-found=true
+    echo "Deleting existing nano-service..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service nano-service --ignore-not-found=true
+    echo "Deleting existing nano-nodeport..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service nano-nodeport --ignore-not-found=true
     sleep 5
     echo "Applying FastAPI deployment YAML from fastapi-deployment-full.yaml..."
   else
     step_echo_start "a" "nano" "$NANO_IP" "Deploying AI Workload on nano..."
     sleep 5
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-nano --ignore-not-found=true > /dev/null 2>&1
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-service --ignore-not-found=true > /dev/null 2>&1
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-nano-nodeport --ignore-not-found=true > /dev/null 2>&1
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment nano --ignore-not-found=true > /dev/null 2>&1
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service nano-service --ignore-not-found=true > /dev/null 2>&1
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service nano-nodeport --ignore-not-found=true > /dev/null 2>&1
     sleep 5
   fi
 

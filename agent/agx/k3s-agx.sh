@@ -172,9 +172,9 @@ capture_final_log() {
     # --- 5. CRITICAL: AGX K3S AGENT LOG ERRORS (Container Runtime Check) ---
     echo -e "
 --- 5. CRITICAL: AGX K3S AGENT LOG ERRORS (Container Runtime Check) ---" >> "$log_file"
-  echo "Executing: $SSH_CMD $SSH_USER@$AGX_IP 'sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E \"fastapi-agx|Error|Fail\"'" >> "$log_file"
+  echo "Executing: $SSH_CMD $SSH_USER@$AGX_IP 'sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E \"agx|Error|Fail\"'" >> "$log_file"
     # Execute SSH command and pipe output directly to the log file
-  $SSH_CMD $SSH_USER@$AGX_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'fastapi-agx|Error|Fail'" >> "$log_file" 2>/dev/null
+  $SSH_CMD $SSH_USER@$AGX_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'agx|Error|Fail'" >> "$log_file" 2>/dev/null
 
     echo -e "
 --- LOG CAPTURE COMPLETE ---" >> "$log_file"
@@ -430,12 +430,12 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
     echo "Uninstalling Agent on AGX... (Verbose output below)"
     sleep 5
     # Delete existing deployments and services if they exist to ensure clean uninstall
-    echo "Deleting existing fastapi-agx deployment..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-agx --ignore-not-found=true
-    echo "Deleting existing fastapi-agx-service..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-agx-service --ignore-not-found=true
-    echo "Deleting existing fastapi-agx-nodeport..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-agx-nodeport --ignore-not-found=true
+    echo "Deleting existing agx deployment..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment agx --ignore-not-found=true
+    echo "Deleting existing agx-service..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service agx-service --ignore-not-found=true
+    echo "Deleting existing agx-nodeport..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service agx-nodeport --ignore-not-found=true
     # Check if k3s binaries exist before attempting uninstall
     echo "Checking for k3s-agent-uninstall.sh on AGX..."
     if $SSH_CMD $SSH_USER@$AGX_IP "test -x /usr/local/bin/k3s-agent-uninstall.sh"; then
@@ -448,9 +448,9 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
     step_echo_start "a" "agx" "$AGX_IP" "Uninstalling K3s agent on agx..."
     sleep 5
     # Delete existing deployments and services before uninstalling agent
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-agx --ignore-not-found=true > /dev/null
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-agx-service --ignore-not-found=true > /dev/null
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-agx-nodeport --ignore-not-found=true > /dev/null
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment agx --ignore-not-found=true > /dev/null
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service agx-service --ignore-not-found=true > /dev/null
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service agx-nodeport --ignore-not-found=true > /dev/null
     # Check if k3s binaries exist before attempting uninstall
     if $SSH_CMD $SSH_USER@$AGX_IP "test -x /usr/local/bin/k3s-agent-uninstall.sh"; then
       if $SSH_CMD $SSH_USER@$AGX_IP "sudo /usr/local/bin/k3s-agent-uninstall.sh" > /dev/null; then
@@ -1033,13 +1033,13 @@ step_11(){
 if [ "$DEBUG" = "1" ]; then
   echo "Cleaning up FastAPI AGX Docker image tags..."
   sleep 5
-  echo "Finding and removing all fastapi-agx image tags..."
-  sudo docker images | grep fastapi-agx | awk '{print $1":"$2}' | xargs -r sudo docker rmi
+  echo "Finding and removing all agx image tags..."
+  sudo docker images | grep agx | awk '{print $1":"$2}' | xargs -r sudo docker rmi
   echo "Docker image cleanup completed"
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Cleaning up FastAPI AGX Docker image tags..."
   sleep 5
-  if sudo docker images | grep fastapi-agx | awk '{print $1":"$2}' | xargs -r sudo docker rmi > /dev/null 2>&1; then
+  if sudo docker images | grep agx | awk '{print $1":"$2}' | xargs -r sudo docker rmi > /dev/null 2>&1; then
     echo -e "[32m✅[0m"
   else
     echo -e "[32m✅[0m"
@@ -1060,22 +1060,22 @@ if [ "$DEBUG" = "1" ]; then
   echo "Building AGX Docker image..."
   sleep 5
   echo "Changing to AGX agent directory..."
-  echo "Running: sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t fastapi-agx:latest --load ."
-  cd /home/sanjay/containers/kubernetes/agent/agx && sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t fastapi-agx:latest --load .
+  echo "Running: sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t agx:latest --load ."
+  cd /home/sanjay/containers/kubernetes/agent/agx && sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t agx:latest --load .
   echo "AGX Docker image built successfully"
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Building AGX Docker image..."
   sleep 5
-  if cd /home/sanjay/containers/kubernetes/agent/agx && sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t fastapi-agx:latest --load . > /dev/null 2>&1; then
+  if cd /home/sanjay/containers/kubernetes/agent/agx && sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t agx:latest --load . > /dev/null 2>&1; then
     echo -e "[32m✅[0m"
   else
     echo -e "[31m❌ Failed to build AGX Docker image[0m"
     echo "Debug info:"
     echo "Building AGX Docker image..."
     echo "Changing to AGX agent directory..."
-    echo "Running: sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t fastapi-agx:latest --load ."
+    echo "Running: sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t agx:latest --load ."
     echo "Error details:"
-    cd /home/sanjay/containers/kubernetes/agent/agx && sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t fastapi-agx:latest --load .
+    cd /home/sanjay/containers/kubernetes/agent/agx && sudo docker buildx build --platform linux/arm64 -f dockerfile.agx.req -t agx:latest --load .
     exit 1
   fi
 fi
@@ -1093,21 +1093,21 @@ step_13(){
 if [ "$DEBUG" = "1" ]; then
   echo "Tagging AGX Docker image..."
   sleep 5
-  echo "Tagging fastapi-agx:latest as $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest"
-  sudo docker tag fastapi-agx:latest $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest
+  echo "Tagging agx:latest as $REGISTRY_IP:$REGISTRY_PORT/agx:latest"
+  sudo docker tag agx:latest $REGISTRY_IP:$REGISTRY_PORT/agx:latest
   echo "Docker image tagged successfully"
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Tagging AGX Docker image..."
   sleep 5
-  if sudo docker tag fastapi-agx:latest $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest > /dev/null 2>&1; then
+  if sudo docker tag agx:latest $REGISTRY_IP:$REGISTRY_PORT/agx:latest > /dev/null 2>&1; then
     echo -e "[32m✅[0m"
   else
     echo -e "[31m❌ Failed to tag AGX Docker image[0m"
     echo "Debug info:"
     echo "Tagging AGX Docker image..."
-    echo "Tagging fastapi-agx:latest as $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest"
+    echo "Tagging agx:latest as $REGISTRY_IP:$REGISTRY_PORT/agx:latest"
     echo "Error details:"
-    sudo docker tag fastapi-agx:latest $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest
+    sudo docker tag agx:latest $REGISTRY_IP:$REGISTRY_PORT/agx:latest
     exit 1
   fi
 fi
@@ -1125,21 +1125,21 @@ step_14(){
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing Docker image to registry..."
   sleep 5
-  echo "Pushing $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest to registry..."
-  sudo docker push $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest
+  echo "Pushing $REGISTRY_IP:$REGISTRY_PORT/agx:latest to registry..."
+  sudo docker push $REGISTRY_IP:$REGISTRY_PORT/agx:latest
   echo "Docker image pushed successfully"
 else
   step_echo_start "s" "tower" "$TOWER_IP" "Pushing Docker image to registry..."
   sleep 5
-  if sudo docker push $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest > /dev/null 2>&1; then
+  if sudo docker push $REGISTRY_IP:$REGISTRY_PORT/agx:latest > /dev/null 2>&1; then
     echo -e "[32m✅[0m"
   else
     echo -e "[31m❌ Failed to push Docker image to registry[0m"
     echo "Debug info:"
     echo "Pushing Docker image to registry..."
-    echo "Pushing $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest to registry..."
+    echo "Pushing $REGISTRY_IP:$REGISTRY_PORT/agx:latest to registry..."
     echo "Error details:"
-    sudo docker push $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest
+    sudo docker push $REGISTRY_IP:$REGISTRY_PORT/agx:latest
     exit 1
   fi
 fi
@@ -1168,27 +1168,27 @@ if [ "$INSTALL_AGX_AGENT" = true ]; then
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastapi-agx
+  name: agx
   namespace: default
   labels:
-    app: fastapi-agx
+    app: agx
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: fastapi-agx
+      app: agx
   template:
     metadata:
       labels:
-        app: fastapi-agx
+        app: agx
     spec:
       nodeSelector:
         kubernetes.io/hostname: agx
       containers:
       - name: fastapi
-        image: $REGISTRY_IP:$REGISTRY_PORT/fastapi-agx:latest
+        image: $REGISTRY_IP:$REGISTRY_PORT/agx:latest
         ports:
         - containerPort: 8000
           name: http

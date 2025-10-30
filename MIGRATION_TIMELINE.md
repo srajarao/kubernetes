@@ -48,7 +48,7 @@
   # Edit /etc/netplan/01-netcfg.yaml
   sudo netplan apply
   # IP: 192.168.1.150 → 192.168.1.150
-  # Gateway: 10.1.10.1 → 192.168.1.1
+  # Gateway: 192.168.1.1 → 192.168.1.1
   ```
 
 - [ ] **Update K3s server configuration**
@@ -93,7 +93,11 @@
 ## 📋 **PHASE 3: CONFIGURATION UPDATES (8:00 PM - 9:30 PM)**
 
 ### 8:00 PM - 8:30 PM: Apply IP Changes to Codebase
-- [ ] **Run IP update script**
+- [x] **COMPLETED** All K3s setup scripts pre-verified clean of old IPs:
+  - `server/k3s-server.sh` ✅
+  - `agent/*/k3s-*.sh` ✅ 
+  - All deployment YAML files ✅
+- [ ] **Run IP update script** (if needed)
   ```bash
   cd /home/sanjay/containers/kubernetes
   ./update_ips.sh "10.1.10" "192.168.1"

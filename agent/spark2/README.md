@@ -1,168 +1,157 @@
-# Spark2 Kubernetes Agent Setup
+# Spark1 Kubernetes Agent Setup
 
-This directory contains all files needed for setting up and managing the Spark2 device as a k3s agent node with GPU health validation.
-
-## Overview
-
-The Spark2 agent runs a streamlined health-check application that validates GPU functionality and exits. It performs comprehensive checks on:
-- CUDA libraries and GPU availability
-- PyTorch and TensorFlow GPU support
-- TensorRT capabilities
-- Database connectivity (optional)
+This directory contains all files needed for setting up and managing the Spark1 device as a k3s agent node.
 
 ## Files Overview
 
-### Core Application
-- **`spark2_app.py`** - Main health-check script that validates GPU functionality
-- **`requirements.spark2.txt`** - Minimal Python dependencies (empty - uses pre-built wheels)
-- **`wheels/`** - Pre-downloaded Python packages for fast container builds
-
-### Build & Deployment
-- **`build.sh`** - Docker build script using optimized wheels-based Dockerfile
-- **`dockerfile.spark2.wheels`** - Optimized Dockerfile using pre-downloaded wheels
-- **`dockerfile.spark2.req`** - Alternative Dockerfile using pip installs (slower)
-- **`k3s-spark2.sh`** - Complete K3s agent setup and deployment script
+### Main Scripts
+- **`k3s-spark1.sh`** - Primary Spark1 agent setup script with comprehensive deployment
+- **`k3s-spark1-agent-setup.sh`** - Alternative Spark1 agent setup script
+- **`setup-spark1-network.sh`** - Network configuration for Spark1 device
+- **`build.sh`** - Docker image build script for Spark1
 
 ### Configuration
-- **`postgres.env`** - PostgreSQL database connection settings
-- **`app/config/`** - Application configuration directory
+- **`spark1_app.py`** - Health check application for Spark1
+- **`fastapi-deployment-spark1.yaml`** - Kubernetes deployment manifest
+- **`requirements.spark1.txt`** - Python dependencies
+- **`dockerfile.spark1.req`** - Docker build configuration
+- **`postgres.env`** - Database configuration
 
-## Spark2 Device Configuration
+## Spark1 Device Configuration
 
 ### Network Settings
-- **IP Address**: 192.168.1.202
-- **Node Name**: spark2
-- **K3s Server**: 192.168.1.150:6443
+- **IP Address**: 192.168.1.201
+- **Node Name**: spark1
+- **API Server**: https://192.168.1.150:6443
 
-### GPU Requirements
-- NVIDIA GPU with CUDA support
-- CUDA 12.0+ runtime
-- TensorRT support (optional)
+### Hardware
+- **GPU**: NVIDIA GB10
+- **Architecture**: ARM64
+- **CUDA**: 13.0 support
+
+### Service Access
+- **PostgreSQL**: 192.168.1.150:30432
+- **pgAdmin**: http://192.168.1.150:30080
+- **Docker Registry**: 192.168.1.150:30500
 
 ## Setup Process
 
-### 1. Build Container
+### 1. Initial Setup
 ```bash
-# Build optimized container with pre-downloaded wheels
-./build.sh
+# Run comprehensive setup
+./k3s-spark1.sh
 
-# Or build with --clean for fresh build
-./build.sh --clean
+# Alternative: Use simplified setup
+./k3s-spark1-agent-setup.sh
 ```
 
-### 2. Deploy Agent
+### 2. Build and Deploy
 ```bash
-# Run complete setup (server + agent)
-./k3s-spark2.sh
+# Build Docker image
+./build.sh
+
+# Deploy to Kubernetes
+kubectl apply -f fastapi-deployment-spark1.yaml
 ```
 
 ### 3. Validation
 ```bash
+# Check pod status
+kubectl get pods -l app=fastapi-spark1
+
+# Check health endpoint
+curl http://192.168.1.150:30001/health
+```
+```bash
+# Validate setup
+./validate-agx-setup.sh
+
 # Check cluster status
 kubectl get nodes
-kubectl get pods -n spark2
-
-# View health check logs
-kubectl logs -n spark2 deployment/spark2-healthcheck
+kubectl get pods --all-namespaces
 ```
 
-## Health Checks Performed
+### 3. Troubleshooting
+```bash
+# If setup fails, clean and retry
+./cleanup-agx.sh
+./k3s-agx-setup.sh
 
-The application validates:
+# Debug mode
+DEBUG=1 ./k3s-agx-setup.sh
+```
 
-1. **Library Loading**
-   - `libstdc++.so.6` - C++ standard library
-   - `libcusparseLt.so` - cuSPARSELt library
+## Integration with Tower
 
-2. **GPU Frameworks**
-   - PyTorch CUDA support and GPU operations
-   - TensorFlow GPU detection and computation
-   - TensorRT availability (optional)
+### Token Synchronization
+The tower automatically exports tokens to:
+- `/export/vmstore/agx_home/containers/fastapi/.token/node-token`
+- `/export/vmstore/agx_home/containers/fastapi/.token/k3s.yaml`  
+- `/export/vmstore/agx_home/containers/fastapi/.token/server-ca.crt`
 
-3. **Database** (optional)
-   - PostgreSQL connectivity test
+### Image Distribution
+Container images are saved by tower to:
+- `/export/vmstore/k3sRegistry/postgres.tar`
+- `/export/vmstore/k3sRegistry/pgadmin.tar`
+- `/export/vmstore/k3sRegistry/fastapi_nano.tar`
 
-## Container Behavior
+## Customization
 
-- **Runs once**: Performs all checks and exits with status code
-- **Exit codes**:
-  - `0` = All checks passed
-  - `1` = libstdc++ load failed
-  - `2` = cuSPARSELt load failed
-  - `3` = PyTorch check failed
-  - `4` = TensorFlow check failed
-  - `5` = TensorRT check failed
-  - `7` = Database connection failed
+### Replace Template Script
+The `k3s-agx-setup.sh` is currently a template. Replace it with your proven working AGX script:
+
+```bash
+# Backup template
+cp k3s-agx-setup.sh k3s-agx-setup.sh.template
+
+# Copy your working script
+cp /path/to/your/working/agx-script.sh k3s-agx-setup.sh
+
+# Make executable
+chmod +x k3s-agx-setup.sh
+```
+
+### Environment Configuration
+Edit `agx-config.env` to match your specific setup:
+- Network addresses
+- Storage paths  
+- Service endpoints
+- Timeouts
 
 ## Architecture
 
 ```
-Tower (192.168.1.150)           Spark2 Agent (192.168.1.202)
+Tower (192.168.10.1)          AGX Agent
 ├── k3s server               ├── k3s agent
-├── PostgreSQL               ├── GPU health validation
-├── Docker Registry          ├── CUDA/PyTorch/TensorFlow checks
-└── Container images         └── Exit with status code
+├── PostgreSQL               ├── Workload pods
+├── pgAdmin                  ├── Container runtime
+├── Docker Registry          └── Storage access
+└── Token distribution
 ```
 
-## Troubleshooting
+## Common Commands
 
-### Build Issues
-```bash
-# Clean build
-./build.sh --clean
-
-# Check build logs
-docker buildx build --platform linux/arm64 -f dockerfile.spark2.wheels -t spark2 . --load
-```
-
-### Agent Issues
 ```bash
 # Check agent status
 sudo systemctl status k3s-agent
 
-# View agent logs
+# View logs
 sudo journalctl -u k3s-agent -f
+
+# Test connectivity
+kubectl get nodes
+kubectl describe node agx
 
 # Restart agent
 sudo systemctl restart k3s-agent
+
+# Complete reset
+./cleanup-agx.sh && ./k3s-agx-setup.sh
 ```
-
-### GPU Issues
-```bash
-# Check GPU status
-nvidia-smi
-
-# Test CUDA
-nvcc --version
-
-# Check NVIDIA runtime
-docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
-```
-
-## Development
-
-### Local Testing
-```bash
-# Run health checks locally
-python3 spark2_app.py
-
-# With GPU enabled
-GPU_ENABLED=true python3 spark2_app.py
-
-# Skip database check
-SKIP_DB_CHECK=true python3 spark2_app.py
-```
-
-### Modifying Health Checks
-Edit `spark2_app.py` to add new validation checks. The script will:
-1. Run all checks in sequence
-2. Report results for each check
-3. Exit with appropriate status code
 
 ## Notes
 
-- Container uses NVIDIA runtime for GPU access
-- Pre-downloaded wheels enable fast, offline builds
-- Health checks run on container startup and exit
-- No persistent services - designed for validation only
-- Compatible with ARM64/aarch64 architecture
+- This setup assumes shared storage is mounted and accessible
+- Network connectivity between AGX (192.168.10.x) and tower (192.168.10.1) is required
+- The AGX acts as an agent node - all control plane operations happen on the tower
+- Replace the template script with your proven working implementation

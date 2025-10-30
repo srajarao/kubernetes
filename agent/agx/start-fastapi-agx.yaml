@@ -29,7 +29,7 @@ spec:
         runAsUser: 0            # Runs as root user inside the container
       containers:
         - name: fastapi
-          image: 192.168.1.150:5000/fastapi-agx:latest
+          image: 192.168.1.150:30500/fastapi-agx:latest
        
           # -------------------------------------------------------------------
           # FIX 1: Pull from registry with insecure config

@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastapi-nano
+  name: nano
   namespace: default
   labels:
-    app: fastapi-nano
+    app: nano
     device: nano
     tier: agent
 spec:
@@ -13,11 +13,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: fastapi-nano
+      app: nano
   template:
     metadata:
       labels:
-        app: fastapi-nano
+        app: nano
         device: nano
         tier: agent
     spec:
@@ -25,8 +25,8 @@ spec:
       nodeSelector:
         kubernetes.io/hostname: nano
       containers:
-      - name: fastapi-nano
-        image: 192.168.1.150:30500/fastapi-nano:latest
+      - name: nano
+        image: 192.168.1.150:30500/nano:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000

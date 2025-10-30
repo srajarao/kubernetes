@@ -21,9 +21,6 @@ from dotenv import load_dotenv
 import os
 print(f"SPARK2_APP: GPU_ENABLED env at module load: '{os.getenv('GPU_ENABLED', 'NOT_SET')}'")
 
-import threading
-import time
-
 
 EXIT_OK = 0
 EXIT_LIBSTDCPP_FAIL = 1
@@ -255,7 +252,7 @@ def connect_to_db():
 
 def main():
     """Main function to run health checks and start services"""
-    print("SPARK1_APP: Starting main execution...")
+    print("SPARK2_APP: Starting main execution...")
     
     # Run all health checks
     print("Running libstdc++ check...")
@@ -301,7 +298,7 @@ def main():
 
     if all_checks_passed:
         print("\n✅✅✅ ALL HEALTH CHECKS PASSED ✅✅✅")
-        print("SPARK2 health checks completed successfully")
+        print("SPARK1 health checks completed successfully")
         sys.exit(0)
     else:
         print("\n❌❌❌ ONE OR MORE CHECKS FAILED ❌❌❌")
@@ -321,3 +318,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+

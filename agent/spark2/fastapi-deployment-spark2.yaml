@@ -23,37 +23,37 @@ spec:
               - key: kubernetes.io/hostname
                 operator: In
                 values:
-                - spark2
+                - spark1
       securityContext:
         runAsUser: 0            # Runs as root user inside the container
       containers:
-        - name: spark2
-          image: 192.168.1.150:30500/spark2:latest
-          imagePullPolicy: "Always"
-          securityContext:
-            privileged: true         # Required for GPU device access on Jetson
-          env:
-            - name: GPU_ENABLED
-              value: "true"
-            - name: SKIP_DB_CHECK
-              value: "true"
-          resources:
-            limits:
-              cpu: "20"
-              memory: "119Gi"
-            requests:
-              cpu: "16"
-              memory: "96Gi"
-          volumeMounts:
-            - name: nvidia0
-              mountPath: /dev/nvidia0
-            - name: nvidiactl
-              mountPath: /dev/nvidiactl
-            - name: nvidia-uvm
-              mountPath: /dev/nvidia-uvm
-            - name: nvidia-modeset
-              mountPath: /dev/nvidia-modeset
-          command: ["python3", "/app/spark2_app.py"]
+      - name: spark2
+        image: 192.168.1.150:30500/spark2:latest
+        imagePullPolicy: "Always"
+        securityContext:
+          privileged: true         # Required for GPU device access on Jetson
+        env:
+          - name: GPU_ENABLED
+            value: "true"
+          - name: SKIP_DB_CHECK
+            value: "true"
+        resources:
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+          requests:
+            cpu: "2"
+            memory: "4Gi"
+        volumeMounts:
+          - name: nvidia0
+            mountPath: /dev/nvidia0
+          - name: nvidiactl
+            mountPath: /dev/nvidiactl
+          - name: nvidia-uvm
+            mountPath: /dev/nvidia-uvm
+          - name: nvidia-modeset
+            mountPath: /dev/nvidia-modeset
+        command: ["python3", "/app/spark2_app.py"]
       volumes:
         - name: nvidia0
           hostPath:

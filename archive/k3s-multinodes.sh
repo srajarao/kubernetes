@@ -546,7 +546,7 @@ ExecStart=/usr/local/bin/k3s agent --node-ip $AGX_IP
 EOF';
     echo 'K3S_TOKEN=\"\$K3S_TOKEN\"' | sudo tee /etc/systemd/system/k3s-agent.service.env > /dev/null;
     echo 'K3S_URL=\"https://$TOWER_IP:6443\"' | sudo tee -a /etc/systemd/system/k3s-agent.service.env > /dev/null;
-    sudo ip route add default via 10.1.10.1 dev eno1 2>/dev/null || true;
+    sudo ip route add default via 192.168.1.1 dev eno1 2>/dev/null || true;
     sudo systemctl daemon-reload;
     sudo systemctl enable k3s-agent;
     sudo systemctl start k3s-agent"

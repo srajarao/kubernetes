@@ -25,11 +25,11 @@ INSTALL_SPARK2_AGENT=true
 TOWER_IP="192.168.1.150"
 NANO_IP="192.168.1.181"   # <-- Use the correct, reachable IP
 AGX_IP="192.168.1.244"
-SPARK1_IP="192.168.1.201"
+SPARK2_IP="192.168.1.202"
 SPARK2_IP="192.168.1.202"
 
 # Registry settings
-REGISTRY_IP="192.168.1.150"
+REGISTRY_IP="$TOWER_IP"  # Tower
 REGISTRY_PORT="30500"
 REGISTRY_PROTOCOL="http"  # "http" or "https"
 
@@ -42,7 +42,7 @@ PGADMIN_EMAIL="pgadmin@pgadmin.org" # pgAdmin default email
 DEBUG=${DEBUG:-0}
 
 # Define the initial script message to be logged
-START_MESSAGE="Starting K3s Setup and FastAPI Deployment in SILENT NORMAL mode..."
+START_MESSAGE="Starting K3s Setup and FastAPI Deployment for SPARK2 in SILENT NORMAL mode..."
 
 # SSH defaults (centralize options and key usage)
 SSH_USER="${SSH_USER:-sanjay}"
@@ -187,12 +187,12 @@ capture_final_log() {
     # Execute SSH command and pipe output directly to the log file
   $SSH_CMD $SSH_USER@$AGX_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'fastapi-agx|Error|Fail'" >> "$log_file" 2>/dev/null
 
-    # --- 7. CRITICAL: SPARK1 K3S AGENT LOG ERRORS (Container Runtime Check) ---
+    # --- 7. CRITICAL: SPARK2 K3S AGENT LOG ERRORS (Container Runtime Check) ---
     echo -e "
---- 7. CRITICAL: SPARK1 K3S AGENT LOG ERRORS (Container Runtime Check) ---" >> "$log_file"
-  echo "Executing: $SSH_CMD $SSH_USER@$SPARK1_IP 'sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E \"fastapi-spark1|Error|Fail\"'" >> "$log_file"
+--- 7. CRITICAL: SPARK2 K3S AGENT LOG ERRORS (Container Runtime Check) ---" >> "$log_file"
+  echo "Executing: $SSH_CMD $SSH_USER@$SPARK2_IP 'sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E \"fastapi-spark2|Error|Fail\"'" >> "$log_file"
     # Execute SSH command and pipe output directly to the log file
-  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'fastapi-spark1|Error|Fail'" >> "$log_file" 2>/dev/null
+  $SSH_CMD $SSH_USER@$SPARK2_IP "sudo journalctl -u k3s-agent --since \"30 minutes ago\" | grep -E 'fastapi-spark2|Error|Fail'" >> "$log_file" 2>/dev/null
 
     echo -e "
 --- 8. CRITICAL: SPARK2 K3S AGENT LOG ERRORS (Container Runtime Check) ---" >> "$log_file"
@@ -423,7 +423,7 @@ if [ "$INSTALL_SPARK2_AGENT" = true ]; then
     exit 1
   fi
 else
-  echo "{a} [spark2   ] [$SPARK2_IP] ${CURRENT_STEP}/${TOTAL_STEPS}. SPARK2 SSH verification skipped (not enabled)"
+  echo "{a} [spark2  ] [$SPARK2_IP] ${CURRENT_STEP}/${TOTAL_STEPS}. SPARK2 SSH verification skipped (not enabled)"
 fi
 if [ "$DEBUG" = "1" ]; then
   echo "SPARK2 SSH validation completed."
@@ -1300,8 +1300,8 @@ if [ "$INSTALL_SPARK2_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
     echo "Deploying FastAPI to SPARK2..."
     sleep 5
-    echo "Deleting existing fastapi-spark2 pod if exists..."
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod fastapi-spark2 --ignore-not-found=true
+    echo "Deleting existing spark2 job if exists..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete job spark2 --ignore-not-found=true
     echo "Applying deployment YAML for fastapi-spark2 from file..."
     sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f fastapi-deployment-spark2.yaml
     if [ $? -eq 0 ]; then
@@ -1313,7 +1313,7 @@ if [ "$INSTALL_SPARK2_AGENT" = true ]; then
   else
     step_echo_start "s" "tower" "$TOWER_IP" "Deploying FastAPI to SPARK2..."
     sleep 5
-    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod fastapi-spark2 --ignore-not-found=true > /dev/null 2>&1
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete job spark2 --ignore-not-found=true > /dev/null 2>&1
     output=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f fastapi-deployment-spark2.yaml 2>&1)
     if [ $? -eq 0 ]; then
       echo -e "✅"
@@ -2085,11 +2085,11 @@ if [ "$DEBUG" = "1" ]; then
 fi
 echo ""
 echo "Services Available:"
-echo "FastAPI: http://192.168.1.202:30010"
-echo "Jupyter: http://192.168.1.202:30011"
-echo "LLM API: http://192.168.1.202:30012"
-echo "Health Check: http://192.168.1.202:30010/health"
-echo "Swagger UI: http://192.168.1.202:30010/docs"
+echo "FastAPI: http://192.168.1.201:30013"
+echo "Jupyter: http://192.168.1.201:30014"
+echo "LLM API: http://192.168.1.201:30015"
+echo "Health Check: http://192.168.1.201:30013/health"
+echo "Swagger UI: http://192.168.1.201:30013/docs"
 echo ""
 echo -e "✅ Service endpoints displayed"
 if [ "$DEBUG" = "1" ]; then

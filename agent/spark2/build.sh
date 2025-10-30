@@ -46,7 +46,7 @@ echo "🎮 GPU support: CUDA-enabled PyTorch installed (detects GPU at runtime)"
 # Instructions for deployment
 echo ""
 echo "🚀 To deploy:"
-echo "   kubectl apply -f start-fastapi.yaml"
+echo "   kubectl apply -f fastapi-deployment-spark2.yaml"
 echo "   kubectl delete pods -l app=fastapi-spark2  # Force restart"
 echo ""
 echo "💡 For clean rebuilds when troubleshooting:"

@@ -24,46 +24,44 @@ spec:
                 operator: In
                 values:
                 - spark1
-      securityContext:
-        runAsUser: 0            # Runs as root user inside the container
       containers:
       - name: spark1
         image: 192.168.1.150:30500/spark1:latest
         imagePullPolicy: "Always"
-        securityContext:
-          privileged: true         # Required for GPU device access on Jetson
         env:
           - name: GPU_ENABLED
             value: "true"
           - name: SKIP_DB_CHECK
             value: "true"
+        volumeMounts:
+        - name: nvidia-dev
+          mountPath: /dev/nvidia0
+        - name: nvidia-ctl
+          mountPath: /dev/nvidiactl
+        - name: nvidia-uvm
+          mountPath: /dev/nvidia-uvm
+        - name: nvidia-modeset
+          mountPath: /dev/nvidia-modeset
         resources:
           limits:
-            cpu: "20"
-            memory: "119Gi"
+            cpu: "2"
+            memory: "4Gi"
+            nvidia.com/gpu: 1  # Request 1 GPU using GPU Operator resource management
           requests:
-            cpu: "16"
-            memory: "96Gi"
-        volumeMounts:
-          - name: nvidia0
-            mountPath: /dev/nvidia0
-          - name: nvidiactl
-            mountPath: /dev/nvidiactl
-          - name: nvidia-uvm
-            mountPath: /dev/nvidia-uvm
-          - name: nvidia-modeset
-            mountPath: /dev/nvidia-modeset
+            cpu: "2"
+            memory: "4Gi"
+            nvidia.com/gpu: 1  # Request 1 GPU using GPU Operator resource management
         command: ["python3", "/app/spark1_app.py"]
       volumes:
-        - name: nvidia0
-          hostPath:
-            path: /dev/nvidia0
-        - name: nvidiactl
-          hostPath:
-            path: /dev/nvidiactl
-        - name: nvidia-uvm
-          hostPath:
-            path: /dev/nvidia-uvm
-        - name: nvidia-modeset
-          hostPath:
-            path: /dev/nvidia-modeset
+      - name: nvidia-dev
+        hostPath:
+          path: /dev/nvidia0
+      - name: nvidia-ctl
+        hostPath:
+          path: /dev/nvidiactl
+      - name: nvidia-uvm
+        hostPath:
+          path: /dev/nvidia-uvm
+      - name: nvidia-modeset
+        hostPath:
+          path: /dev/nvidia-modeset

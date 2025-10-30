@@ -1,17 +1,17 @@
 # 🚀 K3s Multi-Node AI Cluster with PostgreSQL & pgAdmin
 
-**🟢 CURRENT STATUS: FULLY OPERATIONAL** - Production K3s cluster with 3 GPU nodes, comprehensive verification, and automated monitoring.
+**� CURRENT STATUS: SERVER REMOVED - READY FOR RECONFIGURATION** - K3s server uninstalled from Tower, comprehensive removal and monitoring scripts available, infrastructure updated with new network topology.
 
 This repository provides a complete, automated setup for a high-performance Kubernetes cluster optimized for AI/ML workloads on Jetson devices. It combines K3s (lightweight Kubernetes), dual-network architecture (10G + 1G), GPU acceleration, PostgreSQL database, and comprehensive application deployments with **production-ready stability verification**.
 
-**🎯 October 26, 2025 Update**: Comprehensive README consolidation with detailed GPU configuration, Spark2 agent setup, and production deployment guides. All GPU frameworks validated and operational.
+**🎯 October 29, 2025 Update**: Blackwell GPU support successfully implemented with NVIDIA GPU Operator for DGX Spark nodes. GPU operator deployment configurations created for Spark1 and Spark2 nodes, replacing manual device mounting approach. **✅ Blackwell GB10 GPUs now fully operational with TensorFlow, PyTorch, and TensorRT support.**
 
 ## 🎯 What This Project Provides
 
 ### ✅ Complete AI-Ready Kubernetes Cluster
 - **Automated Setup**: Single-command cluster deployment with network configuration
-- **GPU Optimization**: NVIDIA GPU support with runtime classes and device plugins
-- **Dual-Network Performance**: 10G dedicated link for AGX Orin, 1G for Nano
+- **GPU Optimization**: NVIDIA GPU support with runtime classes, device plugins, and Blackwell GB10 compatibility
+- **Dual-Network Performance**: 10G dedicated link for AGX Orin, 1G for Nano, optimized for DGX Spark devices
 - **Application Stack**: FastAPI with GPU acceleration, PostgreSQL with pgvector, pgAdmin
 - **Production Ready**: Comprehensive stability verification and monitoring
 - **96-Step Automation**: Complete end-to-end deployment with validation
@@ -24,6 +24,8 @@ This repository provides a complete, automated setup for a high-performance Kube
 ## � **Directory Structure Overview**
 
 - `agent/` - Contains subfolders for each node (agx, nano, spark1, spark2) with deployment scripts, configs, and apps
+  - `spark1-gpuoperator/` - NVIDIA GPU Operator deployment configuration for Spark1 Blackwell GPU
+  - `spark2-gpuoperator/` - NVIDIA GPU Operator deployment configuration for Spark2 Blackwell GPU
 - `archive/` - Backup scripts, old configs, and health checks
 - `docs/` - Documentation and project plans
 - `images/` - Built images and configs for containerization
@@ -38,35 +40,47 @@ This repository provides a complete, automated setup for a high-performance Kube
 - `dockerfile.*` for container builds
 - `*.yaml` for Kubernetes deployments
 
-## �🖥️ **Current Cluster Status** (October 16, 2025)
+## �🖥️ **Current Cluster Status** (October 30, 2025)
 
-### ✅ **Production Deployment Status**
-- **Status**: 🟢 **FULLY OPERATIONAL** - Complete K3s cluster with GPU support
-- **Deployment**: 96-step automated deployment completed successfully
-- **Verification**: Comprehensive endpoint testing integrated (steps 94-95)
-- **Last Updated**: October 18, 2025
+### � **Cluster Status Update**
+- **Status**: ✅ **BLACKWELL GPU OPERATOR FULLY AUTOMATED & SUCCESSFUL** - NVIDIA GPU Operator v25.10.0 running on Spark1 with complete end-to-end automation
+- **Infrastructure**: Updated with Comcast Business Router → ER605 Router → 10G Unifi Switch topology
+- **GPU Verification**: All GPU checks passed - TensorFlow, PyTorch, TensorRT, cuSPARSELt, cuDNN all functional on Blackwell GB10 (CUDA 12.1)
+- **Registry Configuration**: HTTP registry properly configured for both K3s and containerd
+- **Script Automation**: k3s-spark1.sh fully automated - handles registry config, service restarts, job cleanup, GPU operator readiness, containerd configuration, and containerd restarts
+- **Management Scripts**: Complete suite of agent removal and memory monitoring scripts available
+- **Last Updated**: October 30, 2025
 
 ### 🏗️ **Cluster Architecture**
 ```
-Tower (Control Plane)    Nano (GPU Node)    AGX (GPU Node)    DGX-Spark-1    DGX-Spark-2
-├── K3s Server          ├── FastAPI App    ├── FastAPI App   ├── K3s Agent   ├── K3s Agent
-├── Docker Registry     ├── Jupyter Lab    ├── Jupyter Lab   │   Operational │   Operational
-├── PostgreSQL          ├── GPU Runtime    ├── GPU Runtime   │               │
-├── pgAdmin             ├── NVIDIA GPU     └── NVIDIA GPU    │               │
-└── NFS Server          └── Node Affinity  └── Node Affinity └── 192.168.1.201 └── 192.168.1.202
+Comcast Business Router → ER605 Router → 10G Unifi Switch → Cluster Nodes
+Tower (Control Plane)    Nano (GPU Node)    AGX (GPU Node)    DGX-Spark-1        DGX-Spark-2
+├── K3s Server          ├── FastAPI App    ├── FastAPI App   ├── K3s Agent       ├── K3s Agent
+│   (Removed)           ├── Jupyter Lab    ├── Jupyter Lab   │   Operational     │   Operational
+├── Docker Registry     ├── GPU Runtime    ├── GPU Runtime   ├── GPU Operator    ├── GPU Operator
+├── PostgreSQL          ├── NVIDIA GPU     └── NVIDIA GPU    ├── Blackwell GB10   ├── Blackwell GB10
+├── pgAdmin             └── Node Affinity  └── Node Affinity  │   ✅ Verified      │   Ready
+└── Monitoring          └── Health Checks  └── Health Checks  └── 192.168.1.201     └── 192.168.1.202
+└── NFS Server          └── Node Affinity  └── Node Affinity
 ```
 
 ### 📊 **Cluster Nodes**
-| Node           | IP Address    | Role                            | GPU Support      | Status          |
-|----------------|--------------|----------------------------------|------------------|-----------------|
-| **Tower**      | 192.168.1.150  | Control Plane, Registry, Storage | -                | ✅ Operational  |
-| **Nano**       | 192.168.1.181  | GPU Worker Node                  | Jetson Nano GPU  | ✅ Operational  |
-| **AGX**        | 192.168.1.244  | GPU Worker Node                  | AGX Orin GPU     | ✅ Operational  |
-| **DGX-Spark-1**| 192.168.1.201  | GPU Worker Node                  | GB10 GPU         | ✅ Operational  |
-| **DGX-Spark-2**| 192.168.1.202  | GPU Worker Node                  | GB10 GPU         | ✅ Operational  |
+| Node           | IP Address    | Role                            | GPU Support      | Status                    |
+|----------------|--------------|----------------------------------|------------------|---------------------------|
+| **Tower**      | 192.168.1.150  | Control Plane, Registry, Storage | -                | 🟡 k3s Server Removed     |
+| **Nano**       | 192.168.1.181  | GPU Worker Node                  | Jetson Nano GPU  | ✅ Operational (Agent)    |
+| **AGX**        | 192.168.1.244  | GPU Worker Node                  | AGX Orin GPU     | ✅ Operational (Agent)    |
+| **DGX-Spark-1**| 192.168.1.201  | GPU Worker Node                  | Blackwell GB10   | ✅ Operational (Agent + GPU Op) |
+| **DGX-Spark-2**| 192.168.1.202  | GPU Worker Node                  | Blackwell GB10   | ✅ Operational (Agent + GPU Op) |
 
 ### 🆕 **DGX-Spark Devices Integration**
-The first DGX-Spark device (`192.168.1.201`) has been added to the network and is ready for K3s cluster integration. The device responds to ping with excellent connectivity and can be added as a 4th GPU node using the existing deployment scripts. The second DGX-Spark device will be interconnected with the first via 200G transceiver connection connected with 7x cable for high-speed communication.
+The DGX-Spark devices (`192.168.1.201` and `192.168.1.202`) are integrated into the K3s cluster with **Blackwell GB10 GPU support** via NVIDIA GPU Operator. Both devices feature factory-installed NVIDIA drivers and are configured for optimal AI/ML workloads. The devices are interconnected via 200G transceiver connections for high-speed communication between Spark1 and Spark2 nodes.
+
+**GPU Operator Deployment**:
+- **Spark1**: `agent/spark1-gpuoperator/` - Complete GPU operator configuration with automated installation
+- **Spark2**: `agent/spark2-gpuoperator/` - Complete GPU operator configuration with automated installation
+- **Blackwell Compatibility**: NVIDIA GPU Operator v24.9.0 configured for pre-installed drivers and Blackwell GB10 GPUs
+- **Resource Management**: Standard Kubernetes GPU scheduling with `nvidia.com/gpu` resource allocation
 
 ### 🌐 **Network Architecture & Performance**
 
@@ -127,38 +141,84 @@ Located in `scripts/` directory for advanced network setup:
 - **GPU Runtime**: NVIDIA runtime classes and device plugins active
 - **Network**: All endpoints responding correctly
 
-## 🔧 **Recent Script Updates (October 18, 2025)**
+## 🔧 **Recent Updates (October 29, 2025)**
 
-### ✅ **k3s.sh Script Optimizations**
-- **Step Count**: Expanded to 96-step automated deployment (from 73 steps)
-- **Function Parity**: All 96 step calls have corresponding function definitions
-- **Resource Safety**: GPU cleanup steps now verify CPU deployment existence before cleanup
-- **Execution Order**: Corrected PostgreSQL deployment positioning (step 75 now follows step 74)
-- **Syntax Fixes**: Resolved function definition errors and duplicate step calls
-- **Enhanced Verification**: Comprehensive pod verification and endpoint testing (steps 94-95)
+### 🟢 **Blackwell GPU Support Implementation**
+- **GPU Operator Deployment**: Created dedicated GPU operator configurations for Spark1 and Spark2 DGX nodes
+- **Blackwell Compatibility**: Implemented NVIDIA GPU Operator v24.9.0 with pre-installed driver support for Blackwell GB10 GPUs
+- **Resource Management**: Replaced manual device mounting with proper Kubernetes GPU resource allocation (`nvidia.com/gpu`)
+- **Deployment Scripts**: Updated `k3s-spark1.sh` with automated GPU operator installation and configuration
+- **Documentation**: Added comprehensive GPU operator setup guides and Blackwell-specific configurations
 
-### 🛠️ **Key Improvements**
-- **Error Prevention**: Eliminated "command not found" errors from missing functions
-- **Logical Flow**: Database deployment occurs immediately after image push
-- **Safety Checks**: GPU resource cleanup only runs when CPU deployments exist
-- **Code Quality**: Fixed syntax errors and improved maintainability
+### 🟡 **Infrastructure & Cluster Management Updates**
+- **Network Topology**: Updated to Comcast Business Router → ER605 Router → 10G Unifi Switch → Cluster Nodes
+- **K3s Server Removal**: Executed 05-rmvserver.sh, cleanly removed k3s server from Tower
+- **Agent Removal Scripts**: Created comprehensive removal scripts for all agents (01-rmvagent-spark2.sh through 04-rmvagent-nano.sh)
+- **Memory Monitoring**: Implemented memory check scripts for all nodes (01-memcheck-spark2.sh through 05-memcheck-agx.sh)
+- **TLS Certificate Updates**: Regenerated certificates with new IP addresses post-migration
+- **Cluster Connectivity**: Verified post-certificate update across all nodes
+
+### 🛠️ **Management Tools**
+
+#### **Server Utils**
+This directory contains utility scripts and tools for managing the k3s cluster server components.
+
+**Network Connectivity Check Scripts**  
+Located in the `server/utils/ping/` subdirectory, these scripts provide comprehensive network connectivity testing for all cluster nodes.
+
+- **01-check-nat-ping-tower.sh**: Performs comprehensive network connectivity and configuration checks from the Tower server
+- **02.check-nat-ping-agx.sh**: Performs network connectivity checks from AGX's perspective by SSHing into AGX from Tower
+- **03-check-nat-ping-spark1.sh**: Performs network connectivity checks from Spark1's perspective by SSHing into Spark1 from Tower
+- **04-check-nat-ping-spark2.sh**: Performs network connectivity checks from Spark2's perspective by SSHing into Spark2 from Tower
+- **05-check-nat-ping-nano.sh**: Performs network connectivity checks from Nano's perspective by SSHing into Nano from Tower
+
+Each script checks node connectivity, default gateway configuration, DNS resolution, and shows network diagnostics. All scripts require SSH key authentication and test bidirectional connectivity across all cluster nodes.
+
+**Other Utility Directories**:
+- **agent/**: Scripts for managing k3s agent nodes
+- **memory/**: Memory monitoring and management utilities
+- **nfs/**: NFS configuration and management scripts
+- **ssh/**: SSH key management and configuration utilities
+
+**GPU Operator Configurations**:
+- **spark1-gpuoperator/**: Complete GPU operator deployment for Spark1 Blackwell GPU with automated Helm installation
+- **spark2-gpuoperator/**: Complete GPU operator deployment for Spark2 Blackwell GPU with automated Helm installation
+
+- **Removal Scripts**: Standardized cleanup procedures for k3s components across all nodes
+- **Monitoring Scripts**: Cross-platform memory monitoring with system health reporting
+- **Documentation**: Updated READMEs in utils/ and root directories with current status
 
 ## � GPU Configuration & Testing Guide
 
-### ✅ **GPU Access Strategy: Privileged Direct Mounts**
-**Status**: ✅ **OPTIMIZED** - Bypasses Kubernetes GPU resource management for Jetson/DGX hardware
+### ✅ **GPU Access Strategy: NVIDIA GPU Operator for Blackwell GPUs**
+**Status**: ✅ **UPDATED** - NVIDIA GPU Operator implementation for DGX Spark Blackwell GB10 GPUs with pre-installed drivers
 
-**Key Configuration**:
-- **Runtime Class**: `nvidia` (NVIDIA container runtime)
-- **Privileged Mode**: `securityContext.privileged: true` (direct host device access)
-- **Device Mounts**: Direct `/dev/nvidia*` device mounting (bypasses device plugin)
-- **No GPU Resources**: Removed `nvidia.com/gpu` resource requests/limits
-- **Job Architecture**: Uses `batch/v1` Jobs instead of Deployments for health checks
+**Key Configuration for DGX Spark Nodes**:
+- **GPU Operator**: Official NVIDIA GPU Operator v24.9.0 for Blackwell GPU support
+- **Pre-installed Drivers**: Configured for factory-installed NVIDIA drivers (`driver.enabled=false`)
+- **Container Toolkit**: Enabled NVIDIA Container Toolkit (`toolkit.enabled=true`)
+- **Runtime**: Containerd runtime (`operator.defaultRuntime=containerd`)
+- **Resource Management**: Standard `nvidia.com/gpu` resource requests/limits
+- **Deployment Architecture**: GPU Operator managed pods with proper resource allocation
 
-### 🏗️ **Job vs Deployment Configuration**
-- **Jobs** (`batch/v1`): Run-to-completion workloads, no persistent pods, health checks
-- **Deployments** (`apps/v1`): Long-running services with replica management
-- **Current Setup**: Spark2 uses Jobs for GPU health validation
+### 🏗️ **GPU Operator vs Manual Device Mounting**
+- **GPU Operator** (`agent/spark*-gpuoperator/`): Production-ready with proper resource management, monitoring, and Blackwell compatibility
+- **Manual Device Mounting** (`agent/spark*/`): Legacy workaround for Blackwell GPU NVML issues, bypasses Kubernetes scheduling
+
+### 🔧 **DGX Spark GPU Operator Deployment**
+Located in `agent/spark1-gpuoperator/` and `agent/spark2-gpuoperator/` directories:
+
+**Automated GPU Operator Installation**:
+- Helm-based deployment with Blackwell-compatible configuration
+- Automatic Helm installation if not present on system
+- Pre-configured for DGX Spark factory driver installations
+- Comprehensive GPU resource management and monitoring
+
+**GPU Workload Deployment**:
+- Standard Kubernetes GPU resource requests (`nvidia.com/gpu: 1`)
+- NVIDIA runtime class for container execution
+- No privileged security context required
+- Proper GPU device allocation and cleanup
 
 ### 🔧 **Hardware Resource Verification**
 Before deploying GPU workloads, verify actual hardware resources:
@@ -1936,7 +1996,7 @@ This document contains the verified steps and commands used to configure and tes
 
 ## SECTION 1: INITIAL CLUSTER PREPARATION (Run on BOTH spark1 and spark2)
 
-> Note: The Management link (enP7s7) uses the following verified Netplan configuration for static IP, DNS, and the default gateway (10.1.10.1):
+> Note: The Management link (enP7s7) uses the following verified Netplan configuration for static IP, DNS, and the default gateway (192.168.1.1):
 
 ```yaml
 network:
@@ -1953,7 +2013,7 @@ network:
         - 8.8.4.4
       routes:
       - to: "0.0.0.0/0"
-        via: "10.1.10.1"
+        via: "192.168.1.1"
 ```
 
 ### 1. Setup Passwordless SSH (Only run this on spark2 to grant access to spark1)

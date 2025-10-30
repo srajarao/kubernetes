@@ -75,8 +75,8 @@ fi
 # Initialize Dynamic Step Counter
 CURRENT_STEP=1
 
-# NOTE: Total steps count is 22 (agent cleanup and installation)
-TOTAL_STEPS=21
+# NOTE: Total steps count is 23 (agent cleanup and installation + GPU operator)
+TOTAL_STEPS=23
 
 # When not in DEBUG mode, disable 'set -e' globally to rely exclusively on explicit error checks
 # to ensure the verbose/silent block structure works without immediate exit.
@@ -462,7 +462,7 @@ step_03(){
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
-    echo "Uninstalling Agent on SPARK2... (Verbose output below)"
+    echo "Uninstalling Agent on SPARK1... (Verbose output below)"
     sleep 5
     # Delete existing deployments and services if they exist to ensure clean uninstall
     echo "Deleting existing fastapi-spark1 deployment..."
@@ -529,7 +529,7 @@ step_04(){
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   # Use the official k3s install script for SPARK2
   K3S_REINSTALL_CMD="sudo curl -sfL https://get.k3s.io | K3S_URL='https://$TOWER_IP:6443' K3S_TOKEN='$TOKEN' sh -"
-  echo "Installing Agent on SPARK2 using official k3s install script..."
+  echo "Installing Agent on SPARK1 using official k3s install script..."
   sleep 5
   if [ "$DEBUG" = "1" ]; then
     echo "Running k3s install script with server URL and token..."
@@ -556,7 +556,7 @@ step_05(){
 # =========================================================================
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
 if [ "$DEBUG" = "1" ]; then
-  echo "Forcing K3s SPARK2 agent to use correct server IP..."
+  echo "Forcing K3s SPARK1 agent to use correct server IP..."
   sleep 5
   echo "Adding SPARK1 host key to known_hosts..."
   ssh-keyscan -H $SPARK1_IP >> ~/.ssh/known_hosts 2>/dev/null
@@ -574,10 +574,10 @@ EOF
   wait_for_agent spark1
   echo "SPARK1 agent service override completed successfully"
 else
-  step_echo_start "a" "spark1" "$SPARK2_IP" "Forcing K3s spark1 agent to use correct server IP..."
+  step_echo_start "a" "spark1" "$SPARK1_IP" "Forcing K3s spark1 agent to use correct server IP..."
 
-  # Add SPARK2 host key to known_hosts to avoid SSH warning
-  ssh-keyscan -H $SPARK2_IP >> ~/.ssh/known_hosts 2>/dev/null
+  # Add SPARK1 host key to known_hosts to avoid SSH warning
+  ssh-keyscan -H $SPARK1_IP >> ~/.ssh/known_hosts 2>/dev/null
 
   # Create systemd override directory and file directly instead of using systemctl edit
   $SSH_CMD $SSH_USER@$SPARK1_IP "sudo mkdir -p /etc/systemd/system/k3s-agent.service.d/" > /dev/null 2>&1
@@ -585,7 +585,7 @@ else
   $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/systemd/system/k3s-agent.service.d/override.conf > /dev/null" << EOF
 [Service]
 Environment="K3S_URL=https://$TOWER_IP:6443"
-Environment="K3S_NODE_IP=$SPARK2_IP"
+Environment="K3S_NODE_IP=$SPARK1_IP"
 EOF
 
   # Reload daemon and restart the service
@@ -598,13 +598,13 @@ EOF
     echo -e "✅\x1b[0m"
   else
     echo -e "❌\x1b[0m"
-    echo -e "\x1b[31mFATAL: Failed to overwrite SPARK2 service file.\x1b[0m"
+    echo -e "\x1b[31mFATAL: Failed to overwrite SPARK1 service file.\x1b[0m"
     exit 1
   fi
 fi
 fi
 if [ "$DEBUG" = "1" ]; then
-  echo "K3s SPARK2 agent service override completed."
+  echo "K3s SPARK1 agent service override completed."
 fi
 step_increment
 print_divider
@@ -648,7 +648,7 @@ fi
 
 step_07(){
 # -------------------------------------------------------------------------
-# STEP 07: Configure Registry for SPARK1
+# STEP 07: Configure Registry for SPARK1 (K3s + Containerd)
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -703,11 +703,33 @@ EOF
 [host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
   capabilities = [\"pull\", \"resolve\", \"push\"]
 EOF
-"
+" && \
+      echo "Creating complete containerd config with NVIDIA runtime and registry..." && \
+      $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/containerd/config.toml > /dev/null << 'EOF'
+version = 2
+[plugins.\"io.containerd.grpc.v1.cri\"]
+  sandbox_image = \"registry.k8s.io/pause:3.6\"
+  [plugins.\"io.containerd.grpc.v1.cri\".containerd]
+    [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes]
+      [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.runc]
+        runtime_type = \"io.containerd.runc.v2\"
+        [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.runc.options]
+          SystemdCgroup = true
+      [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.nvidia]
+        runtime_type = \"io.containerd.runc.v2\"
+        [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.nvidia.options]
+          BinaryName = \"/usr/bin/nvidia-container-runtime\"
+  [plugins.\"io.containerd.grpc.v1.cri\".registry]
+    [plugins.\"io.containerd.grpc.v1.cri\".registry.configs]
+      [plugins.\"io.containerd.grpc.v1.cri\".registry.configs.\"$REGISTRY_IP:$REGISTRY_PORT\"]
+        insecure_skip_verify = true
+        [plugins.\"io.containerd.grpc.v1.cri\".registry.configs.\"$REGISTRY_IP:$REGISTRY_PORT\".tls]
+          insecure_skip_verify = true
+EOF"
     fi
-    echo "Registry configuration completed"
+    echo "Registry configuration completed (K3s registries.yaml + containerd config.toml)"
   else
-    step_echo_start "a" "spark1" "$SPARK2_IP" "Configuring registry for spark1..."
+    step_echo_start "a" "spark1" "$SPARK1_IP" "Configuring registry for spark1 (K3s + containerd)..."
     sleep 5
     if [[ "$REGISTRY_PROTOCOL" == "https" ]]; then
   $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
@@ -750,18 +772,40 @@ EOF
 [host.\"http://$REGISTRY_IP:$REGISTRY_PORT\"]
   capabilities = [\"pull\", \"resolve\", \"push\"]
 EOF
-" > /dev/null 2>&1
+" > /dev/null 2>&1 && \
+  echo "Creating complete containerd config with NVIDIA runtime and registry..." && \
+  $SSH_CMD $SSH_USER@$SPARK1_IP "sudo tee /etc/containerd/config.toml > /dev/null << 'EOF'
+version = 2
+[plugins.\"io.containerd.grpc.v1.cri\"]
+  sandbox_image = \"registry.k8s.io/pause:3.6\"
+  [plugins.\"io.containerd.grpc.v1.cri\".containerd]
+    [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes]
+      [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.runc]
+        runtime_type = \"io.containerd.runc.v2\"
+        [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.runc.options]
+          SystemdCgroup = true
+      [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.nvidia]
+        runtime_type = \"io.containerd.runc.v2\"
+        [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.nvidia.options]
+          BinaryName = \"/usr/bin/nvidia-container-runtime\"
+  [plugins.\"io.containerd.grpc.v1.cri\".registry]
+    [plugins.\"io.containerd.grpc.v1.cri\".registry.configs]
+      [plugins.\"io.containerd.grpc.v1.cri\".registry.configs.\"$REGISTRY_IP:$REGISTRY_PORT\"]
+        insecure_skip_verify = true
+        [plugins.\"io.containerd.grpc.v1.cri\".registry.configs.\"$REGISTRY_IP:$REGISTRY_PORT\".tls]
+          insecure_skip_verify = true
+EOF"
     fi
     if [ $? -eq 0 ]; then
       echo -e "\e[32m✅\e[0m"
     else
-      echo -e "\e[31m❌ Failed to configure registry for SPARK2\e[0m"
+      echo -e "\e[31m❌ Failed to configure registry for SPARK1\e[0m"
       exit 1
     fi
   fi
 fi
 if [ "$DEBUG" = "1" ]; then
-  echo "Registry configuration for SPARK2 completed."
+  echo "Registry configuration for SPARK1 completed (K3s + containerd)."
 fi
 step_increment
 print_divider
@@ -770,10 +814,54 @@ print_divider
 
 
 
-
 step_08(){
+# --------------------------------------------------------------------------------
+# STEP 08: Restart Containerd After Config SPARK1
+# --------------------------------------------------------------------------------
+if [ "$INSTALL_SPARK1_AGENT" = true ]; then
+  if [ "$DEBUG" = "1" ]; then
+    echo "Restarting containerd after configuration..."
+    sleep 5
+    echo "Running: sudo systemctl restart containerd on SPARK1"
+    $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl restart containerd"
+    echo "Waiting for containerd to be active..."
+    sleep 10
+    if $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl is-active --quiet containerd"; then
+      echo "Containerd restarted successfully"
+    else
+      echo "Failed to restart containerd"
+      exit 1
+    fi
+  else
+  step_echo_start "a" "spark1" "$SPARK1_IP" "Restarting containerd after config..."
+  sleep 5
+  if $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl restart containerd" > /dev/null 2>&1; then
+    sleep 10
+    if $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl is-active --quiet containerd"; then
+      echo -e "✅"
+    else
+      echo -e "[31m❌ Containerd restart failed[0m"
+      exit 1
+    fi
+  else
+    echo -e "[31m❌ Containerd restart command failed[0m"
+    exit 1
+  fi
+fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "Containerd restart after config completed."
+fi
+step_increment
+print_divider
+}
+
+
+
+
+step_09(){
 # -------------------------------------------------------------------------
-# STEP 08: Restart Agent After Registry Config SPARK1
+# STEP 09: Restart Agent After Registry Config SPARK1
 # -------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -809,9 +897,9 @@ print_divider
 
 
 
-step_09(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 09: Restart K3s agent on SPARK1 (workaround for containerd config)
+# STEP 23: Restart K3s agent on SPARK1 (workaround for containerd config)
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
 if [ "$DEBUG" = "1" ]; then
@@ -846,56 +934,42 @@ print_divider
 
 
 
-step_10(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 09 (CLEANUP): Force-delete ALL conflicting components (NVIDIA + App)
+# STEP 09 (CLEANUP): Force-delete conflicting components (excluding GPU Operator)
 # --------------------------------------------------------------------------------
+# NOTE: For DGX Spark systems with pre-installed NVIDIA GPU drivers and NVIDIA Container Toolkit,
+# refer to: https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/getting-started.html#pre-installed-nvidia-gpu-drivers-and-nvidia-container-toolkit
+# This ensures proper GPU Operator installation on systems with factory-installed NVIDIA components.
+# GPU Operator components are preserved and will be properly configured in STEP 16.
 if [ "$DEBUG" = "1" ]; then
-  echo "Force-deleting all conflicting NVIDIA GPU components..."
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete namespace gpu-operator --ignore-not-found=true
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset -n default -l app=gpu-operator-node-feature-discovery --grace-period=0 --force --ignore-not-found=true
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset nvidia-device-plugin-spark1 -n kube-system --grace-period=0 --force --ignore-not-found=true
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset -n kube-system -l app.kubernetes.io/name=nvidia-device-plugin --grace-period=0 --force --ignore-not-found=true
+  echo "Force-deleting conflicting components (preserving GPU Operator for proper installation)..."
+  sleep 5
   
-  echo "Force-deleting all old 'fastapi-spark1' application components..."
+  # --- App Cleanup Only (GPU Operator preserved for proper installation) ---
+  echo "Force-deleting old 'fastapi-spark1' application components..."
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-spark1 -n default --grace-period=0 --force --ignore-not-found=true
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod -n default -l app=fastapi-spark1 --grace-period=0 --force --ignore-not-found=true
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark1-service -n default --ignore-not-found=true
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark1-nodeport -n default --ignore-not-found=true
 
-  echo "Waiting for all old components to terminate..."
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds -n default -l app=gpu-operator-node-feature-discovery --timeout=60s --ignore-not-found=true
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds nvidia-device-plugin-spark1 -n kube-system --timeout=60s --ignore-not-found=true
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds -n kube-system -l app.kubernetes.io/name=nvidia-device-plugin --timeout=60s --ignore-not-found=true
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete namespace gpu-operator --timeout=120s --ignore-not-found=true
+  echo "Waiting for old components to terminate..."
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete deployment fastapi-spark1 -n default --timeout=60s --ignore-not-found=true
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete pod -n default -l app=fastapi-spark1 --timeout=60s --ignore-not-found=true
-  echo "All components terminated."
+  echo "Old components terminated."
 
 else
-  step_echo_start "s" "tower" "$TOWER_IP" "Force-deleting all conflicting components (NVIDIA + App)..."
+  step_echo_start "s" "tower" "$TOWER_IP" "Force-deleting conflicting components (preserving GPU Operator)..."
   sleep 5
   
-  # --- NVIDIA Cleanup ---
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete namespace gpu-operator --ignore-not-found=true > /dev/null 2>&1
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset -n default -l app=gpu-operator-node-feature-discovery --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset nvidia-device-plugin-spark1 -n kube-system --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete daemonset -n kube-system -l app.kubernetes.io/name=nvidia-device-plugin --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
-
-  # --- FastAPI App Cleanup ---
+  # --- App Cleanup Only (GPU Operator preserved for proper installation) ---
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete deployment fastapi-spark1 -n spark1 --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod -n spark1 -l app=fastapi-spark1 --grace-period=0 --force --ignore-not-found=true > /dev/null 2>&1
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark1-service -n spark1 --ignore-not-found=true > /dev/null 2>&1
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete service fastapi-spark1-nodeport -n spark1 --ignore-not-found=true > /dev/null 2>&1
 
   echo -e "\nWaiting for old components to terminate (this may take a minute)..."
-  # --- Wait for NVIDIA ---
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds -n default -l app=gpu-operator-node-feature-discovery --timeout=60s --ignore-not-found=true > /dev/null 2>&1
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds nvidia-device-plugin-spark1 -n kube-system --timeout=60s --ignore-not-found=true > /dev/null 2>&1
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete ds -n kube-system -l app.kubernetes.io/name=nvidia-device-plugin --timeout=60s --ignore-not-found=true > /dev/null 2>&1
-  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete namespace gpu-operator --timeout=120s --ignore-not-found=true > /dev/null 2>&1
-  
-  # --- Wait for App ---
+  # --- Wait for App Only ---
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete deployment fastapi-spark1 -n spark1 --timeout=60s --ignore-not-found=true > /dev/null 2>&1
   sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=delete pod -n spark1 -l app=fastapi-spark1 --timeout=60s --ignore-not-found=true > /dev/null 2>&1
   
@@ -908,9 +982,9 @@ step_increment
 print_divider
 }
 
-step_11(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 11: Force Restart K3s Agent and Containerd on SPARK2
+# STEP 23: Force Restart K3s Agent and Containerd on SPARK2
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Performing forceful restart of k3s-agent and containerd on SPARK2..."
@@ -935,7 +1009,7 @@ if [ "$DEBUG" = "1" ]; then
   $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl status k3s-agent --no-pager"
 
 else
-  step_echo_start "a" "spark1" "$SPARK2_IP" "Force restarting K3s agent & containerd..."
+  step_echo_start "a" "spark1" "$SPARK1_IP" "Force restarting K3s agent & containerd..."
   
   $SSH_CMD $SSH_USER@$SPARK1_IP "sudo systemctl stop k3s-agent" > /dev/null 2>&1
   sleep 5
@@ -966,9 +1040,9 @@ print_divider
 }
 
 
-step_12(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 12: Install NVIDIA Device Plugin for GPU Support
+# STEP 23: Install NVIDIA Device Plugin for GPU Support
 # --------------------------------------------------------------------------------
   if [ "$DEBUG" = "1" ]; then
     echo "Installing NVIDIA Device Plugin for GPU support..."
@@ -1162,9 +1236,9 @@ step_increment
 print_divider
 }
 
-step_13(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 13: Clean up FastAPI SPARK2 Docker image tags
+# STEP 23: Clean up FastAPI SPARK2 Docker image tags
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Cleaning up FastAPI SPARK2 Docker image tags..."
@@ -1189,9 +1263,9 @@ print_divider
 }
 
 
-step_14(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 14: Build SPARK2 Docker image
+# STEP 23: Build SPARK2 Docker image
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Building SPARK2 Docker image..."
@@ -1224,9 +1298,9 @@ print_divider
 }
 
 
-step_15(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 15: Tag SPARK2 Docker image
+# STEP 23: Tag SPARK2 Docker image
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Tagging SPARK2 Docker image..."
@@ -1257,9 +1331,9 @@ print_divider
 }
 
 
-step_16(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 16: Push Docker image to registry
+# STEP 23: Push Docker image to registry
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Pushing Docker image to registry..."
@@ -1292,9 +1366,94 @@ print_divider
 
 
 
-step_17(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 17: Deploy FastAPI to SPARK1
+# STEP 23: Install NVIDIA GPU Operator for DGX Spark (Pre-installed Drivers) - v25.10.0
+# --------------------------------------------------------------------------------
+# Installs GPU Operator with configuration for pre-installed NVIDIA drivers and container toolkit
+# as documented at: https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/getting-started.html#pre-installed-nvidia-gpu-drivers-and-nvidia-container-toolkit
+if [ "$DEBUG" = "1" ]; then
+  echo "Installing NVIDIA GPU Operator v25.10.0 for DGX Spark with pre-installed drivers..."
+  sleep 5
+  
+  echo "Checking if Helm is installed..."
+  if ! command -v helm &> /dev/null; then
+    echo "Helm not found. Installing Helm..."
+    curl https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz -o helm.tar.gz
+    tar -zxvf helm.tar.gz
+    sudo mv linux-amd64/helm /usr/local/bin/helm
+    rm -rf linux-amd64 helm.tar.gz
+  fi
+  
+  echo "Adding NVIDIA Helm repository..."
+  helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update
+  helm repo update
+  
+  echo "Installing GPU Operator with pre-installed driver configuration..."
+  helm upgrade --install gpu-operator nvidia/gpu-operator \
+    --version=v25.10.0 \
+    --create-namespace \
+    --namespace gpu-operator \
+    --set driver.enabled=false \
+    --set toolkit.enabled=true \
+    --set operator.defaultRuntime=containerd \
+    --wait --timeout=600s
+  
+  if [ $? -eq 0 ]; then
+    echo "GPU Operator installed successfully"
+  else
+    echo "Failed to install GPU Operator"
+    exit 1
+  fi
+  
+  echo "Waiting for GPU Operator pods to be ready..."
+  sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=condition=ready pod -l app.kubernetes.io/name=gpu-operator --namespace gpu-operator --timeout=300s
+  
+else
+  step_echo_start "s" "tower" "$TOWER_IP" "Installing NVIDIA GPU Operator v25.10.0 (pre-installed drivers)..."
+  sleep 5
+  
+  if ! command -v helm &> /dev/null; then
+    curl https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz -o helm.tar.gz > /dev/null 2>&1
+    tar -zxvf helm.tar.gz > /dev/null 2>&1
+    sudo mv linux-amd64/helm /usr/local/bin/helm > /dev/null 2>&1
+    rm -rf linux-amd64 helm.tar.gz > /dev/null 2>&1
+  fi
+  
+  helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update > /dev/null 2>&1
+  helm repo update > /dev/null 2>&1
+  
+  output=$(helm upgrade --install gpu-operator nvidia/gpu-operator \
+    --version=v25.10.0 \
+    --create-namespace \
+    --namespace gpu-operator \
+    --set driver.enabled=false \
+    --set toolkit.enabled=true \
+    --set operator.defaultRuntime=containerd \
+    --wait --timeout=600s 2>&1)
+  
+  if [ $? -eq 0 ]; then
+    echo -e "✅"
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=condition=ready pod -l app.kubernetes.io/name=gpu-operator --namespace gpu-operator --timeout=300s > /dev/null 2>&1
+  else
+    echo -e "❌"
+    echo "$output"
+    exit 1
+  fi
+fi
+if [ "$DEBUG" = "1" ]; then
+  echo "GPU Operator installation completed."
+fi
+step_increment
+print_divider
+}
+
+
+
+
+step_23(){
+# --------------------------------------------------------------------------------
+# STEP 23: Deploy FastAPI to SPARK1
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   if [ "$DEBUG" = "1" ]; then
@@ -1302,6 +1461,8 @@ if [ "$INSTALL_SPARK1_AGENT" = true ]; then
     sleep 5
     echo "Deleting existing fastapi-spark1 pod if exists..."
     sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod fastapi-spark1 --ignore-not-found=true
+    echo "Deleting existing spark1 job if exists..."
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete job spark1 --ignore-not-found=true
     echo "Applying deployment YAML for fastapi-spark1 from file..."
     sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f fastapi-deployment-spark1.yaml
     if [ $? -eq 0 ]; then
@@ -1314,6 +1475,7 @@ if [ "$INSTALL_SPARK1_AGENT" = true ]; then
     step_echo_start "s" "tower" "$TOWER_IP" "Deploying FastAPI to SPARK1..."
     sleep 5
     sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete pod fastapi-spark1 --ignore-not-found=true > /dev/null 2>&1
+    sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml delete job spark1 --ignore-not-found=true > /dev/null 2>&1
     output=$(sudo kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml apply -f fastapi-deployment-spark1.yaml 2>&1)
     if [ $? -eq 0 ]; then
       echo -e "✅"
@@ -1333,9 +1495,9 @@ print_divider
 
 
 
-step_18(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 18: SPARK1 GPU CAPACITY VERIFICATION
+# STEP 23: SPARK1 GPU CAPACITY VERIFICATION
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   step_echo_start "a" "spark1" "$SPARK1_IP" "Verifying SPARK1 GPU capacity..."
@@ -1354,9 +1516,9 @@ print_divider
 
 
 
-step_19(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 19: SPARK1 GPU RESOURCE CLEANUP
+# STEP 23: SPARK1 GPU RESOURCE CLEANUP
 # --------------------------------------------------------------------------------
 if [ "$INSTALL_SPARK1_AGENT" = true ]; then
   step_echo_start "a" "spark1" "$SPARK1_IP" "Cleaning up SPARK1 GPU resources for deployment..."
@@ -1944,10 +2106,10 @@ EOF"; then
 
   # Step 9: Wait for agent to be ready
   if [ "$DEBUG" = "1" ]; then
-    echo "Waiting for SPARK2 agent to be ready after restart..."
+    echo "Waiting for SPARK1 agent to be ready after restart..."
   fi
   if ! wait_for_agent spark1; then
-    echo "SPARK2 agent failed to become ready after GPU resource cleanup"
+    echo "SPARK1 agent failed to become ready after GPU resource cleanup"
     restore_containerd_config "$BACKUP_FILE"
     echo -e "❌"
     exit 1
@@ -2010,9 +2172,9 @@ print_divider
 
 
 
-step_20(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 20: FINAL VERIFICATION - NODE AND POD STATUS
+# STEP 23: FINAL VERIFICATION - NODE AND POD STATUS
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Starting final verification of node and pod status..."
@@ -2071,9 +2233,9 @@ print_divider
 }
 
 
-step_21(){
+step_23(){
 # --------------------------------------------------------------------------------
-# STEP 21: DISPLAY SERVICE ENDPOINTS
+# STEP 23: DISPLAY SERVICE ENDPOINTS
 # --------------------------------------------------------------------------------
 if [ "$DEBUG" = "1" ]; then
   echo "Starting display of service endpoints..."
@@ -2122,6 +2284,8 @@ step_18
 step_19
 step_20
 step_21
+step_22
+step_23
 
 
 
