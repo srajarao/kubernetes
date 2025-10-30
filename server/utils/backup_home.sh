@@ -35,6 +35,9 @@ case "$HOSTNAME" in
     spark2)
         DEST="$BASE_PATH/spark2_home/containers"
         ;;
+    krithi)
+        DEST="$BASE_PATH/krithi_home/containers"
+        ;;
     *)
         echo "Unknown hostname: $HOSTNAME. Defaulting to tower_home."
         DEST="$BASE_PATH/tower_home/containers"
