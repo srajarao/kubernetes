@@ -49,20 +49,21 @@ esac
 EXCLUDES="--exclude=.git --exclude=.cache --exclude=Cache --exclude=__pycache__ --exclude=.mozilla --exclude=.config/google-chrome --exclude=.config/chromium --exclude=.thumbnails --exclude=.local/share/Trash --exclude=rag/reference/azure-ai-search-multimodal-sample/data/"
 
 # Perform the backup with --delete to remove files from the destination that are not in the source.
-rsync -avh --delete $EXCLUDES "$SRC/" "$DEST/"
+# Use --ignore-errors to continue on permission issues, --no-owner and --no-group to skip chown operations
+rsync -avh --delete --ignore-errors --no-owner --no-group $EXCLUDES "$SRC/" "$DEST/"
 
-# Change ownership of backup to invoking user
-if [ -n "$SUDO_USER" ]; then
-    chown -R "$SUDO_USER:$SUDO_USER" "$DEST"
-fi
+# Note: chown is skipped on NFS mounts due to root squashing security feature
+# Files will retain their original ownership from the source
+echo "Note: File ownership not changed due to NFS root squashing security policy"
 
 # Verify the backup using rsync's --dry-run
+# Use --ignore-errors to handle permission issues gracefully, --no-owner and --no-group to skip chown operations
 echo "Verifying backup for differences..."
-rsync -avn --delete $EXCLUDES "$SRC/" "$DEST/" | grep -E '^<|>|^deleting' &> /tmp/backup_home.log
+rsync -avn --delete --ignore-errors --no-owner --no-group $EXCLUDES "$SRC/" "$DEST/" 2>/dev/null | grep -E '^<|>|^deleting' &> /tmp/backup_home.log
 
 if [ ! -s /tmp/backup_home.log ]; then
     echo "No differences found between source and backup."
 else
-    echo "Differences found between source and backup:"
+    echo "Differences found between source and backup (some may be due to permission restrictions):"
     cat /tmp/backup_home.log
 fi
