@@ -1207,6 +1207,108 @@ async def check_memory_on_node(node_name: str, node_ip: str) -> tuple[bool, Dict
     except Exception as e:
         return False, {"error": f"Exception during memory check: {str(e)}"}
 
+async def backup_home_nodes(node_names: List[str]) -> Dict[str, Any]:
+    """
+    Backup home directory on multiple nodes and return detailed results.
+    """
+    nodes_info = get_cluster_node_info()
+    results = {}
+
+    for node_name in node_names:
+        node_name_lower = node_name.lower()
+
+        # Find node IP
+        node_ip = None
+        for category, node_list in nodes_info["nodes"].items():
+            if isinstance(node_list, list):
+                for node in node_list:
+                    if node["name"].lower() == node_name_lower:
+                        node_ip = node["ip"]
+                        break
+            else:
+                if node_list["name"].lower() == node_name_lower:
+                    node_ip = node_list["ip"]
+                    break
+
+        if node_ip:
+            # Execute backup home for this node
+            success, backup_info = await backup_home_on_node(node_name, node_ip)
+            results[node_name] = {
+                "ip": node_ip,
+                "success": success,
+                "backup_info": backup_info,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            results[node_name] = {
+                "error": f"Node '{node_name}' not found in cluster configuration",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    return {
+        "backup_results": results,
+        "summary": {
+            "requested_nodes": len(node_names),
+            "successful_backups": sum(1 for r in results.values() if r.get("success", False)),
+            "timestamp": datetime.now().isoformat()
+        }
+    }
+
+async def backup_home_on_node(node_name: str, node_ip: str) -> tuple[bool, Dict[str, Any]]:
+    """
+    Backup home directory on a specific node via SSH.
+    Returns (success, backup_info)
+    """
+    try:
+        # SSH command to run backup_home.sh script
+        backup_script_path = "/home/sanjay/containers/kubernetes/server/utils/backup_home.sh"
+
+        # Check if script exists on the target node
+        check_cmd = [
+            'ssh', '-o', 'ConnectTimeout=10', '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null', f'sanjay@{node_ip}',
+            f'test -f "{backup_script_path}" && echo "exists" || echo "not found"'
+        ]
+
+        check_process = await asyncio.create_subprocess_exec(
+            *check_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        check_stdout, check_stderr = await check_process.communicate()
+
+        if check_process.returncode != 0 or check_stdout.decode().strip() != "exists":
+            return False, {"error": f"Backup script not found on {node_name}: {backup_script_path}"}
+
+        # Run the backup script
+        cmd = [
+            'ssh', '-o', 'ConnectTimeout=30', '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null', f'sanjay@{node_ip}',
+            f'bash "{backup_script_path}"'
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await process.communicate()
+
+        if process.returncode == 0:
+            output = stdout.decode().strip()
+            return True, {
+                "output": output,
+                "script_path": backup_script_path
+            }
+        else:
+            error_msg = stderr.decode().strip() or "Unknown error"
+            return False, {"error": f"Backup failed: {error_msg}"}
+
+    except Exception as e:
+        return False, {"error": f"Exception during backup: {str(e)}"}
+
 # Docker API endpoints
 @app.get("/api/docker/info")
 async def docker_info():
@@ -1333,6 +1435,18 @@ async def memory_check_cluster_nodes(request: dict):
         return {"error": "No nodes specified"}
     
     return await memory_check_nodes(nodes)
+
+@app.post("/api/cluster/backup-home")
+async def backup_home_cluster_nodes(request: dict):
+    """
+    Backup home directory on specified nodes.
+    Expected JSON: {"nodes": ["node1", "node2", ...]}
+    """
+    nodes = request.get("nodes", [])
+    if not nodes:
+        return {"error": "No nodes specified"}
+    
+    return await backup_home_nodes(nodes)
 
 @app.get("/api/cluster/resources")
 async def get_cluster_resources(request: Request, current_user: User = Depends(get_current_active_user)):
@@ -2920,6 +3034,7 @@ async def root():
                                         <button class="btn btn-warning" onclick="nfsSetupSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">📁 NFS Setup</button>
                                         <button class="btn btn-info" onclick="hostfileSetupSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">📋 Hostfile Setup</button>
                                         <button class="btn btn-secondary" onclick="memoryCheckSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">🧠 Memory Check</button>
+                                        <button class="btn btn-dark" onclick="backupHomeSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">💾 Backup Home</button>
                                     </div>
                                     <div id="network-status" style="margin-top: 10px; font-size: 0.9em;"></div>
                                 </div>
@@ -4258,6 +4373,69 @@ ${data.execution_result.stdout}
                     
                 } catch (error) {
                     networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing memory check</div>';
+                    treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
+                }
+            }
+
+            async function backupHomeSelectedNodes() {
+                const selectedNodes = getSelectedNodes();
+                const networkStatusDiv = document.getElementById('network-status');
+                const treeContentDiv = document.getElementById('tree-content');
+                
+                if (selectedNodes.length === 0) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f59e0b;">⚠️ Please select at least one node for backup home</div>';
+                    return;
+                }
+                
+                networkStatusDiv.innerHTML = '<div style="color: #3b82f6;">💾 Backing up home directories...</div>';
+                treeContentDiv.textContent = `💾 Starting home directory backup for ${selectedNodes.length} node(s)...\n\n`;
+                
+                try {
+                    const response = await fetch('/api/cluster/backup-home', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ nodes: selectedNodes })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        networkStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        treeContentDiv.textContent += `❌ Error: ${data.error}\n`;
+                        return;
+                    }
+                    
+                    networkStatusDiv.innerHTML = `<div style="color: #10b981;">✅ Home directory backup completed for ${selectedNodes.length} node(s)</div>`;
+                    
+                    // Display results in terminal
+                    let resultsText = `💾 Home Directory Backup Results (${new Date().toLocaleString()})\n`;
+                    resultsText += `═`.repeat(50) + `\n\n`;
+                    
+                    Object.entries(data.backup_results).forEach(([node, result]) => {
+                        const status = result.success ? '✅ BACKUP SUCCESSFUL' : '❌ BACKUP FAILED';
+                        const ip = result.ip ? ` (${result.ip})` : '';
+                        resultsText += `${status} ${node}${ip}\n`;
+                        
+                        if (result.success && result.backup_info) {
+                            if (result.backup_info.output) {
+                                resultsText += `Backup Output:\n${result.backup_info.output}\n`;
+                            }
+                        } else if (result.error) {
+                            resultsText += `Error: ${result.error}\n`;
+                        }
+                        resultsText += `─`.repeat(30) + `\n\n`;
+                    });
+                    
+                    resultsText += `📊 Summary: ${data.summary.successful_backups}/${data.summary.requested_nodes} nodes backed up successfully\n\n`;
+                    resultsText += `Ready for next operation...\n`;
+                    
+                    treeContentDiv.textContent = resultsText;
+                    
+                } catch (error) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing home directory backup</div>';
                     treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
                 }
             }
