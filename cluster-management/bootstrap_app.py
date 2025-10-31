@@ -4,7 +4,7 @@ A minimal FastAPI application to demonstrate native Python web serving
 """
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 import pathlib
@@ -63,15 +63,73 @@ def log_audit_event(event_type: str, username: str, action: str, resource: str =
     }
     audit_logger.info(json.dumps(audit_data))
 
-def get_client_info(request):
-    """Extract client information from request"""
-    client_host = getattr(request.client, 'host', None) if hasattr(request, 'client') else None
-    user_agent = request.headers.get('user-agent', None)
-    return client_host, user_agent
+def log_terminal_command(command: str, user: str = "system", ip_address: str = None):
+    """Log terminal command execution"""
+    timestamp = datetime.utcnow().isoformat()
+    log_entry = {
+        "timestamp": timestamp,
+        "user": user,
+        "command": command,
+        "ip_address": ip_address
+    }
+    
+    try:
+        with open(COMMAND_LOG_FILE, 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+    except Exception as e:
+        print(f"Failed to log command: {e}")
 
-# SSL/HTTPS Configuration
-SSL_CERT_FILE = "ssl/cert.pem"
-SSL_KEY_FILE = "ssl/key.pem"
+def log_terminal_output(output: str, command: str = None):
+    """Log terminal output if logging is enabled"""
+    if not hasattr(log_terminal_output, 'enabled') or not log_terminal_output.enabled:
+        return
+    
+    timestamp = datetime.utcnow().isoformat()
+    log_entry = {
+        "timestamp": timestamp,
+        "command": command or "unknown",
+        "output": output.strip()
+    }
+    
+    try:
+        with open(OUTPUT_LOG_FILE, 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+    except Exception as e:
+        print(f"Failed to log output: {e}")
+
+def trace_url(url: str, method: str = "GET", user: str = "system", ip_address: str = None):
+    """Trace outgoing URL if tracing is enabled"""
+    if not hasattr(trace_url, 'enabled') or not trace_url.enabled:
+        return
+    
+    timestamp = datetime.utcnow().isoformat()
+    trace_entry = {
+        "timestamp": timestamp,
+        "url": url,
+        "method": method,
+        "user": user,
+        "ip_address": ip_address
+    }
+    
+    try:
+        with open(URL_TRACE_FILE, 'a') as f:
+            f.write(json.dumps(trace_entry) + '\n')
+    except Exception as e:
+        print(f"Failed to trace URL: {e}")
+
+# Initialize logging state
+log_terminal_output.enabled = False
+trace_url.enabled = False
+command_recording_enabled = False
+
+# Logging and Tracing Configuration
+LOG_FOLDER = os.getenv("LOG_FOLDER", "logs")
+COMMAND_LOG_FILE = os.path.join(LOG_FOLDER, "terminal_commands.log")
+OUTPUT_LOG_FILE = os.path.join(LOG_FOLDER, "terminal_output.log")
+URL_TRACE_FILE = os.path.join(LOG_FOLDER, "url_trace.log")
+
+# Ensure log directory exists
+os.makedirs(LOG_FOLDER, exist_ok=True)
 
 def generate_ssl_certificates():
     """Generate self-signed SSL certificates for HTTPS"""
@@ -438,12 +496,24 @@ async def execute_script(script_path: str, timeout: int = 30) -> Dict[str, Any]:
         end_time = datetime.now()
         execution_time = (end_time - start_time).total_seconds()
         
+        # Log the command execution
+        log_terminal_command(f"Executed script: {script_path}", "system")
+        
+        # Log the output if logging is enabled
+        stdout_text = stdout.decode('utf-8', errors='replace')
+        stderr_text = stderr.decode('utf-8', errors='replace')
+        
+        if stdout_text.strip():
+            log_terminal_output(stdout_text, f"script: {script_path}")
+        if stderr_text.strip():
+            log_terminal_output(stderr_text, f"script: {script_path} (stderr)")
+        
         return {
             "success": True,
             "script_path": script_path,
             "return_code": process.returncode,
-            "stdout": stdout.decode('utf-8', errors='replace'),
-            "stderr": stderr.decode('utf-8', errors='replace'),
+            "stdout": stdout_text,
+            "stderr": stderr_text,
             "execution_time": execution_time,
             "timestamp": end_time.isoformat()
         }
@@ -2854,6 +2924,53 @@ async def root():
                 max-height: 400px;
                 overflow-y: auto;
             }
+            
+            /* Switch Toggle Styles */
+            .switch {
+                position: relative;
+                display: inline-block;
+                width: 50px;
+                height: 24px;
+            }
+            .switch input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+            .slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: #ccc;
+                transition: .4s;
+                border-radius: 24px;
+            }
+            .slider:before {
+                position: absolute;
+                content: "";
+                height: 18px;
+                width: 18px;
+                left: 3px;
+                bottom: 3px;
+                background-color: white;
+                transition: .4s;
+                border-radius: 50%;
+            }
+            input:checked + .slider {
+                background-color: #10b981;
+            }
+            input:checked + .slider:before {
+                transform: translateX(26px);
+            }
+            .slider.round {
+                border-radius: 24px;
+            }
+            .slider.round:before {
+                border-radius: 50%;
+            }
             .status-indicator {
                 display: inline-block;
                 width: 12px;
@@ -3112,6 +3229,7 @@ async def root():
                     <li class="nav-tab" onclick="showTab('deployments')">Deployments</li>
                     <li class="nav-tab" onclick="showTab('operations')">Operations</li>
                     <li class="nav-tab" onclick="showTab('api')">API</li>
+                    <li class="nav-tab" onclick="showTab('wiki')">📚 Wiki</li>
                 </ul>
             </nav>
 
@@ -3224,6 +3342,53 @@ async def root():
                         <div id="cluster-tree" style="font-family: 'Courier New', monospace; background: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 5px; min-height: 300px;">
                             <div id="tree-content">
                                 Loading cluster tree...
+                            </div>
+                        </div>
+                        
+                        <!-- Logging and Tracing Controls -->
+                        <div style="margin-top: 15px; padding: 15px; background: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0;">
+                            <h4 style="margin: 0 0 10px 0; color: #374151;">📊 Logging & Tracing Controls</h4>
+                            <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                                <!-- Terminal Output Logging Toggle -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <label for="output-logging-toggle" style="font-weight: 500; color: #374151;">📝 Log Terminal Output:</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="output-logging-toggle" onchange="toggleOutputLogging()">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                
+                                <!-- URL Tracing Toggle -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <label for="url-trace-toggle" style="font-weight: 500; color: #374151;">🌐 Trace Outgoing URLs:</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="url-trace-toggle" onchange="toggleUrlTracing()">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                
+                                <!-- Record Commands Button -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <button onclick="recordTerminalCommands()" class="btn btn-info" style="font-size: 0.9em; padding: 6px 12px;">🎬 Record Commands</button>
+                                    <span id="recording-status" style="font-size: 0.85em; color: #6b7280;">Not recording</span>
+                                </div>
+                                
+                                <!-- Log Files Access -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <button onclick="showLogFiles()" class="btn btn-secondary" style="font-size: 0.9em; padding: 6px 12px;">📁 View Logs</button>
+                                    <span id="log-folder-info" style="font-size: 0.85em; color: #6b7280;"></span>
+                                </div>
+                            </div>
+                            
+                            <!-- Log Files Modal (hidden by default) -->
+                            <div id="log-files-modal" style="display: none; margin-top: 15px; padding: 15px; background: white; border-radius: 8px; border: 1px solid #e2e8f0;">
+                                <h5 style="margin: 0 0 10px 0;">📋 Available Log Files</h5>
+                                <div id="log-files-list" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <!-- Log files will be populated here -->
+                                </div>
+                                <div style="margin-top: 10px;">
+                                    <button onclick="hideLogFiles()" class="btn btn-sm btn-secondary">Close</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3482,6 +3647,72 @@ async def root():
                                 <li><code>POST /api/cluster/ping</code> - Ping selected nodes</li>
                             </ul>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Wiki Tab -->
+                <div id="wiki" class="tab-content">
+                    <h2>📚 Documentation Wiki</h2>
+
+                    <div style="background: #f8fafc; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                        <p>Welcome to the Cluster Management Documentation Wiki. This comprehensive documentation covers all aspects of the cluster management system, from deployment to operation and troubleshooting.</p>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin: 20px 0;">
+                        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                            <h3 style="margin-top: 0;">🚀 Getting Started</h3>
+                            <ul style="margin: 0; padding-left: 20px;">
+                                <li><a href="#" onclick="showManPage('deployment_guide')" style="color: #e0e7ff;">Deployment Guide</a></li>
+                                <li><a href="#" onclick="showManPage('environment_variables')" style="color: #e0e7ff;">Environment Variables</a></li>
+                                <li><a href="#" onclick="showManPage('bootstrap_app')" style="color: #e0e7ff;">Main Application</a></li>
+                            </ul>
+                        </div>
+
+                        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white;">
+                            <h3 style="margin-top: 0;">⚙️ Setup & Configuration</h3>
+                            <ul style="margin: 0; padding-left: 20px;">
+                                <li><a href="#" onclick="showManPage('k3s-server')" style="color: #e0e7ff;">K3s Server Setup</a></li>
+                                <li><a href="#" onclick="showManPage('k3s-agent-scripts')" style="color: #e0e7ff;">Agent Node Setup</a></li>
+                                <li><a href="#" onclick="showManPage('start_https')" style="color: #e0e7ff;">HTTPS Configuration</a></li>
+                            </ul>
+                        </div>
+
+                        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;">
+                            <h3 style="margin-top: 0;">🔧 Utilities & Tools</h3>
+                            <ul style="margin: 0; padding-left: 20px;">
+                                <li><a href="#" onclick="showManPage('utility-scripts')" style="color: #e0e7ff;">Utility Scripts</a></li>
+                                <li><a href="#" onclick="showManPage('deploy_to_nano')" style="color: #e0e7ff;">Remote Deployment</a></li>
+                                <li><a href="#" onclick="showManPage('env')" style="color: #e0e7ff;">Environment Setup</a></li>
+                            </ul>
+                        </div>
+
+                        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white;">
+                            <h3 style="margin-top: 0;">📋 Reference</h3>
+                            <ul style="margin: 0; padding-left: 20px;">
+                                <li><a href="#" onclick="showManPage('api-reference')" style="color: #e0e7ff;">API Reference</a></li>
+                                <li><a href="#" onclick="showManPage('troubleshooting')" style="color: #e0e7ff;">Troubleshooting</a></li>
+                                <li><a href="#" onclick="showManPage('security')" style="color: #e0e7ff;">Security Guide</a></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div id="man-content" style="background: #1f2937; color: #e5e7eb; padding: 20px; border-radius: 8px; font-family: 'Courier New', monospace; display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 id="man-title" style="margin: 0; color: #60a5fa;">Manual Page</h3>
+                            <button onclick="hideManPage()" style="background: #dc2626; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">✕ Close</button>
+                        </div>
+                        <div id="man-text" style="white-space: pre-wrap; line-height: 1.5;"></div>
+                    </div>
+
+                    <div style="background: #fef3c7; padding: 20px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #d97706;">
+                        <h3 style="margin-top: 0; color: #92400e;">💡 Quick Tips</h3>
+                        <ul style="margin: 0; padding-left: 20px; color: #92400e;">
+                            <li>Use the navigation links above to access detailed documentation for each component</li>
+                            <li>All documentation is available offline through the man page system</li>
+                            <li>Check the <strong>Environment Variables</strong> section for configuration options</li>
+                            <li>Refer to the <strong>Deployment Guide</strong> for complete setup instructions</li>
+                            <li>Use the <strong>Troubleshooting</strong> section for common issues and solutions</li>
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -5269,6 +5500,252 @@ ${data.execution_result.stdout}
             function searchAuditLogs() {
                 alert('Audit log search UI coming soon!\\n\\nThis will allow you to:\\n- Filter by user, event type, action\\n- Search by date range\\n- Export filtered results');
             }
+
+            // Wiki/Documentation functions
+            async function showManPage(pageName) {
+                try {
+                    const response = await fetch(`/api/docs/man/${pageName}`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    const data = await response.json();
+
+                    document.getElementById('man-title').textContent = data.title;
+                    document.getElementById('man-text').textContent = data.content;
+                    document.getElementById('man-content').style.display = 'block';
+
+                    // Scroll to man content
+                    document.getElementById('man-content').scrollIntoView({ behavior: 'smooth' });
+                } catch (error) {
+                    alert(`Failed to load documentation: ${error.message}`);
+                }
+            }
+
+            function hideManPage() {
+                document.getElementById('man-content').style.display = 'none';
+            }
+
+            // Logging and Tracing Functions
+            async function toggleOutputLogging() {
+                const button = document.getElementById('toggle-output-logging');
+                const isActive = button.classList.contains('active');
+
+                try {
+                    const response = await fetch('/api/logging/toggle-output', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ enabled: !isActive })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.enabled) {
+                            button.classList.add('active');
+                            button.innerHTML = '<i class="fas fa-toggle-on"></i> Logging ON';
+                        } else {
+                            button.classList.remove('active');
+                            button.innerHTML = '<i class="fas fa-toggle-off"></i> Logging OFF';
+                        }
+                        showToast('Terminal output logging ' + (data.enabled ? 'enabled' : 'disabled'), 'success');
+                    } else {
+                        showToast('Failed to toggle output logging', 'error');
+                    }
+                } catch (error) {
+                    showToast('Error toggling output logging: ' + error.message, 'error');
+                }
+            }
+
+            async function toggleUrlTracing() {
+                const button = document.getElementById('toggle-url-tracing');
+                const isActive = button.classList.contains('active');
+
+                try {
+                    const response = await fetch('/api/logging/toggle-url-trace', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ enabled: !isActive })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.enabled) {
+                            button.classList.add('active');
+                            button.innerHTML = '<i class="fas fa-eye"></i> URL Tracing ON';
+                        } else {
+                            button.classList.remove('active');
+                            button.innerHTML = '<i class="fas fa-eye-slash"></i> URL Tracing OFF';
+                        }
+                        showToast('URL tracing ' + (data.enabled ? 'enabled' : 'disabled'), 'success');
+                    } else {
+                        showToast('Failed to toggle URL tracing', 'error');
+                    }
+                } catch (error) {
+                    showToast('Error toggling URL tracing: ' + error.message, 'error');
+                }
+            }
+
+            async function recordTerminalCommands() {
+                const button = document.getElementById('record-commands');
+                const isRecording = button.classList.contains('recording');
+
+                try {
+                    const response = await fetch('/api/logging/record-commands', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ enabled: !isRecording })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.enabled) {
+                            button.classList.add('recording');
+                            button.innerHTML = '<i class="fas fa-record-vinyl"></i> Recording...';
+                            showToast('Command recording started', 'success');
+                        } else {
+                            button.classList.remove('recording');
+                            button.innerHTML = '<i class="fas fa-stop"></i> Record Commands';
+                            showToast('Command recording stopped', 'info');
+                        }
+                    } else {
+                        showToast('Failed to toggle command recording', 'error');
+                    }
+                } catch (error) {
+                    showToast('Error toggling command recording: ' + error.message, 'error');
+                }
+            }
+
+            async function showLogFiles() {
+                try {
+                    const response = await fetch('/api/logging/files', {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const logFilesDiv = document.getElementById('log-files-list');
+
+                        if (data.files && data.files.length > 0) {
+                            let filesHtml = '<h4>Available Log Files:</h4><ul class="log-files-list">';
+                            data.files.forEach(file => {
+                                const fileSize = (file.size / 1024).toFixed(1);
+                                filesHtml += `
+                                    <li>
+                                        <strong>${file.name}</strong> (${fileSize} KB)
+                                        <button class="btn btn-sm btn-primary" onclick="downloadLogFile('${file.name}')">
+                                            <i class="fas fa-download"></i> Download
+                                        </button>
+                                        <small class="text-muted">${new Date(file.modified).toLocaleString()}</small>
+                                    </li>
+                                `;
+                            });
+                            filesHtml += '</ul>';
+                            logFilesDiv.innerHTML = filesHtml;
+                        } else {
+                            logFilesDiv.innerHTML = '<p>No log files available</p>';
+                        }
+
+                        document.getElementById('log-files-modal').style.display = 'block';
+                    } else {
+                        showToast('Failed to load log files', 'error');
+                    }
+                } catch (error) {
+                    showToast('Error loading log files: ' + error.message, 'error');
+                }
+            }
+
+            function hideLogFiles() {
+                document.getElementById('log-files-modal').style.display = 'none';
+            }
+
+            async function downloadLogFile(filename) {
+                try {
+                    const response = await fetch(`/api/logging/download/${filename}`, {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        showToast(`Downloaded ${filename}`, 'success');
+                    } else {
+                        showToast('Failed to download log file', 'error');
+                    }
+                } catch (error) {
+                    showToast('Error downloading log file: ' + error.message, 'error');
+                }
+            }
+
+            // Initialize logging status on page load
+            async function initializeLoggingStatus() {
+                try {
+                    const response = await fetch('/api/logging/status', {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+
+                        // Update output logging toggle
+                        const outputButton = document.getElementById('toggle-output-logging');
+                        if (data.output_logging_enabled) {
+                            outputButton.classList.add('active');
+                            outputButton.innerHTML = '<i class="fas fa-toggle-on"></i> Logging ON';
+                        } else {
+                            outputButton.classList.remove('active');
+                            outputButton.innerHTML = '<i class="fas fa-toggle-off"></i> Logging OFF';
+                        }
+
+                        // Update URL tracing toggle
+                        const urlButton = document.getElementById('toggle-url-tracing');
+                        if (data.url_tracing_enabled) {
+                            urlButton.classList.add('active');
+                            urlButton.innerHTML = '<i class="fas fa-eye"></i> URL Tracing ON';
+                        } else {
+                            urlButton.classList.remove('active');
+                            urlButton.innerHTML = '<i class="fas fa-eye-slash"></i> URL Tracing OFF';
+                        }
+
+                        // Update command recording button
+                        const recordButton = document.getElementById('record-commands');
+                        if (data.command_recording_enabled) {
+                            recordButton.classList.add('recording');
+                            recordButton.innerHTML = '<i class="fas fa-record-vinyl"></i> Recording...';
+                        } else {
+                            recordButton.classList.remove('recording');
+                            recordButton.innerHTML = '<i class="fas fa-stop"></i> Record Commands';
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to initialize logging status:', error);
+                }
+            }
+
+            // Call initializeLoggingStatus when page loads
+            document.addEventListener('DOMContentLoaded', function() {
+                initializeLoggingStatus();
+            });
         </script>
         </div>
     </body>
@@ -5346,6 +5823,146 @@ async def get_users(current_user: User = Depends(get_current_active_user)):
             "disabled": user_data["disabled"]
         })
     return {"users": users}
+
+@app.get("/api/docs/man/{page_name}")
+async def get_man_page(page_name: str):
+    """Serve man page content for documentation"""
+    import os
+
+    # Map page names to man page files
+    man_pages = {
+        "bootstrap_app": "bootstrap_app.1",
+        "start_https": "start_https.1",
+        "deploy_to_nano": "deploy_to_nano.1",
+        "k3s-server": "k3s-server.1",
+        "k3s-agent-scripts": "k3s-agent-scripts.1",
+        "utility-scripts": "utility-scripts.1",
+        "environment_variables": "environment_variables.7",
+        "deployment_guide": "deployment_guide.7"
+    }
+
+    if page_name not in man_pages:
+        raise HTTPException(status_code=404, detail=f"Documentation page '{page_name}' not found")
+
+    man_file = f"man/{man_pages[page_name]}"
+
+    # Check if man directory exists in the project root
+    man_path = os.path.join(os.path.dirname(__file__), "..", man_file)
+    if not os.path.exists(man_path):
+        # Fallback to current directory
+        man_path = man_file
+
+    if not os.path.exists(man_path):
+        raise HTTPException(status_code=404, detail=f"Man page file '{man_file}' not found")
+
+    try:
+        with open(man_path, 'r') as f:
+            content = f.read()
+
+        # Extract title from first line
+        lines = content.split('\n')
+        title = "Manual Page"
+        if lines and lines[0].startswith('.TH'):
+            # Parse man page header: .TH NAME SECTION DATE TITLE
+            parts = lines[0].split()
+            if len(parts) >= 2:
+                title = f"{parts[1]}({parts[2]})"
+
+        return {
+            "title": title,
+            "content": content,
+            "page_name": page_name
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading man page: {str(e)}")
+
+@app.post("/api/logging/toggle-output")
+async def toggle_output_logging(enabled: bool, current_user: User = Depends(get_current_active_user)):
+    """Toggle terminal output logging"""
+    log_terminal_output.enabled = enabled
+    
+    # Log the toggle action
+    log_terminal_command(f"Toggle output logging: {'enabled' if enabled else 'disabled'}", 
+                        current_user.username)
+    
+    return {"status": "success", "output_logging": enabled}
+
+@app.post("/api/logging/toggle-url-trace")
+async def toggle_url_tracing(enabled: bool, current_user: User = Depends(get_current_active_user)):
+    """Toggle URL tracing"""
+    trace_url.enabled = enabled
+    
+    # Log the toggle action
+    log_terminal_command(f"Toggle URL tracing: {'enabled' if enabled else 'disabled'}", 
+                        current_user.username)
+    
+    return {"status": "success", "url_tracing": enabled}
+
+@app.post("/api/logging/record-commands")
+async def toggle_command_recording(enabled: bool, current_user: User = Depends(get_current_active_user)):
+    """Toggle command recording"""
+    global command_recording_enabled
+    command_recording_enabled = enabled
+    
+    # Log the toggle action
+    log_terminal_command(f"Toggle command recording: {'enabled' if enabled else 'disabled'}", 
+                        current_user.username)
+    
+    return {"status": "success", "command_recording": enabled}
+
+@app.get("/api/logging/status")
+async def get_logging_status():
+    """Get current logging status"""
+    return {
+        "output_logging_enabled": log_terminal_output.enabled,
+        "url_tracing_enabled": trace_url.enabled,
+        "command_recording_enabled": command_recording_enabled,
+        "log_folder": LOG_FOLDER,
+        "command_log": COMMAND_LOG_FILE,
+        "output_log": OUTPUT_LOG_FILE,
+        "url_trace_log": URL_TRACE_FILE
+    }
+
+@app.get("/api/logging/files")
+async def list_log_files():
+    """List available log files"""
+    log_files = {}
+    
+    for log_file in [COMMAND_LOG_FILE, OUTPUT_LOG_FILE, URL_TRACE_FILE]:
+        if os.path.exists(log_file):
+            stat_info = os.stat(log_file)
+            log_files[os.path.basename(log_file)] = {
+                "path": log_file,
+                "size": stat_info.st_size,
+                "modified": datetime.fromtimestamp(stat_info.st_mtime).isoformat()
+            }
+        else:
+            log_files[os.path.basename(log_file)] = {
+                "path": log_file,
+                "size": 0,
+                "modified": None
+            }
+    
+    return {"log_files": log_files}
+
+@app.get("/api/logging/download/{filename}")
+async def download_log_file(filename: str):
+    """Download a log file"""
+    allowed_files = {
+        "terminal_commands.log": COMMAND_LOG_FILE,
+        "terminal_output.log": OUTPUT_LOG_FILE,
+        "url_trace.log": URL_TRACE_FILE
+    }
+    
+    if filename not in allowed_files:
+        raise HTTPException(status_code=404, detail="Log file not found")
+    
+    file_path = allowed_files[filename]
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Log file does not exist")
+    
+    return FileResponse(file_path, media_type='text/plain', filename=filename)
 
 @app.get("/api/info")
 async def api_info():
@@ -5449,6 +6066,10 @@ async def execute_script_endpoint(request: Dict[str, Any], req: Request, current
         ip_address=client_host,
         user_agent=user_agent
     )
+
+    # Log command if recording is enabled
+    if command_recording_enabled:
+        log_terminal_command(f"Executing script: {full_path}", current_user.username)
 
     # Execute the script
     result = await execute_script(full_path, timeout)
