@@ -35,7 +35,7 @@ echo "Server starting in background..."
 echo ""
 
 # Run in background with nohup
-nohup python bootstrap_app.py > server.log 2>&1 &
+nohup python3 bootstrap_app.py > server.log 2>&1 &
 
 echo "✅ Server started successfully in background (PID: $!)"
 echo "📊 Check server status: curl -k https://192.168.1.181:$HTTPS_PORT/health"
