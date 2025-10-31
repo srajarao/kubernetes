@@ -3590,8 +3590,10 @@ async def root():
                         <p>Real-time health status of the entire cluster.</p>
                         <button class="btn btn-primary" onclick="getClusterHealth()">🔄 Check Health</button>
                         <button class="btn btn-warning" onclick="runComprehensiveHealthCheck()" style="margin-left: 10px;">🔍 Full System Check</button>
+                        <button class="btn btn-info" onclick="setAIContext()" style="margin-left: 10px;">🤖 Set Context</button>
                         <div id="cluster-health-status" style="margin-top: 15px;"></div>
                         <div id="comprehensive-health-results" style="margin-top: 15px; display: none;"></div>
+                        <div id="ai-context-results" style="margin-top: 15px; display: none;"></div>
                     </div>
 
                     <div id="operations-content" style="display: none;">
@@ -5563,6 +5565,170 @@ ${data.execution_result.stdout}
                 resultsDiv.innerHTML = html;
             }
 
+            async function setAIContext() {
+                const button = event.target || document.querySelector('button[onclick="setAIContext()"]');
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-brain"></i> Gathering Context...';
+                button.disabled = true;
+
+                const resultsDiv = document.getElementById('ai-context-results');
+                resultsDiv.style.display = 'block';
+                resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin fa-2x"></i><br>Gathering comprehensive context...</div>';
+
+                try {
+                    const response = await fetch('/api/system/ai-context', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        displayAIContext(data);
+                    } else {
+                        resultsDiv.innerHTML = `<div style="color: #f87171; padding: 15px; border: 1px solid #f87171; border-radius: 5px;">
+                            <strong>Context Gathering Failed</strong><br>
+                            HTTP ${response.status}: ${response.statusText}
+                        </div>`;
+                    }
+                } catch (error) {
+                    resultsDiv.innerHTML = `<div style="color: #f87171; padding: 15px; border: 1px solid #f87171; border-radius: 5px;">
+                        <strong>Context Error</strong><br>
+                        ${error.message}
+                    </div>`;
+                } finally {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }
+            }
+
+            function displayAIContext(data) {
+                const resultsDiv = document.getElementById('ai-context-results');
+
+                let html = `
+                    <div style="border: 2px solid #3b82f6; border-radius: 10px; padding: 20px; margin: 10px 0; background: #f0f9ff;">
+                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                            <div style="color: #3b82f6; font-size: 2em;">🤖</div>
+                            <div>
+                                <h3 style="margin: 0; color: #1e40af;">AI Context Information</h3>
+                                <p style="margin: 5px 0 0 0; color: #6b7280;">Complete application context for seamless AI communication</p>
+                            </div>
+                        </div>
+                `;
+
+                // Application Overview
+                html += `
+                    <div style="background: white; border-radius: 8px; padding: 15px; margin: 10px 0; border-left: 4px solid #3b82f6;">
+                        <h4 style="margin-top: 0; color: #1e40af;">📱 Application Overview</h4>
+                        <p><strong>${data.application.name}</strong></p>
+                        <p style="color: #6b7280; margin-bottom: 10px;">${data.application.description}</p>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                            <div><strong>Backend:</strong> ${data.application.technology_stack.backend}</div>
+                            <div><strong>Frontend:</strong> ${data.application.technology_stack.frontend}</div>
+                            <div><strong>Auth:</strong> ${data.application.technology_stack.authentication}</div>
+                            <div><strong>Real-time:</strong> ${data.application.technology_stack.real_time}</div>
+                        </div>
+                    </div>
+                `;
+
+                // Key Features
+                html += `
+                    <div style="background: white; border-radius: 8px; padding: 15px; margin: 10px 0;">
+                        <h4 style="margin-top: 0; color: #1e40af;">✨ Key Features</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 8px;">
+                            ${data.application.key_features.map(feature => `<div style="padding: 5px; background: #f3f4f6; border-radius: 4px;">• ${feature}</div>`).join('')}
+                        </div>
+                    </div>
+                `;
+
+                // Current State
+                html += `
+                    <div style="background: white; border-radius: 8px; padding: 15px; margin: 10px 0;">
+                        <h4 style="margin-top: 0; color: #1e40af;">🔄 Current State</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                            <div>
+                                <strong>Server:</strong> ${data.current_state.server_info.host}<br>
+                                <strong>Ports:</strong> ${data.current_state.server_info.ports.join(', ')}
+                            </div>
+                            <div>
+                                <strong>User:</strong> ${data.current_state.user_info.current_user}<br>
+                                <strong>Role:</strong> ${data.current_state.user_info.role}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Recent Activity
+                html += `
+                    <div style="background: white; border-radius: 8px; padding: 15px; margin: 10px 0;">
+                        <h4 style="margin-top: 0; color: #1e40af;">📝 Recent Activity</h4>
+                        <div style="max-height: 150px; overflow-y: auto; background: #f8fafc; padding: 10px; border-radius: 4px;">
+                            <strong>Recent Commits:</strong><br>
+                            ${data.recent_activity.recent_commits.map(commit => `<div style="font-family: monospace; font-size: 0.9em; margin: 2px 0;">${commit}</div>`).join('')}
+                        </div>
+                    </div>
+                `;
+
+                // Configuration
+                html += `
+                    <div style="background: white; border-radius: 8px; padding: 15px; margin: 10px 0;">
+                        <h4 style="margin-top: 0; color: #1e40af;">⚙️ Configuration</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px;">
+                            <div><strong>Log Folder:</strong> ${data.configuration.environment_variables.LOG_FOLDER}</div>
+                            <div><strong>HTTPS:</strong> ${data.configuration.environment_variables.ENABLE_HTTPS}</div>
+                            <div><strong>Output Logging:</strong> ${data.configuration.logging.enabled_features.output_logging ? 'Enabled' : 'Disabled'}</div>
+                            <div><strong>URL Tracing:</strong> ${data.configuration.logging.enabled_features.url_tracing ? 'Enabled' : 'Disabled'}</div>
+                        </div>
+                    </div>
+                `;
+
+                // Quick Reference
+                html += `
+                    <div style="background: white; border-radius: 8px; padding: 15px; margin: 10px 0;">
+                        <h4 style="margin-top: 0; color: #1e40af;">🚀 Quick Reference</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                            <div>
+                                <strong>Common Endpoints:</strong>
+                                <div style="font-family: monospace; font-size: 0.9em; margin-top: 5px;">
+                                    ${data.quick_reference.useful_endpoints.map(endpoint => `<div>${endpoint}</div>`).join('')}
+                                </div>
+                            </div>
+                            <div>
+                                <strong>Development Commands:</strong>
+                                <div style="font-family: monospace; font-size: 0.9em; margin-top: 5px;">
+                                    ${data.quick_reference.development_commands.map(cmd => `<div>${cmd}</div>`).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Copy to Clipboard Button
+                html += `
+                    <div style="text-align: center; margin-top: 20px;">
+                        <button class="btn btn-success" onclick="copyContextToClipboard()">
+                            📋 Copy Context for AI Assistant
+                        </button>
+                        <p style="font-size: 0.9em; color: #6b7280; margin: 10px 0;">
+                            Click to copy this context information to share with your AI assistant for seamless communication
+                        </p>
+                    </div>
+                `;
+
+                html += '</div>';
+                resultsDiv.innerHTML = html;
+            }
+
+            function copyContextToClipboard() {
+                const contextData = document.getElementById('ai-context-results').textContent;
+                navigator.clipboard.writeText(contextData).then(() => {
+                    showToast('Context copied to clipboard!', 'success');
+                }).catch(err => {
+                    showToast('Failed to copy context: ' + err.message, 'error');
+                });
+            }
+
             async function runHealthCheck(checkName) {
                 try {
                     const response = await fetch(`/api/cluster/health/checks/${checkName}/run`, {
@@ -6249,6 +6415,222 @@ async def test_performance():
 
     except Exception as e:
         return {"status": "unhealthy", "error": f"Performance test failed: {str(e)}"}
+
+@app.post("/api/system/ai-context")
+async def get_ai_context(request: Request, current_user: User = Depends(get_current_active_user)):
+    """
+    Gather comprehensive context information for AI assistant.
+    This endpoint provides all the information needed to understand the current state
+    of the cluster management application for seamless communication.
+    """
+    context = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "application": {},
+        "current_state": {},
+        "recent_activity": {},
+        "configuration": {},
+        "health_status": {},
+        "pending_tasks": {}
+    }
+
+    # Log context gathering
+    client_host, user_agent = get_client_info(request)
+    log_audit_event(
+        event_type="SYSTEM_OPERATION",
+        username=current_user.username,
+        action="GET_AI_CONTEXT",
+        resource="system_context",
+        details={"user_role": current_user.role},
+        ip_address=client_host,
+        user_agent=user_agent
+    )
+
+    try:
+        # Application Overview
+        context["application"] = {
+            "name": "Kubernetes Cluster Management Platform",
+            "description": "A comprehensive web-based cluster management system built with FastAPI, featuring script execution, node management, logging, documentation, and real-time monitoring capabilities.",
+            "technology_stack": {
+                "backend": "FastAPI (Python)",
+                "frontend": "HTML/CSS/JavaScript",
+                "authentication": "JWT tokens",
+                "real_time": "WebSocket",
+                "containerization": "Docker support",
+                "orchestration": "K3s integration"
+            },
+            "key_features": [
+                "Script execution and management",
+                "Node management (add/remove agents and servers)",
+                "Real-time terminal execution",
+                "Comprehensive logging and tracing",
+                "Documentation system with man pages",
+                "Health monitoring and checks",
+                "User authentication and authorization",
+                "Audit logging",
+                "SSL/TLS support",
+                "Multi-node cluster management"
+            ]
+        }
+
+        # Current State
+        context["current_state"] = {
+            "server_info": {
+                "host": "192.168.1.181",
+                "ports": ["8000 (HTTP)", "8443 (HTTPS)"],
+                "environment": "Production/Development cluster"
+            },
+            "active_features": [
+                "Authentication system",
+                "Script execution engine",
+                "Node management",
+                "Logging and tracing",
+                "Documentation system",
+                "Health monitoring",
+                "WebSocket real-time communication",
+                "Audit logging"
+            ],
+            "user_info": {
+                "current_user": current_user.username,
+                "role": current_user.role,
+                "authenticated": True
+            }
+        }
+
+        # Recent Activity (Git commits)
+        try:
+            import subprocess
+            git_log = subprocess.run(
+                ["git", "log", "--oneline", "-10"],
+                capture_output=True,
+                text=True,
+                cwd=os.getcwd()
+            )
+            if git_log.returncode == 0:
+                commits = git_log.stdout.strip().split('\n')
+                context["recent_activity"]["recent_commits"] = commits
+            else:
+                context["recent_activity"]["recent_commits"] = ["Unable to retrieve git history"]
+        except Exception as e:
+            context["recent_activity"]["recent_commits"] = [f"Error retrieving git history: {str(e)}"]
+
+        # File Structure
+        try:
+            context["recent_activity"]["file_structure"] = {
+                "main_application": "bootstrap_app.py",
+                "directories": [
+                    "agent/ - Agent-specific configurations and scripts",
+                    "server/ - Server configurations and deployments",
+                    "scripts/ - Utility and management scripts",
+                    "docs/ - Documentation files",
+                    "man/ - Manual pages",
+                    "archive/ - Archived files and backups",
+                    "nvidia-support/ - GPU and NVIDIA support files",
+                    "rag/ - RAG system components"
+                ],
+                "key_files": [
+                    "bootstrap_app.py - Main FastAPI application",
+                    "bootstrap_requirements.txt - Python dependencies",
+                    "README.md - Project documentation",
+                    "MIGRATION_CHECKLIST.md - Migration guidelines"
+                ]
+            }
+        except Exception as e:
+            context["recent_activity"]["file_structure"] = f"Error getting file structure: {str(e)}"
+
+        # Configuration
+        context["configuration"] = {
+            "environment_variables": {
+                "LOG_FOLDER": os.getenv("LOG_FOLDER", "logs"),
+                "ENABLE_HTTPS": os.getenv("ENABLE_HTTPS", "false"),
+                "HTTPS_PORT": os.getenv("HTTPS_PORT", "8443"),
+                "SECRET_KEY": "Configured (hidden for security)"
+            },
+            "logging": {
+                "terminal_commands": COMMAND_LOG_FILE,
+                "terminal_output": OUTPUT_LOG_FILE,
+                "url_traces": URL_TRACE_FILE,
+                "enabled_features": {
+                    "output_logging": log_terminal_output.enabled,
+                    "url_tracing": trace_url.enabled,
+                    "command_recording": command_recording_enabled
+                }
+            },
+            "security": {
+                "jwt_algorithm": ALGORITHM,
+                "ssl_enabled": os.path.exists("ca/ca.crt") if os.path.exists("ca") else False,
+                "audit_logging": True
+            }
+        }
+
+        # Health Status
+        try:
+            # Get basic health
+            health_result = await health_check()
+            context["health_status"]["basic"] = health_result
+
+            # Get cluster health
+            total_checks = len(health_checks)
+            healthy_checks = sum(1 for check in health_checks.values() if check.get("status") == "healthy")
+            context["health_status"]["cluster"] = {
+                "total_checks": total_checks,
+                "healthy_checks": healthy_checks,
+                "health_percentage": (healthy_checks / total_checks * 100) if total_checks > 0 else 0
+            }
+        except Exception as e:
+            context["health_status"]["error"] = f"Error getting health status: {str(e)}"
+
+        # Pending Tasks
+        context["pending_tasks"] = {
+            "todo_list": [
+                "Complete node management JavaScript functions",
+                "Add comprehensive error handling",
+                "Implement backup and restore functionality",
+                "Add performance monitoring",
+                "Create user management interface"
+            ],
+            "known_issues": [
+                "WebSocket connection stability",
+                "Large log file handling",
+                "Memory usage optimization",
+                "Cross-platform compatibility"
+            ],
+            "upcoming_features": [
+                "Advanced monitoring dashboard",
+                "Automated backup system",
+                "Multi-cluster support",
+                "API rate limiting",
+                "User role management"
+            ]
+        }
+
+        # Quick Reference Commands
+        context["quick_reference"] = {
+            "common_operations": [
+                "Script execution: POST /api/scripts/execute",
+                "Node management: GET/POST /api/cluster/nodes",
+                "Health checks: GET /api/cluster/health/status",
+                "Logging: GET /api/logging/status",
+                "Documentation: GET /api/docs/man/{page}"
+            ],
+            "useful_endpoints": [
+                "/health - Basic health check",
+                "/api/system/comprehensive-health-check - Full system test",
+                "/api/system/ai-context - This context information",
+                "/api/auth/login - User authentication",
+                "/ws/execute - Real-time script execution"
+            ],
+            "development_commands": [
+                "Start server: python3 bootstrap_app.py",
+                "Run tests: python3 -m pytest",
+                "Check syntax: python3 -m py_compile bootstrap_app.py",
+                "View logs: tail -f logs/*.log"
+            ]
+        }
+
+    except Exception as e:
+        context["error"] = f"Error gathering context: {str(e)}"
+
+    return context
 
 # Authentication endpoints
 @app.post("/api/auth/login", response_model=Token)
