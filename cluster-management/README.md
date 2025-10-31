@@ -24,7 +24,7 @@ This folder contains the **cluster management web application** that runs on the
 └── __pycache__/              # 💾 Python bytecode cache
 ```
 
-## 🎯 Current Phase: Security & Authentication (Phase 7/7)
+## 🎯 Current Phase: Pod Management & Monitoring (Phase 8/8)
 
 ### ✅ **Completed Features**
 - 🌐 **Web Server**: FastAPI application with HTML interface
@@ -42,6 +42,9 @@ This folder contains the **cluster management web application** that runs on the
 - 🔐 **User Authentication**: JWT-based login system with secure password hashing
 - 👥 **Role-Based Access**: Admin, Operator, and Viewer roles with different permissions
 - 🛡️ **Session Management**: Secure token-based authentication with expiration
+- 🐳 **Pod Management**: Complete Kubernetes pod lifecycle management (view, logs, exec, restart, delete)
+- 📊 **Pod Monitoring**: Real-time pod status, resource usage, and health monitoring
+- 🔄 **Pod Operations**: WebSocket-based real-time log streaming and command execution
 
 ### 🔄 **Next Phases**
 1. ~~**Phase 2**: Script Discovery - Scan and catalog cluster scripts~~ ✅ **COMPLETED**
@@ -50,6 +53,7 @@ This folder contains the **cluster management web application** that runs on the
 4. ~~**Phase 5**: Container Building - Docker capabilities~~ ✅ **COMPLETED**
 5. ~~**Phase 6**: Full Cluster UI - Tree structure and node management~~ ✅ **COMPLETED**
 6. ~~**Phase 7**: Security & Authentication - User management and access control~~ ✅ **COMPLETED**
+7. ~~**Phase 8**: Pod Management - Kubernetes pod lifecycle operations~~ ✅ **COMPLETED**
 
 ## 🚀 Development Workflow
 
@@ -138,6 +142,13 @@ ssh nano 'pkill -f uvicorn && python bootstrap_app.py'
 | `/api/auth/logout` | POST | User logout | ✅ **NEW** |
 | `/api/auth/me` | GET | Get current user information | ✅ **NEW** |
 | `/api/auth/users` | GET | List all users (admin only) | ✅ **NEW** |
+| `/api/cluster/pods` | GET | List all pods with status and filtering | ✅ **NEW** |
+| `/api/cluster/pods/{ns}/{name}` | GET | Get detailed pod information | ✅ **NEW** |
+| `/api/cluster/pods/{ns}/{name}/logs` | POST | Get pod logs (static) | ✅ **NEW** |
+| `/api/cluster/pods/{ns}/{name}/exec` | POST | Execute command in pod (admin only) | ✅ **NEW** |
+| `/api/cluster/pods/{ns}/{name}/restart` | POST | Restart pod (admin only) | ✅ **NEW** |
+| `/api/cluster/pods/{ns}/{name}` | DELETE | Delete pod (admin only) | ✅ **NEW** |
+| `/ws/pod/logs` | WebSocket | **Real-time pod log streaming** | ✅ **NEW** |
 
 ### **Response Examples**
 ```bash
@@ -218,6 +229,6 @@ curl http://192.168.1.181:8000/api/info
 
 ---
 
-**Status**: 🟢 **BOOTSTRAP COMPLETE - PRODUCTION READY** - All 7 phases successfully completed with enterprise-grade security and full cluster management capabilities
+**Status**: 🟢 **BOOTSTRAP COMPLETE - PRODUCTION READY** - All 8 phases successfully completed with enterprise-grade security, full cluster management, and comprehensive pod operations
 **Last Updated**: October 31, 2025
 **Version**: 1.0.0 (Production Ready)

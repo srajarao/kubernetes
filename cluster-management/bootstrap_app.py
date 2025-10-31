@@ -60,7 +60,375 @@ def log_audit_event(event_type: str, username: str, action: str, resource: str =
         "details": details or {},
         "ip_address": ip_address,
         "user_agent": user_agent
-    }
+            }
+    
+    # Pod Management Endpoints
+    @app.get("/api/cluster/pods")
+    async def get_cluster_pods(request: Request, current_user: User = Depends(get_current_active_user), namespace: str = None):
+        """
+        Get all pods across all namespaces or specific namespace.
+        """
+        # Log pod access
+        client_host, user_agent = get_client_info(request)
+        log_audit_event(
+            event_type="POD_OPERATION",
+            username=current_user.username,
+            action="LIST_PODS",
+            resource="pods",
+            details={"namespace": namespace, "user_role": current_user.role},
+            ip_address=client_host,
+            user_agent=user_agent
+        )
+    
+        return await get_pods_info(namespace)
+    
+    @app.get("/api/cluster/pods/{namespace}/{pod_name}")
+    async def get_pod_details(namespace: str, pod_name: str, request: Request, current_user: User = Depends(get_current_active_user)):
+        """
+        Get detailed information about a specific pod.
+        """
+        # Log pod access
+        client_host, user_agent = get_client_info(request)
+        log_audit_event(
+            event_type="POD_OPERATION",
+            username=current_user.username,
+            action="VIEW_POD",
+            resource=f"{namespace}/{pod_name}",
+            details={"user_role": current_user.role},
+            ip_address=client_host,
+            user_agent=user_agent
+        )
+    
+        return await get_pod_info(namespace, pod_name)
+    
+    @app.post("/api/cluster/pods/{namespace}/{pod_name}/logs")
+    async def get_pod_logs(namespace: str, pod_name: str, request: Request, current_user: User = Depends(get_current_active_user)):
+        """
+        Get logs from a specific pod.
+        """
+        # Log pod logs access
+        client_host, user_agent = get_client_info(request)
+        log_audit_event(
+            event_type="POD_OPERATION",
+            username=current_user.username,
+            action="VIEW_POD_LOGS",
+            resource=f"{namespace}/{pod_name}",
+            details={"user_role": current_user.role},
+            ip_address=client_host,
+            user_agent=user_agent
+        )
+    
+        return await get_pod_logs_stream(namespace, pod_name)
+    
+    @app.post("/api/cluster/pods/{namespace}/{pod_name}/exec")
+    async def exec_pod_command(namespace: str, pod_name: str, request: dict, current_user: User = Depends(get_current_active_user)):
+        """
+        Execute a command in a pod container.
+        Requires admin privileges.
+        """
+        if current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Admin privileges required for pod exec")
+    
+        command = request.get("command", "")
+        if not command:
+            raise HTTPException(status_code=400, detail="Command is required")
+    
+        # Log pod exec operation
+        client_host, user_agent = get_client_info(request)
+        log_audit_event(
+            event_type="POD_OPERATION",
+            username=current_user.username,
+            action="EXEC_POD",
+            resource=f"{namespace}/{pod_name}",
+            details={"command": command, "user_role": current_user.role},
+            ip_address=client_host,
+            user_agent=user_agent
+        )
+    
+        return await exec_in_pod(namespace, pod_name, command)
+    
+    @app.delete("/api/cluster/pods/{namespace}/{pod_name}")
+    async def delete_pod(namespace: str, pod_name: str, request: Request, current_user: User = Depends(get_current_active_user)):
+        """
+        Delete a specific pod.
+        Requires admin privileges.
+        """
+        if current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Admin privileges required for pod deletion")
+    
+        # Log pod deletion
+        client_host, user_agent = get_client_info(request)
+        log_audit_event(
+            event_type="POD_OPERATION",
+            username=current_user.username,
+            action="DELETE_POD",
+            resource=f"{namespace}/{pod_name}",
+            details={"user_role": current_user.role},
+            ip_address=client_host,
+            user_agent=user_agent
+        )
+    
+        return await delete_pod_instance(namespace, pod_name)
+    
+    @app.post("/api/cluster/pods/{namespace}/{pod_name}/restart")
+    async def restart_pod(namespace: str, pod_name: str, request: Request, current_user: User = Depends(get_current_active_user)):
+        """
+        Restart a pod by deleting it (let deployment recreate it).
+        Requires admin privileges.
+        """
+        if current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Admin privileges required for pod restart")
+    
+        # Log pod restart
+        client_host, user_agent = get_client_info(request)
+        log_audit_event(
+            event_type="POD_OPERATION",
+            username=current_user.username,
+            action="RESTART_POD",
+            resource=f"{namespace}/{pod_name}",
+            details={"user_role": current_user.role},
+            ip_address=client_host,
+            user_agent=user_agent
+        )
+    
+        return await restart_pod_instance(namespace, pod_name)
+    
+    # Pod Management Helper Functions
+    async def get_pods_info(namespace: str = None):
+        """Get information about all pods using kubectl"""
+        try:
+            # Build kubectl command
+            cmd = ["kubectl", "get", "pods"]
+            if namespace:
+                cmd.extend(["-n", namespace])
+            else:
+                cmd.append("--all-namespaces")
+    
+            cmd.extend(["-o", "json"])
+    
+            result = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+    
+            if result.returncode == 0:
+                pods_data = json.loads(stdout.decode())
+    
+                # Process pod information
+                pods = []
+                for pod in pods_data.get("items", []):
+                    pod_info = {
+                        "name": pod["metadata"]["name"],
+                        "namespace": pod["metadata"]["namespace"],
+                        "status": pod["status"]["phase"],
+                        "node": pod["spec"].get("nodeName", "N/A"),
+                        "containers": len(pod["spec"]["containers"]),
+                        "restarts": sum(container["restartCount"] for container in pod["status"].get("containerStatuses", [])),
+                        "age": pod["metadata"].get("creationTimestamp", ""),
+                        "labels": pod["metadata"].get("labels", {}),
+                        "ready": f"{sum(1 for cs in pod['status'].get('containerStatuses', []) if cs.get('ready', False))}/{len(pod['spec']['containers'])}"
+                    }
+                    pods.append(pod_info)
+    
+                return {
+                    "pods": pods,
+                    "total": len(pods),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            else:
+                return {
+                    "error": f"kubectl command failed: {stderr.decode()}",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+        except Exception as e:
+            return {
+                "error": f"Failed to get pods info: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    async def get_pod_info(namespace: str, pod_name: str):
+        """Get detailed information about a specific pod"""
+        try:
+            cmd = ["kubectl", "get", "pod", pod_name, "-n", namespace, "-o", "json"]
+    
+            result = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+    
+            if result.returncode == 0:
+                pod_data = json.loads(stdout.decode())
+    
+                # Extract detailed pod information
+                pod_info = {
+                    "name": pod_data["metadata"]["name"],
+                    "namespace": pod_data["metadata"]["namespace"],
+                    "status": pod_data["status"]["phase"],
+                    "node": pod_data["spec"].get("nodeName", "N/A"),
+                    "start_time": pod_data["status"].get("startTime", ""),
+                    "containers": [],
+                    "conditions": pod_data["status"].get("conditions", []),
+                    "events": []
+                }
+    
+                # Container information
+                for container in pod_data["spec"]["containers"]:
+                    container_info = {
+                        "name": container["name"],
+                        "image": container["image"],
+                        "ports": container.get("ports", []),
+                        "env": len(container.get("env", [])),
+                        "resources": container.get("resources", {})
+                    }
+                    pod_info["containers"].append(container_info)
+    
+                # Get events for this pod
+                events_cmd = ["kubectl", "get", "events", "-n", namespace, f"--field-selector=involvedObject.name={pod_name}", "-o", "json"]
+                events_result = await asyncio.create_subprocess_exec(
+                    *events_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                events_stdout, events_stderr = await events_result.communicate()
+    
+                if events_result.returncode == 0:
+                    events_data = json.loads(events_stdout.decode())
+                    pod_info["events"] = [
+                        {
+                            "type": event["type"],
+                            "reason": event["reason"],
+                            "message": event["message"],
+                            "timestamp": event["metadata"]["creationTimestamp"]
+                        }
+                        for event in events_data.get("items", [])
+                    ]
+    
+                return pod_info
+            else:
+                return {
+                    "error": f"kubectl command failed: {stderr.decode()}",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+        except Exception as e:
+            return {
+                "error": f"Failed to get pod info: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    async def get_pod_logs_stream(namespace: str, pod_name: str, container: str = None, tail: int = 100):
+        """Get logs from a pod"""
+        try:
+            cmd = ["kubectl", "logs", pod_name, "-n", namespace, f"--tail={tail}"]
+            if container:
+                cmd.extend(["-c", container])
+    
+            result = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+    
+            if result.returncode == 0:
+                return {
+                    "logs": stdout.decode(),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            else:
+                return {
+                    "error": f"kubectl logs failed: {stderr.decode()}",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+        except Exception as e:
+            return {
+                "error": f"Failed to get pod logs: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    async def exec_in_pod(namespace: str, pod_name: str, command: str):
+        """Execute a command in a pod"""
+        try:
+            cmd = ["kubectl", "exec", pod_name, "-n", namespace, "--", "/bin/sh", "-c", command]
+    
+            result = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+    
+            return {
+                "command": command,
+                "stdout": stdout.decode(),
+                "stderr": stderr.decode(),
+                "returncode": result.returncode,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            return {
+                "error": f"Failed to exec in pod: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    async def delete_pod_instance(namespace: str, pod_name: str):
+        """Delete a pod"""
+        try:
+            cmd = ["kubectl", "delete", "pod", pod_name, "-n", namespace, "--grace-period=30"]
+    
+            result = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+    
+            if result.returncode == 0:
+                return {
+                    "message": f"Pod {namespace}/{pod_name} deleted successfully",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            else:
+                return {
+                    "error": f"kubectl delete failed: {stderr.decode()}",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+        except Exception as e:
+            return {
+                "error": f"Failed to delete pod: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    async def restart_pod_instance(namespace: str, pod_name: str):
+        """Restart a pod by deleting it (deployment will recreate)"""
+        try:
+            cmd = ["kubectl", "delete", "pod", pod_name, "-n", namespace]
+    
+            result = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+    
+            if result.returncode == 0:
+                return {
+                    "message": f"Pod {namespace}/{pod_name} restart initiated",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            else:
+                return {
+                    "error": f"kubectl delete failed: {stderr.decode()}",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+        except Exception as e:
+            return {
+                "error": f"Failed to restart pod: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat()
+            }
     audit_logger.info(json.dumps(audit_data))
 
 def log_terminal_command(command: str, user: str = "system", ip_address: str = None):
@@ -2706,9 +3074,469 @@ async def websocket_docker_build(websocket: WebSocket):
         except:
             pass
 
+@app.websocket("/ws/pod/logs")
+async def websocket_pod_logs(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time pod log streaming.
+    """
+    await websocket.accept()
+
+    try:
+        # Wait for log request
+        data = await websocket.receive_json()
+        namespace = data.get("namespace")
+        pod_name = data.get("pod_name")
+        container = data.get("container")
+        tail = data.get("tail", 100)
+        follow = data.get("follow", True)
+
+        if not namespace or not pod_name:
+            await websocket.send_json({
+                "type": "error",
+                "message": "namespace and pod_name are required"
+            })
+            return
+
+        # Send start message
+        await websocket.send_json({
+            "type": "start",
+            "message": f"Streaming logs for pod {namespace}/{pod_name}",
+            "timestamp": datetime.now().isoformat()
+        })
+
+        start_time = datetime.now()
+
+        try:
+            # Build kubectl logs command
+            cmd = ["kubectl", "logs", pod_name, "-n", namespace, f"--tail={tail}"]
+            if container:
+                cmd.extend(["-c", container])
+            if follow:
+                cmd.append("-f")
+
+            # Execute kubectl logs
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT  # Combine stdout and stderr
+            )
+
+            # Stream logs in real-time
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+
+                line_text = line.decode('utf-8', errors='replace').rstrip()
+                if line_text:  # Only send non-empty lines
+                    await websocket.send_json({
+                        "type": "log",
+                        "data": line_text,
+                        "timestamp": datetime.now().isoformat()
+                    })
+
+            # Wait for process to complete
+            return_code = await process.wait()
+            execution_time = (datetime.now() - start_time).total_seconds()
+
+            if return_code == 0:
+                await websocket.send_json({
+                    "type": "complete",
+                    "success": True,
+                    "execution_time": execution_time,
+                    "timestamp": datetime.now().isoformat()
+                })
+            else:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"kubectl logs failed with return code {return_code}",
+                    "execution_time": execution_time
+                })
+
+        except asyncio.TimeoutError:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Log streaming timed out"
+            })
+        except Exception as e:
+            execution_time = (datetime.now() - start_time).total_seconds()
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Log streaming failed: {str(e)}",
+                "execution_time": execution_time
+            })
+
+    except WebSocketDisconnect:
+        print("Pod logs WebSocket client disconnected")
+    except Exception as e:
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"WebSocket error: {str(e)}"
+            })
+        except:
+            pass
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the interactive cluster management interface"""
+    # Serve a simple HTML page with pod management JS functions
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Kubernetes Cluster Management</title>
+        <style>
+            body { font-family: Arial, sans-serif; background: #f8fafc; margin: 0; padding: 0; }
+            .container { max-width: 1200px; margin: 40px auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #e5e7eb; padding: 32px; }
+            h2 { color: #1e293b; }
+            .btn { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; margin-right: 4px; }
+            .btn-info { background: #3b82f6; color: #fff; }
+            .btn-warning { background: #f59e0b; color: #fff; }
+            .btn-danger { background: #ef4444; color: #fff; }
+            .btn-sm { font-size: 0.9em; padding: 4px 10px; }
+            .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background: rgba(0,0,0,0.3); }
+            .modal-content { background: #fff; margin: 10% auto; padding: 20px; border-radius: 8px; width: 80%; max-width: 700px; }
+            .close { float: right; font-size: 1.5em; font-weight: bold; color: #ef4444; cursor: pointer; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>Pod Management</h2>
+            <div>
+                <label for="namespace-filter">Namespace:</label>
+                <input type="text" id="namespace-filter" placeholder="(optional)">
+                <button class="btn btn-info" onclick="loadPods()">Load Pods</button>
+            </div>
+            <div id="pods-status" style="margin-top: 10px;"></div>
+            <div id="pods-list" style="margin-top: 20px;">
+                <div id="pods-content" style="display: none;">
+                    <div id="pods-table-container"></div>
+                </div>
+            </div>
+            <div id="pod-details" style="display: none; margin-top: 20px;">
+                <button class="btn btn-info btn-sm" onclick="hidePodDetails()">← Back to Pods</button>
+                <div id="pod-details-content" style="margin-top: 20px;"></div>
+            </div>
+        </div>
+        <div id="pod-logs-modal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closePodLogsModal()">&times;</span>
+                <h3>Pod Logs</h3>
+                <pre id="pod-logs-content" style="background: #f3f4f6; padding: 12px; border-radius: 6px; max-height: 400px; overflow-y: auto;"></pre>
+            </div>
+        </div>
+        <script>
+            // Call initializeLoggingStatus when page loads
+            document.addEventListener('DOMContentLoaded', function() {
+                initializeLoggingStatus();
+            });
+
+            // Pod Management Functions
+            async function loadPods() {
+                const namespace = document.getElementById('namespace-filter').value;
+                const statusDiv = document.getElementById('pods-status');
+                const contentDiv = document.getElementById('pods-content');
+
+                statusDiv.innerHTML = '<div style="color: #f59e0b;">🔄 Loading pods...</div>';
+
+                try {
+                    const url = namespace ? `/api/cluster/pods?namespace=${namespace}` : '/api/cluster/pods';
+                    const response = await authenticatedFetch(url);
+                    const data = await response.json();
+
+                    if (data.pods && data.pods.length > 0) {
+                        statusDiv.innerHTML = `<div style="color: #10b981;">✅ Loaded ${data.pods.length} pods</div>`;
+                        displayPodsTable(data.pods);
+                        contentDiv.style.display = 'block';
+                    } else {
+                        statusDiv.innerHTML = '<div style="color: #6b7280;">No pods found</div>';
+                        contentDiv.style.display = 'none';
+                    }
+                } catch (error) {
+                    statusDiv.innerHTML = '<div style="color: #f87171;">❌ Failed to load pods</div>';
+                    console.error('Failed to load pods:', error);
+                }
+            }
+
+            function displayPodsTable(pods) {
+                const container = document.getElementById('pods-table-container');
+
+                let html = `
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                        <thead>
+                            <tr style="background: #f3f4f6; border-bottom: 2px solid #e2e8f0;">
+                                <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Name</th>
+                                <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Namespace</th>
+                                <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Status</th>
+                                <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Node</th>
+                                <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Ready</th>
+                                <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Restarts</th>
+                                <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Age</th>
+                                <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                pods.forEach(pod => {
+                    const statusColor = getPodStatusColor(pod.status);
+                    const readyColor = pod.ready.startsWith('0/') ? '#f87171' : '#10b981';
+
+                    html += `
+                        <tr style="border-bottom: 1px solid #e2e8f0;">
+                            <td style="padding: 12px; border: 1px solid #e2e8f0;">
+                                <a href="#" onclick="showPodDetails('${pod.namespace}', '${pod.name}')" style="color: #3b82f6; text-decoration: none;">${pod.name}</a>
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0;">${pod.namespace}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0;">
+                                <span style="color: ${statusColor}; font-weight: bold;">${pod.status}</span>
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0;">${pod.node}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0;">
+                                <span style="color: ${readyColor};">${pod.ready}</span>
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0;">${pod.restarts}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0;">${formatAge(pod.age)}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0;">
+                                <button class="btn btn-sm btn-info" onclick="showPodLogs('${pod.namespace}', '${pod.name}')">📋 Logs</button>
+                                <button class="btn btn-sm btn-warning" onclick="restartPod('${pod.namespace}', '${pod.name}')">🔄 Restart</button>
+                                <button class="btn btn-sm btn-danger" onclick="deletePod('${pod.namespace}', '${pod.name}')">🗑️ Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                        </tbody>
+                    </table>
+                `;
+
+                container.innerHTML = html;
+            }
+
+            function getPodStatusColor(status) {
+                switch (status.toLowerCase()) {
+                    case 'running': return '#10b981';
+                    case 'pending': return '#f59e0b';
+                    case 'failed': return '#f87171';
+                    case 'crashloopbackoff': return '#f87171';
+                    case 'completed': return '#6b7280';
+                    default: return '#6b7280';
+                }
+            }
+
+            function formatAge(ageString) {
+                if (!ageString) return 'N/A';
+                // Simple age formatting - could be enhanced
+                return ageString.split('T')[0] || 'N/A';
+            }
+
+            async function showPodDetails(namespace, podName) {
+                const detailsDiv = document.getElementById('pod-details');
+                const detailsContent = document.getElementById('pod-details-content');
+                const listDiv = document.getElementById('pods-list');
+
+                listDiv.style.display = 'none';
+                detailsDiv.style.display = 'block';
+
+                detailsContent.innerHTML = '<div style="color: #f59e0b;">🔄 Loading pod details...</div>';
+
+                try {
+                    const response = await authenticatedFetch(`/api/cluster/pods/${namespace}/${podName}`);
+                    const data = await response.json();
+
+                    if (data.error) {
+                        detailsContent.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        return;
+                    }
+
+                    let html = `
+                        <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                            <h4>${data.name}</h4>
+                            <p><strong>Namespace:</strong> ${data.namespace}</p>
+                            <p><strong>Status:</strong> <span style="color: ${getPodStatusColor(data.status)};">${data.status}</span></p>
+                            <p><strong>Node:</strong> ${data.node}</p>
+                            <p><strong>Start Time:</strong> ${data.start_time || 'N/A'}</p>
+                        </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <h4>Containers</h4>
+                    `;
+
+                    if (data.containers && data.containers.length > 0) {
+                        data.containers.forEach(container => {
+                            html += `
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                                    <h5>${container.name}</h5>
+                                    <p><strong>Image:</strong> ${container.image}</p>
+                                    <p><strong>Ports:</strong> ${container.ports.length > 0 ? container.ports.map(p => `${p.containerPort}/${p.protocol || 'TCP'}`).join(', ') : 'None'}</p>
+                                    <p><strong>Environment Variables:</strong> ${container.env || 'N/A'}</p>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        html += '<p>No containers found</p>';
+                    }
+
+                    html += `
+                        </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <h4>Recent Events</h4>
+                    `;
+
+                    if (data.events && data.events.length > 0) {
+                        html += '<div style="max-height: 300px; overflow-y: auto;">';
+                        data.events.forEach(event => {
+                            const eventColor = event.type === 'Warning' ? '#f59e0b' : '#6b7280';
+                            html += `
+                                <div style="border-left: 4px solid ${eventColor}; padding-left: 10px; margin-bottom: 10px;">
+                                    <strong style="color: ${eventColor};">${event.type}</strong> ${event.reason}<br>
+                                    <small>${event.message}</small><br>
+                                    <small style="color: #6b7280;">${event.timestamp}</small>
+                                </div>
+                            `;
+                        });
+                        html += '</div>';
+                    } else {
+                        html += '<p>No recent events</p>';
+                    }
+
+                    html += '</div>';
+
+                    detailsContent.innerHTML = html;
+
+                } catch (error) {
+                    detailsContent.innerHTML = '<div style="color: #f87171;">❌ Failed to load pod details</div>';
+                    console.error('Failed to load pod details:', error);
+                }
+            }
+
+            function hidePodDetails() {
+                document.getElementById('pod-details').style.display = 'none';
+                document.getElementById('pods-list').style.display = 'block';
+            }
+
+            async function showPodLogs(namespace, podName) {
+                const modal = document.getElementById('pod-logs-modal');
+                const content = document.getElementById('pod-logs-content');
+
+                modal.style.display = 'block';
+                content.textContent = '🔄 Connecting to log stream...';
+
+                try {
+                    const ws = new WebSocket(`ws://${window.location.host}/ws/pod/logs`);
+                    
+                    ws.onopen = function() {
+                        content.textContent = '🔄 Requesting logs...\n';
+                        ws.send(JSON.stringify({
+                            namespace: namespace,
+                            pod_name: podName,
+                            tail: 100,
+                            follow: false
+                        }));
+                    };
+                    
+                    ws.onmessage = function(event) {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'start') {
+                            content.textContent = `📋 ${data.message}\n\n`;
+                        } else if (data.type === 'log') {
+                            content.textContent += data.data + '\n';
+                        } else if (data.type === 'complete') {
+                            content.textContent += `\n✅ Log streaming completed (${data.execution_time.toFixed(2)}s)\n`;
+                        } else if (data.type === 'error') {
+                            content.textContent += `\n❌ Error: ${data.message}\n`;
+                        }
+                        
+                        // Auto-scroll to bottom
+                        content.scrollTop = content.scrollHeight;
+                    };
+                    
+                    ws.onerror = function(error) {
+                        content.textContent = '❌ WebSocket connection failed\n';
+                        console.error('Pod logs WebSocket error:', error);
+                    };
+                    
+                    ws.onclose = function() {
+                        content.textContent += '\n🔌 Connection closed\n';
+                    };
+                    
+                    // Store WebSocket reference for cleanup
+                    window.currentPodLogsWS = ws;
+                    
+                } catch (error) {
+                    content.textContent = '❌ Failed to connect to log stream\n';
+                    console.error('Failed to setup pod logs WebSocket:', error);
+                }
+            }
+
+            function closePodLogsModal() {
+                document.getElementById('pod-logs-modal').style.display = 'none';
+                
+                // Close WebSocket connection if open
+                if (window.currentPodLogsWS) {
+                    window.currentPodLogsWS.close();
+                    window.currentPodLogsWS = null;
+                }
+            }
+
+            async function restartPod(namespace, podName) {
+                if (!confirm(`Restart pod ${namespace}/${podName}?`)) return;
+
+                try {
+                    const response = await authenticatedFetch(`/api/cluster/pods/${namespace}/${podName}/restart`, {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+
+                    if (data.error) {
+                        alert(`❌ Failed to restart pod: ${data.error}`);
+                    } else {
+                        alert(`✅ ${data.message}`);
+                        loadPods(); // Refresh the list
+                    }
+                } catch (error) {
+                    alert('❌ Failed to restart pod');
+                    console.error('Failed to restart pod:', error);
+                }
+            }
+
+            async function deletePod(namespace, podName) {
+                if (!confirm(`Delete pod ${namespace}/${podName}? This action cannot be undone.`)) return;
+
+                try {
+                    const response = await authenticatedFetch(`/api/cluster/pods/${namespace}/${podName}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+
+                    if (data.error) {
+                        alert(`❌ Failed to delete pod: ${data.error}`);
+                    } else {
+                        alert(`✅ ${data.message}`);
+                        loadPods(); // Refresh the list
+                    }
+                } catch (error) {
+                    alert('❌ Failed to delete pod');
+                    console.error('Failed to delete pod:', error);
+                }
+            }
+
+            // Dummy implementations for authentication and logging status
+            async function authenticatedFetch(url, options) {
+                // This should be replaced with real authentication logic
+                return fetch(url, options);
+            }
+            function initializeLoggingStatus() {
+                // Placeholder for logging status initialization
+            }
+        </script>
+    </body>
+    </html>
+    """)
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -3220,6 +4048,7 @@ async def root():
                 <ul class="nav-tabs">
                     <li class="nav-tab active" onclick="showTab('overview')">Overview</li>
                     <li class="nav-tab" onclick="showTab('cluster')">Cluster</li>
+                    <li class="nav-tab" onclick="showTab('pods')">Pods</li>
                     <li class="nav-tab" onclick="showTab('resources')">Resources</li>
                     <li class="nav-tab" onclick="showTab('scripts')">Scripts</li>
                     <li class="nav-tab" onclick="showTab('execute')">Execute</li>
@@ -3601,6 +4430,44 @@ async def root():
                     </div>
                 </div>
 
+                <!-- Pods Tab -->
+                <div id="pods" class="tab-content">
+                    <h2>🐳 Pod Management</h2>
+
+                    <div style="margin-bottom: 20px;">
+                        <button class="btn btn-primary" onclick="loadPods()">🔄 Refresh Pods</button>
+                        <select id="namespace-filter" style="margin-left: 10px; padding: 5px; border-radius: 4px;">
+                            <option value="">All Namespaces</option>
+                            <option value="default">default</option>
+                            <option value="kube-system">kube-system</option>
+                            <option value="kube-public">kube-public</option>
+                            <option value="kube-node-lease">kube-node-lease</option>
+                        </select>
+                        <div id="pods-status" style="margin-top: 10px;"></div>
+                    </div>
+
+                    <div id="pods-content" style="display: none;">
+                        <div id="pods-list" style="margin-bottom: 20px;">
+                            <h3>Pod List</h3>
+                            <div id="pods-table-container"></div>
+                        </div>
+
+                        <div id="pod-details" style="display: none;">
+                            <h3>Pod Details</h3>
+                            <div id="pod-details-content"></div>
+                            <button class="btn btn-secondary" onclick="hidePodDetails()">← Back to Pod List</button>
+                        </div>
+                    </div>
+
+                    <div id="pod-logs-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000;">
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; width: 80%; height: 80%; overflow: auto;">
+                            <h3>Pod Logs</h3>
+                            <pre id="pod-logs-content" style="background: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 5px; font-family: 'Courier New', monospace; white-space: pre-wrap; max-height: 500px; overflow-y: auto;"></pre>
+                            <button class="btn btn-secondary" onclick="closePodLogsModal()">Close</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- API Tab -->
                 <div id="api" class="tab-content">
                     <h2>🔌 API Endpoints</h2>
@@ -3882,6 +4749,8 @@ async def root():
                     loadScripts();
                 } else if (tabName === 'cluster') {
                     loadClusterData();
+                } else if (tabName === 'pods') {
+                    loadPods();
                 }
             }
 
@@ -6341,7 +7210,7 @@ async def test_websocket_functionality():
     try:
         # Test WebSocket endpoint definitions
         # In a real test, you'd establish actual WebSocket connections
-        websocket_endpoints = ["/ws/execute", "/ws/docker/build"]
+        websocket_endpoints = ["/ws/execute", "/ws/docker/build", "/ws/pod/logs"]
 
         # Just check if the WebSocket routes are defined in the app
         routes = [route.path for route in app.routes]
