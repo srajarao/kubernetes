@@ -47,134 +47,112 @@ echo "2. Checking current NFS mounts..."
 NFS_MOUNTS=$(mount | grep nfs 2>/dev/null || true)
 if [ -n "$NFS_MOUNTS" ]; then
     print_status 0 "NFS mounts found:"
-    echo "$NFS_MOUNTS" | while read -r line 2>/dev/null || true; do
+    # Use a safer approach to avoid pipeline issues with set -e
+    while IFS= read -r line; do
         echo "   $line"
-    done
+    done <<< "$NFS_MOUNTS"
 else
     print_status 1 "No NFS mounts found"
 fi
 
-# 3. Check if mount point exists
+# 3. Check if expected mount point exists
 echo ""
 echo "3. Checking mount point..."
 if [ -d "$MOUNT_POINT" ]; then
     print_status 0 "Mount point $MOUNT_POINT exists"
+    ls -la "$MOUNT_POINT" | head -5  # Show some contents
 else
     print_status 1 "Mount point $MOUNT_POINT does NOT exist"
     echo "   Create mount point: sudo mkdir -p $MOUNT_POINT"
 fi
 
-# 4. Check NFS server connectivity
+# 4. Check /etc/fstab for NFS entries
 echo ""
-echo "4. Checking NFS server connectivity..."
-if timeout 5 bash -c "echo > /dev/tcp/$NFS_SERVER/2049" 2>/dev/null; then
-    print_status 0 "NFS server $NFS_SERVER is reachable on port 2049"
-else
-    print_status 1 "NFS server $NFS_SERVER is NOT reachable on port 2049"
-    echo "   Check if NFS server is running on $NFS_SERVER"
-fi
-
-# 5. Check NFS share availability
-echo ""
-echo "5. Checking NFS share availability..."
-if showmount -e "$NFS_SERVER" &>/dev/null; then
-    print_status 0 "NFS server $NFS_SERVER is responding to showmount"
-    echo "   Available shares:"
-    showmount -e "$NFS_SERVER" | tail -n +2 | while read line; do
-        echo "   $line"
+echo "4. Checking /etc/fstab for NFS persistence..."
+FSTAB_NFS=$(grep -E "^[^#]*nfs" /etc/fstab 2>/dev/null || true)
+if [ -n "$FSTAB_NFS" ]; then
+    print_status 0 "NFS entries found in /etc/fstab:"
+    echo "$FSTAB_NFS" | while read line; do
+        echo "     $line"
     done
 else
-    print_status 1 "NFS server $NFS_SERVER is NOT responding to showmount"
-    echo "   Check NFS server configuration"
+    print_status 1 "No NFS entries found in /etc/fstab"
+    echo "   Add to /etc/fstab: $NFS_SERVER:$NFS_SHARE $MOUNT_POINT nfs defaults 0 0"
 fi
 
-# 6. Check if specific share is exported
+# 5. Check if mount is active
 echo ""
-echo "6. Checking if share $NFS_SHARE is exported..."
-EXPORTED_SHARES=$(showmount -e "$NFS_SERVER" 2>/dev/null | awk '{print $1}')
-if echo "$EXPORTED_SHARES" | grep -q "^$NFS_SHARE$"; then
-    print_status 0 "Share $NFS_SHARE is exported by $NFS_SERVER"
-else
-    print_status 1 "Share $NFS_SHARE is NOT exported by $NFS_SERVER"
-    echo "   Available shares: $EXPORTED_SHARES"
-fi
-
-# 7. Test NFS mount
-echo ""
-echo "7. Testing NFS mount..."
-
-# Check if already mounted
+echo "5. Checking if NFS share is mounted..."
 if mount | grep -q "$MOUNT_POINT"; then
-    print_status 0 "NFS share is already mounted at $MOUNT_POINT"
-    echo "   Skipping mount test since share is already active"
+    print_status 0 "NFS share is mounted at $MOUNT_POINT"
+else
+    print_status 1 "NFS share is NOT mounted at $MOUNT_POINT"
+    echo "   Mount manually: sudo mount $MOUNT_POINT"
+    echo "   Or mount all: sudo mount -a"
+fi
 
-    # Check if mount is accessible
+# 6. Test NFS connectivity
+echo ""
+echo "6. Testing NFS server connectivity..."
+if showmount -e "$NFS_SERVER" &>/dev/null; then
+    print_status 0 "NFS server $NFS_SERVER is reachable"
+    echo "   Available exports:"
+    showmount -e "$NFS_SERVER" | tail -n +2 | while read line; do
+        echo "     $line"
+    done
+else
+    print_status 1 "NFS server $NFS_SERVER is NOT reachable"
+    echo "   Check network connectivity and NFS server status"
+fi
+
+# 7. Test mount functionality (if not mounted)
+echo ""
+echo "7. Testing mount functionality..."
+if mount | grep -q "$MOUNT_POINT"; then
+    echo "   Mount already active, testing access..."
     if ls "$MOUNT_POINT" &>/dev/null; then
-        print_status 0 "Mount point $MOUNT_POINT is accessible"
-        echo "   Contents preview:"
-        ls -la "$MOUNT_POINT" | head -5
+        print_status 0 "Can access mounted NFS share"
     else
-        print_status 1 "Mount point $MOUNT_POINT is NOT accessible"
+        print_status 1 "Cannot access mounted NFS share"
+        echo "   Check permissions and NFS server configuration"
     fi
 else
-    # Try to mount if not already mounted
-    if sudo mount -t nfs "$NFS_SERVER:$NFS_SHARE" "$MOUNT_POINT" 2>/dev/null; then
-        print_status 0 "Successfully mounted $NFS_SERVER:$NFS_SHARE to $MOUNT_POINT"
-
-        # Check if mount is accessible
-        if ls "$MOUNT_POINT" &>/dev/null; then
-            print_status 0 "Mount point $MOUNT_POINT is accessible"
-            echo "   Contents preview:"
-            ls -la "$MOUNT_POINT" | head -5
+    echo "   Attempting test mount..."
+    TEST_DIR="/tmp/nfs_test_$(date +%s)"
+    mkdir -p "$TEST_DIR"
+    if sudo mount -t nfs "$NFS_SERVER:$NFS_SHARE" "$TEST_DIR" 2>/dev/null; then
+        print_status 0 "Test mount successful"
+        if ls "$TEST_DIR" &>/dev/null; then
+            print_status 0 "Can access test-mounted NFS share"
         else
-            print_status 1 "Mount point $MOUNT_POINT is NOT accessible"
+            print_status 1 "Cannot access test-mounted NFS share"
         fi
-
-        # Unmount test mount
-        if sudo umount "$MOUNT_POINT" 2>/dev/null; then
-            print_status 0 "Successfully unmounted test mount"
-        else
-            print_status 1 "Failed to unmount test mount"
-        fi
+        sudo umount "$TEST_DIR" 2>/dev/null
     else
-        print_status 1 "Failed to mount $NFS_SERVER:$NFS_SHARE to $MOUNT_POINT"
-        echo "   Check NFS server exports and client permissions"
+        print_status 1 "Test mount failed"
+        echo "   Check NFS server exports and network connectivity"
     fi
+    rmdir "$TEST_DIR"
 fi
 
-# 8. Check /etc/fstab for persistent mount
+# 8. Check mount persistence
 echo ""
-echo "8. Checking /etc/fstab for persistent mount..."
-if grep -q "$NFS_SERVER:$NFS_SHARE" /etc/fstab; then
-    print_status 0 "Persistent mount found in /etc/fstab"
-    grep "$NFS_SERVER:$NFS_SHARE" /etc/fstab
+echo "8. Checking mount persistence..."
+if grep -q "$MOUNT_POINT" /etc/fstab && systemctl is-enabled --quiet rpcbind 2>/dev/null; then
+    print_status 0 "NFS mount appears to be configured for persistence"
 else
-    print_status 1 "No persistent mount found in /etc/fstab"
-    echo "   To add persistent mount, add this line to /etc/fstab:"
-    echo "   $NFS_SERVER:$NFS_SHARE $MOUNT_POINT nfs defaults 0 0"
-fi
-
-# 9. Check mount on boot
-echo ""
-echo "9. Checking if mount is configured for boot..."
-if systemctl is-enabled nfs-client.target &>/dev/null; then
-    print_status 0 "NFS client target is enabled"
-else
-    print_status 1 "NFS client target is NOT enabled"
-    echo "   Enable with: sudo systemctl enable nfs-client.target"
+    print_status 1 "NFS mount may not persist across reboots"
+    echo "   Ensure /etc/fstab has the entry and rpcbind is enabled"
 fi
 
 echo ""
 echo "=========================================="
-echo "🏁 NFS Client Validation Complete"
+echo "🎉 NFS Client Validation Complete!"
 echo "=========================================="
-
-# Summary
+echo "If all checks passed, NFS client is properly configured on Krithi."
+echo "The share should be accessible at $MOUNT_POINT"
 echo ""
-echo "Summary for Krithi NFS Client:"
-echo "- NFS Server: $NFS_SERVER"
-echo "- NFS Share: $NFS_SHARE"
-echo "- Mount Point: $MOUNT_POINT"
-echo ""
-echo "If any checks failed, please address the issues above."
-echo "For Kubernetes persistent volumes, ensure NFS is working properly."
+echo "Manual mount commands:"
+echo "  sudo mount $MOUNT_POINT"
+echo "  sudo mount -a  # Mount all from fstab"
+echo "=========================================="

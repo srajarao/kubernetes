@@ -1,10 +1,10 @@
-# 🚀 K3s Multi-Node AI Cluster with PostgreSQL & pgAdmin
+# 🚀 K3s Multi-Node AI Cluster with PostgreSQL, pgAdmin & VPN Gateway
 
-**� CURRENT STATUS: SERVER REMOVED - READY FOR RECONFIGURATION** - K3s server uninstalled from Tower, comprehensive removal and monitoring scripts available, infrastructure updated with new network topology.
+**� CURRENT STATUS: KUBERNETES CLUSTER OPERATIONAL WITH VPN GATEWAY** - K3s agents running on 4 GPU worker nodes, Blackwell GPU support active, OpenVPN gateway on Krithi providing secure remote access, comprehensive network integration and shared storage.
 
-This repository provides a complete, automated setup for a high-performance Kubernetes cluster optimized for AI/ML workloads on Jetson devices. It combines K3s (lightweight Kubernetes), dual-network architecture (10G + 1G), GPU acceleration, PostgreSQL database, and comprehensive application deployments with **production-ready stability verification**.
+This repository provides a complete, automated setup for a high-performance Kubernetes cluster optimized for AI/ML workloads on Jetson devices. It combines K3s (lightweight Kubernetes), dual-network architecture (10G + 1G), GPU acceleration, PostgreSQL database, comprehensive application deployments, and **secure VPN gateway access** with **production-ready stability verification**.
 
-**🎯 October 29, 2025 Update**: Blackwell GPU support successfully implemented with NVIDIA GPU Operator for DGX Spark nodes. GPU operator deployment configurations created for Spark1 and Spark2 nodes, replacing manual device mounting approach. **✅ Blackwell GB10 GPUs now fully operational with TensorFlow, PyTorch, and TensorRT support.**
+**🎯 October 30, 2025 Update**: Blackwell GPU support successfully implemented with NVIDIA GPU Operator for DGX Spark nodes. GPU operator deployment configurations created for Spark1 and Spark2 nodes, replacing manual device mounting approach. **✅ Blackwell GB10 GPUs now fully operational with TensorFlow, PyTorch, and TensorRT support.** Krithi VPN gateway fully integrated with complete network access, NFS client functionality, and OpenVPN server configuration.
 
 ## 🎯 What This Project Provides
 
@@ -13,6 +13,8 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **GPU Optimization**: NVIDIA GPU support with runtime classes, device plugins, and Blackwell GB10 compatibility
 - **Dual-Network Performance**: 10G dedicated link for AGX Orin, 1G for Nano, optimized for DGX Spark devices
 - **Application Stack**: FastAPI with GPU acceleration, PostgreSQL with pgvector, pgAdmin
+- **Secure Remote Access**: OpenVPN gateway on Krithi for encrypted external connectivity
+- **Shared Storage**: NFS server on tower with client access across all nodes
 - **Production Ready**: Comprehensive stability verification and monitoring
 - **96-Step Automation**: Complete end-to-end deployment with validation
 - **🆕 Centralized Build System**: Build images once on tower, deploy efficiently to all nodes
@@ -47,6 +49,9 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **Infrastructure**: Updated with Comcast Business Router → ER605 Router → 10G Unifi Switch topology
 - **GPU Verification**: All GPU checks passed - TensorFlow, PyTorch, TensorRT, cuSPARSELt, cuDNN all functional on Blackwell GB10 (CUDA 12.1)
 - **Registry Configuration**: HTTP registry properly configured for both K3s and containerd
+- **VPN Gateway**: Krithi fully operational as OpenVPN gateway with complete cluster network access
+- **Network Integration**: All 6 nodes (tower, nano, agx, spark1, spark2, krithi) with full connectivity
+- **Shared Storage**: NFS server on tower with client access on all nodes including krithi
 - **Script Automation**: k3s-spark1.sh fully automated - handles registry config, service restarts, job cleanup, GPU operator readiness, containerd configuration, and containerd restarts
 - **Management Scripts**: Complete suite of agent removal and memory monitoring scripts available
 - **Last Updated**: October 30, 2025
@@ -54,13 +59,13 @@ This repository provides a complete, automated setup for a high-performance Kube
 ### 🏗️ **Cluster Architecture**
 ```
 Comcast Business Router → ER605 Router → 10G Unifi Switch → Cluster Nodes
-Tower (Control Plane)    Nano (GPU Node)    AGX (GPU Node)    DGX-Spark-1        DGX-Spark-2
-├── K3s Server          ├── FastAPI App    ├── FastAPI App   ├── K3s Agent       ├── K3s Agent
-│   (Removed)           ├── Jupyter Lab    ├── Jupyter Lab   │   Operational     │   Operational
-├── Docker Registry     ├── GPU Runtime    ├── GPU Runtime   ├── GPU Operator    ├── GPU Operator
-├── PostgreSQL          ├── NVIDIA GPU     └── NVIDIA GPU    ├── Blackwell GB10   ├── Blackwell GB10
-├── pgAdmin             └── Node Affinity  └── Node Affinity  │   ✅ Verified      │   Ready
-└── Monitoring          └── Health Checks  └── Health Checks  └── 192.168.1.201     └── 192.168.1.202
+Tower (Control Plane)    Nano (GPU Node)    AGX (GPU Node)    DGX-Spark-1        DGX-Spark-2        Krithi (VPN Gateway)
+├── K3s Server          ├── FastAPI App    ├── FastAPI App   ├── K3s Agent       ├── K3s Agent       ├── OpenVPN Server
+│   (Removed)           ├── Jupyter Lab    ├── Jupyter Lab   │   Operational     │   Operational     ├── Network Access
+├── Docker Registry     ├── GPU Runtime    ├── GPU Runtime   ├── GPU Operator    ├── GPU Operator    ├── NFS Client
+├── PostgreSQL          ├── NVIDIA GPU     └── NVIDIA GPU    ├── Blackwell GB10   ├── Blackwell GB10   ├── Host Resolution
+├── pgAdmin             └── Node Affinity  └── Node Affinity  │   ✅ Verified      │   Ready           └── Remote Access
+└── Monitoring          └── Health Checks  └── Health Checks  └── 192.168.1.201     └── 192.168.1.202   └── 192.168.1.100
 └── NFS Server          └── Node Affinity  └── Node Affinity
 ```
 
@@ -72,6 +77,7 @@ Tower (Control Plane)    Nano (GPU Node)    AGX (GPU Node)    DGX-Spark-1       
 | **AGX**        | 192.168.1.244  | GPU Worker Node                  | AGX Orin GPU     | ✅ Operational (Agent)    |
 | **DGX-Spark-1**| 192.168.1.201  | GPU Worker Node                  | Blackwell GB10   | ✅ Operational (Agent + GPU Op) |
 | **DGX-Spark-2**| 192.168.1.202  | GPU Worker Node                  | Blackwell GB10   | ✅ Operational (Agent + GPU Op) |
+| **Krithi**     | 192.168.1.100  | VPN Gateway & Network Access     | -                | ✅ Operational (VPN + NFS) |
 
 ### 🆕 **DGX-Spark Devices Integration**
 The DGX-Spark devices (`192.168.1.201` and `192.168.1.202`) are integrated into the K3s cluster with **Blackwell GB10 GPU support** via NVIDIA GPU Operator. Both devices feature factory-installed NVIDIA drivers and are configured for optimal AI/ML workloads. The devices are interconnected via 200G transceiver connections for high-speed communication between Spark1 and Spark2 nodes.
@@ -101,6 +107,28 @@ Located in `scripts/` directory for advanced network setup:
 - **Tower Setup**: Dual-interface configuration, NFS server, internet sharing
 - **Device Setup**: Network configuration, NFS mounting, SSH key distribution
 - **Performance Optimization**: Jumbo frames, optimized routing, bandwidth isolation
+
+### 🔐 **VPN Gateway & Remote Access (Krithi)**
+
+**Krithi** (`192.168.1.100`) serves as the secure VPN gateway for external access to the cluster network:
+
+#### **OpenVPN Configuration**
+- **External Access**: Secure remote connectivity to cluster resources
+- **Encrypted Tunneling**: Full VPN encryption for all external connections
+- **Network Integration**: Complete access to all cluster nodes and services
+- **Authentication**: Certificate-based VPN authentication
+
+#### **Network Services**
+- **Host Resolution**: Full DNS resolution for all cluster nodes
+- **NFS Client**: Direct access to shared storage from tower
+- **SSH Access**: Passwordless authentication to all cluster nodes
+- **Network Monitoring**: Connectivity validation and health checks
+
+#### **Access Methods**
+- **Direct SSH**: `ssh krithi` for cluster network access
+- **VPN Tunnel**: OpenVPN connection for secure remote access
+- **Storage Access**: NFS mount access to `/mnt/vmstore` (7.3TB shared storage)
+- **Service Proxy**: Access to all cluster services through VPN tunnel
 
 ### 🚀 **Access Information**
 
@@ -136,12 +164,22 @@ Located in `scripts/` directory for advanced network setup:
 
 ### 📈 **System Health**
 - **Pods**: 4/4 running (fastapi-nano, fastapi-agx, postgres-db, pgadmin)
-- **Nodes**: 4/4 ready (tower, nano, agx, spark1)
+- **Kubernetes Nodes**: 4/4 ready (nano, agx, spark1, spark2)
+- **Network Nodes**: 6/6 operational (tower, nano, agx, spark1, spark2, krithi)
 - **Services**: All NodePort services operational
 - **GPU Runtime**: NVIDIA runtime classes and device plugins active
 - **Network**: All endpoints responding correctly
+- **VPN Gateway**: Krithi OpenVPN server operational
+- **Shared Storage**: NFS server and clients fully functional
 
-## 🔧 **Recent Updates (October 29, 2025)**
+## 🔧 **Recent Updates (October 30, 2025)**
+
+### 🟢 **Krithi VPN Gateway Integration**
+- **VPN Gateway Setup**: Krithi configured as OpenVPN server for secure external access to cluster network
+- **Network Integration**: Full host file resolution and connectivity to all cluster nodes
+- **NFS Client**: Complete shared storage access with persistent mount configuration
+- **SSH Authentication**: Passwordless key-based authentication to all cluster nodes
+- **Network Validation**: Comprehensive connectivity testing and monitoring capabilities
 
 ### 🟢 **Blackwell GPU Support Implementation**
 - **GPU Operator Deployment**: Created dedicated GPU operator configurations for Spark1 and Spark2 DGX nodes
@@ -157,6 +195,22 @@ Located in `scripts/` directory for advanced network setup:
 - **Memory Monitoring**: Implemented memory check scripts for all nodes (01-memcheck-spark2.sh through 05-memcheck-agx.sh)
 - **TLS Certificate Updates**: Regenerated certificates with new IP addresses post-migration
 - **Cluster Connectivity**: Verified post-certificate update across all nodes
+- **🆕 Cluster Management Application**: Complete web-based cluster management system deployed on dedicated nano node with tree visualization, node monitoring, and multi-node operations
+- **🆕 Security & Authentication**: JWT-based user authentication with role-based access control (Admin/Operator/Viewer roles)
+
+### 🚀 **Cluster Management Application**
+A comprehensive web-based cluster management system has been implemented and deployed on the dedicated **nano management node** (`192.168.1.181:8000`).
+
+**Key Features:**
+- 🌳 **Tree-based Cluster Visualization**: Hierarchical display of all 6 cluster nodes (Tower, Nano, AGX, DGX-Spark-1, DGX-Spark-2, Krithi)
+- 📊 **Real-time Node Monitoring**: Live status checking with ping and SSH connectivity verification
+- 🎯 **Multi-Node Operations**: Select and operate on multiple nodes simultaneously
+- 📂 **Script Management**: Catalog and execute 94+ cluster management scripts
+- 🐳 **Docker Integration**: Build and manage containers with real-time streaming
+- 🔄 **WebSocket Streaming**: Live output for script execution and Docker builds
+
+**Access:** http://192.168.1.181:8000/
+**Status:** ✅ **FULLY OPERATIONAL** - All 6 bootstrap phases completed
 
 ### 🛠️ **Management Tools**
 
