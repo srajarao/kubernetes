@@ -882,6 +882,51 @@ async def ping_nodes(node_names: List[str]) -> Dict[str, Any]:
         }
     }
 
+async def ssh_check_nodes(node_names: List[str]) -> Dict[str, Any]:
+    """
+    Check SSH connectivity to multiple nodes and return detailed results.
+    """
+    nodes_info = get_cluster_node_info()
+    results = {}
+    
+    for node_name in node_names:
+        node_name_lower = node_name.lower()
+        
+        # Find node IP
+        node_ip = None
+        for category, node_list in nodes_info["nodes"].items():
+            if isinstance(node_list, list):
+                for node in node_list:
+                    if node["name"].lower() == node_name_lower:
+                        node_ip = node["ip"]
+                        break
+            else:
+                if node_list["name"].lower() == node_name_lower:
+                    node_ip = node_list["ip"]
+                    break
+        
+        if node_ip:
+            ssh_success = await check_ssh_connectivity(node_ip)
+            results[node_name] = {
+                "ip": node_ip,
+                "ssh_accessible": ssh_success,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            results[node_name] = {
+                "error": f"Node '{node_name}' not found in cluster configuration",
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    return {
+        "ssh_results": results,
+        "summary": {
+            "requested_nodes": len(node_names),
+            "successful_ssh": sum(1 for r in results.values() if r.get("ssh_accessible", False)),
+            "timestamp": datetime.now().isoformat()
+        }
+    }
+
 # Docker API endpoints
 @app.get("/api/docker/info")
 async def docker_info():
@@ -960,6 +1005,18 @@ async def ping_cluster_nodes(request: dict):
         return {"error": "No nodes specified"}
     
     return await ping_nodes(nodes)
+
+@app.post("/api/cluster/ssh-check")
+async def ssh_check_cluster_nodes(request: dict):
+    """
+    Check SSH connectivity to specified nodes.
+    Expected JSON: {"nodes": ["node1", "node2", ...]}
+    """
+    nodes = request.get("nodes", [])
+    if not nodes:
+        return {"error": "No nodes specified"}
+    
+    return await ssh_check_nodes(nodes)
 
 @app.get("/api/cluster/resources")
 async def get_cluster_resources(request: Request, current_user: User = Depends(get_current_active_user)):
@@ -2539,12 +2596,13 @@ async def root():
                                     <p>Loading cluster status...</p>
                                 </div>
                                 
-                                <!-- Ping Test Section -->
+                                <!-- Network Testing Section -->
                                 <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
-                                    <h3>🏓 Network Testing</h3>
-                                    <p>Test connectivity to selected nodes in the cluster tree.</p>
-                                    <button class="btn btn-success" onclick="pingSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">🏓 Ping Selected Nodes</button>
-                                    <div id="ping-status" style="margin-top: 10px; font-size: 0.9em;"></div>
+                                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                        <button class="btn btn-success" onclick="pingSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">🏓 Ping Test</button>
+                                        <button class="btn btn-primary" onclick="sshCheckSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">🔐 SSH Check</button>
+                                    </div>
+                                    <div id="network-status" style="margin-top: 10px; font-size: 0.9em;"></div>
                                 </div>
                             </div>
                         </div>
@@ -3603,15 +3661,15 @@ ${data.execution_result.stdout}
 
             async function pingSelectedNodes() {
                 const selectedNodes = getSelectedNodes();
-                const pingStatusDiv = document.getElementById('ping-status');
+                const networkStatusDiv = document.getElementById('network-status');
                 const treeContentDiv = document.getElementById('tree-content');
                 
                 if (selectedNodes.length === 0) {
-                    pingStatusDiv.innerHTML = '<div style="color: #f59e0b;">⚠️ Please select at least one node to ping</div>';
+                    networkStatusDiv.innerHTML = '<div style="color: #f59e0b;">⚠️ Please select at least one node to ping</div>';
                     return;
                 }
                 
-                pingStatusDiv.innerHTML = '<div style="color: #3b82f6;">🏓 Pinging selected nodes...</div>';
+                networkStatusDiv.innerHTML = '<div style="color: #3b82f6;">🏓 Pinging selected nodes...</div>';
                 treeContentDiv.textContent = `🏓 Starting ping test for ${selectedNodes.length} node(s)...\n\n`;
                 
                 try {
@@ -3627,12 +3685,12 @@ ${data.execution_result.stdout}
                     const data = await response.json();
                     
                     if (data.error) {
-                        pingStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        networkStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
                         treeContentDiv.textContent += `❌ Error: ${data.error}\n`;
                         return;
                     }
                     
-                    pingStatusDiv.innerHTML = `<div style="color: #10b981;">✅ Ping test completed for ${selectedNodes.length} node(s)</div>`;
+                    networkStatusDiv.innerHTML = `<div style="color: #10b981;">✅ Ping test completed for ${selectedNodes.length} node(s)</div>`;
                     
                     // Display results in terminal
                     let resultsText = `🏓 Ping Test Results (${new Date().toLocaleString()})\n`;
@@ -3650,7 +3708,61 @@ ${data.execution_result.stdout}
                     treeContentDiv.textContent = resultsText;
                     
                 } catch (error) {
-                    pingStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing ping test</div>';
+                    networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing ping test</div>';
+                    treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
+                }
+            }
+
+            async function sshCheckSelectedNodes() {
+                const selectedNodes = getSelectedNodes();
+                const networkStatusDiv = document.getElementById('network-status');
+                const treeContentDiv = document.getElementById('tree-content');
+                
+                if (selectedNodes.length === 0) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f59e0b;">⚠️ Please select at least one node for SSH check</div>';
+                    return;
+                }
+                
+                networkStatusDiv.innerHTML = '<div style="color: #3b82f6;">🔐 Checking SSH connectivity...</div>';
+                treeContentDiv.textContent = `🔐 Starting SSH check for ${selectedNodes.length} node(s)...\n\n`;
+                
+                try {
+                    const response = await fetch('/api/cluster/ssh-check', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ nodes: selectedNodes })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        networkStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        treeContentDiv.textContent += `❌ Error: ${data.error}\n`;
+                        return;
+                    }
+                    
+                    networkStatusDiv.innerHTML = `<div style="color: #10b981;">✅ SSH check completed for ${selectedNodes.length} node(s)</div>`;
+                    
+                    // Display results in terminal
+                    let resultsText = `🔐 SSH Check Results (${new Date().toLocaleString()})\n`;
+                    resultsText += `═`.repeat(50) + `\n\n`;
+                    
+                    Object.entries(data.ssh_results).forEach(([node, result]) => {
+                        const status = result.ssh_accessible ? '✅ SSH ACCESSIBLE' : '❌ SSH UNAVAILABLE';
+                        const ip = result.ip ? ` (${result.ip})` : '';
+                        resultsText += `${status} ${node}${ip}\n`;
+                    });
+                    
+                    resultsText += `\n📊 Summary: ${data.summary.successful_ssh}/${data.summary.requested_nodes} nodes SSH accessible\n\n`;
+                    resultsText += `Ready for next operation...\n`;
+                    
+                    treeContentDiv.textContent = resultsText;
+                    
+                } catch (error) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing SSH check</div>';
                     treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
                 }
             }
