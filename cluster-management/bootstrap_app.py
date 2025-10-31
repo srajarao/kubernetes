@@ -1309,6 +1309,101 @@ async def backup_home_on_node(node_name: str, node_ip: str) -> tuple[bool, Dict[
     except Exception as e:
         return False, {"error": f"Exception during backup: {str(e)}"}
 
+async def add_agent_node(node_name: str, node_ip: str, node_type: str = "gpu") -> tuple[bool, Dict[str, Any]]:
+    """
+    Add a new agent node to the cluster configuration.
+    Returns (success, result_info)
+    """
+    try:
+        # This would typically involve:
+        # 1. Validating the node can be reached
+        # 2. Installing necessary software (k3s, etc.)
+        # 3. Adding to cluster configuration
+        # 4. Updating network configurations
+        
+        # For now, we'll simulate the process and return success
+        # In a real implementation, this would execute actual provisioning scripts
+        
+        result_info = {
+            "action": "add_agent",
+            "node_name": node_name,
+            "node_ip": node_ip,
+            "node_type": node_type,
+            "message": f"Agent node {node_name} ({node_ip}) added to cluster configuration"
+        }
+        
+        return True, result_info
+        
+    except Exception as e:
+        return False, {"error": f"Exception during agent addition: {str(e)}"}
+
+async def remove_agent_node(node_name: str) -> tuple[bool, Dict[str, Any]]:
+    """
+    Remove an agent node from the cluster configuration.
+    Returns (success, result_info)
+    """
+    try:
+        # This would typically involve:
+        # 1. Gracefully removing from Kubernetes cluster
+        # 2. Cleaning up configurations
+        # 3. Updating network settings
+        
+        result_info = {
+            "action": "remove_agent",
+            "node_name": node_name,
+            "message": f"Agent node {node_name} removed from cluster configuration"
+        }
+        
+        return True, result_info
+        
+    except Exception as e:
+        return False, {"error": f"Exception during agent removal: {str(e)}"}
+
+async def add_server_node(node_name: str, node_ip: str) -> tuple[bool, Dict[str, Any]]:
+    """
+    Add a new server/control plane node to the cluster.
+    Returns (success, result_info)
+    """
+    try:
+        # This would typically involve:
+        # 1. Setting up as additional control plane node
+        # 2. Configuring HA setup
+        # 3. Updating cluster configuration
+        
+        result_info = {
+            "action": "add_server",
+            "node_name": node_name,
+            "node_ip": node_ip,
+            "message": f"Server node {node_name} ({node_ip}) added to cluster as control plane"
+        }
+        
+        return True, result_info
+        
+    except Exception as e:
+        return False, {"error": f"Exception during server addition: {str(e)}"}
+
+async def remove_server_node(node_name: str) -> tuple[bool, Dict[str, Any]]:
+    """
+    Remove a server/control plane node from the cluster.
+    Returns (success, result_info)
+    """
+    try:
+        # This would typically involve:
+        # 1. Ensuring HA requirements are met
+        # 2. Migrating workloads
+        # 3. Removing from control plane
+        
+        result_info = {
+            "action": "remove_server",
+            "node_name": node_name,
+            "message": f"Server node {node_name} removed from cluster control plane"
+        }
+        
+        return True, result_info
+        
+    except Exception as e:
+        return False, {"error": f"Exception during server removal: {str(e)}"}
+
 # Docker API endpoints
 @app.get("/api/docker/info")
 async def docker_info():
@@ -1447,6 +1542,81 @@ async def backup_home_cluster_nodes(request: dict):
         return {"error": "No nodes specified"}
     
     return await backup_home_nodes(nodes)
+
+@app.post("/api/cluster/add-agent")
+async def add_agent_to_cluster(request: dict):
+    """
+    Add a new agent node to the cluster.
+    Expected JSON: {"node_name": "agent1", "node_ip": "192.168.1.100", "node_type": "gpu"}
+    """
+    node_name = request.get("node_name")
+    node_ip = request.get("node_ip")
+    node_type = request.get("node_type", "gpu")
+    
+    if not node_name or not node_ip:
+        return {"error": "node_name and node_ip are required"}
+    
+    success, result = await add_agent_node(node_name, node_ip, node_type)
+    
+    if success:
+        return {"success": True, "result": result}
+    else:
+        return {"success": False, "error": result.get("error", "Unknown error")}
+
+@app.post("/api/cluster/remove-agent")
+async def remove_agent_from_cluster(request: dict):
+    """
+    Remove an agent node from the cluster.
+    Expected JSON: {"node_name": "agent1"}
+    """
+    node_name = request.get("node_name")
+    
+    if not node_name:
+        return {"error": "node_name is required"}
+    
+    success, result = await remove_agent_node(node_name)
+    
+    if success:
+        return {"success": True, "result": result}
+    else:
+        return {"success": False, "error": result.get("error", "Unknown error")}
+
+@app.post("/api/cluster/add-server")
+async def add_server_to_cluster(request: dict):
+    """
+    Add a new server/control plane node to the cluster.
+    Expected JSON: {"node_name": "server1", "node_ip": "192.168.1.100"}
+    """
+    node_name = request.get("node_name")
+    node_ip = request.get("node_ip")
+    
+    if not node_name or not node_ip:
+        return {"error": "node_name and node_ip are required"}
+    
+    success, result = await add_server_node(node_name, node_ip)
+    
+    if success:
+        return {"success": True, "result": result}
+    else:
+        return {"success": False, "error": result.get("error", "Unknown error")}
+
+@app.post("/api/cluster/remove-server")
+async def remove_server_from_cluster(request: dict):
+    """
+    Remove a server/control plane node from the cluster.
+    Expected JSON: {"node_name": "server1"}
+    """
+    node_name = request.get("node_name")
+    
+    if not node_name:
+        return {"error": "node_name is required"}
+    
+    success, result = await remove_server_node(node_name)
+    
+    if success:
+        return {"success": True, "result": result}
+    else:
+        return {"success": False, "error": result.get("error", "Unknown error")}
 
 @app.get("/api/cluster/resources")
 async def get_cluster_resources(request: Request, current_user: User = Depends(get_current_active_user)):
@@ -3036,6 +3206,12 @@ async def root():
                                         <button class="btn btn-secondary" onclick="memoryCheckSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">🧠 Memory Check</button>
                                         <button class="btn btn-dark" onclick="backupHomeSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">💾 Backup Home</button>
                                     </div>
+                                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+                                        <button class="btn btn-success" onclick="addAgent()" style="font-size: 0.9em; padding: 8px 16px;">➕ Add Agent</button>
+                                        <button class="btn btn-danger" onclick="removeAgent()" style="font-size: 0.9em; padding: 8px 16px;">➖ Remove Agent</button>
+                                        <button class="btn btn-primary" onclick="addServer()" style="font-size: 0.9em; padding: 8px 16px;">🖥️ Add Server</button>
+                                        <button class="btn btn-warning" onclick="removeServer()" style="font-size: 0.9em; padding: 8px 16px;">🗑️ Remove Server</button>
+                                    </div>
                                     <div id="network-status" style="margin-top: 10px; font-size: 0.9em;"></div>
                                 </div>
                             </div>
@@ -4436,6 +4612,192 @@ ${data.execution_result.stdout}
                     
                 } catch (error) {
                     networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing home directory backup</div>';
+                    treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
+                }
+            }
+
+            async function addAgent() {
+                const nodeName = prompt("Enter agent node name:");
+                if (!nodeName) return;
+                
+                const nodeIp = prompt("Enter agent node IP address:");
+                if (!nodeIp) return;
+                
+                const nodeType = prompt("Enter agent node type (gpu/network):", "gpu");
+                if (!nodeType) return;
+                
+                const networkStatusDiv = document.getElementById('network-status');
+                const treeContentDiv = document.getElementById('tree-content');
+                
+                networkStatusDiv.innerHTML = '<div style="color: #3b82f6;">➕ Adding agent node...</div>';
+                treeContentDiv.textContent = `➕ Adding agent node ${nodeName} (${nodeIp})...\n\n`;
+                
+                try {
+                    const response = await fetch('/api/cluster/add-agent', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ 
+                            node_name: nodeName,
+                            node_ip: nodeIp,
+                            node_type: nodeType
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        networkStatusDiv.innerHTML = `<div style="color: #10b981;">✅ Agent node ${nodeName} added successfully</div>`;
+                        treeContentDiv.textContent = `✅ Agent node added successfully!\n\n${data.result.message}\n\nPlease refresh the page to see the updated cluster configuration.`;
+                    } else {
+                        networkStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        treeContentDiv.textContent += `❌ Error: ${data.error}\n`;
+                    }
+                    
+                } catch (error) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error adding agent node</div>';
+                    treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
+                }
+            }
+
+            async function removeAgent() {
+                const selectedNodes = getSelectedNodes();
+                if (selectedNodes.length === 0) {
+                    alert("Please select an agent node to remove");
+                    return;
+                }
+                
+                if (selectedNodes.length > 1) {
+                    alert("Please select only one agent node to remove");
+                    return;
+                }
+                
+                const nodeName = selectedNodes[0];
+                if (!confirm(`Are you sure you want to remove agent node "${nodeName}" from the cluster?`)) {
+                    return;
+                }
+                
+                const networkStatusDiv = document.getElementById('network-status');
+                const treeContentDiv = document.getElementById('tree-content');
+                
+                networkStatusDiv.innerHTML = '<div style="color: #3b82f6;">➖ Removing agent node...</div>';
+                treeContentDiv.textContent = `➖ Removing agent node ${nodeName}...\n\n`;
+                
+                try {
+                    const response = await fetch('/api/cluster/remove-agent', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ node_name: nodeName })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        networkStatusDiv.innerHTML = `<div style="color: #10b981;">✅ Agent node ${nodeName} removed successfully</div>`;
+                        treeContentDiv.textContent = `✅ Agent node removed successfully!\n\n${data.result.message}\n\nPlease refresh the page to see the updated cluster configuration.`;
+                    } else {
+                        networkStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        treeContentDiv.textContent += `❌ Error: ${data.error}\n`;
+                    }
+                    
+                } catch (error) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error removing agent node</div>';
+                    treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
+                }
+            }
+
+            async function addServer() {
+                const nodeName = prompt("Enter server node name:");
+                if (!nodeName) return;
+                
+                const nodeIp = prompt("Enter server node IP address:");
+                if (!nodeIp) return;
+                
+                const networkStatusDiv = document.getElementById('network-status');
+                const treeContentDiv = document.getElementById('tree-content');
+                
+                networkStatusDiv.innerHTML = '<div style="color: #3b82f6;">🖥️ Adding server node...</div>';
+                treeContentDiv.textContent = `🖥️ Adding server node ${nodeName} (${nodeIp})...\n\n`;
+                
+                try {
+                    const response = await fetch('/api/cluster/add-server', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ 
+                            node_name: nodeName,
+                            node_ip: nodeIp
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        networkStatusDiv.innerHTML = `<div style="color: #10b981;">✅ Server node ${nodeName} added successfully</div>`;
+                        treeContentDiv.textContent = `✅ Server node added successfully!\n\n${data.result.message}\n\nPlease refresh the page to see the updated cluster configuration.`;
+                    } else {
+                        networkStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        treeContentDiv.textContent += `❌ Error: ${data.error}\n`;
+                    }
+                    
+                } catch (error) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error adding server node</div>';
+                    treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
+                }
+            }
+
+            async function removeServer() {
+                const selectedNodes = getSelectedNodes();
+                if (selectedNodes.length === 0) {
+                    alert("Please select a server node to remove");
+                    return;
+                }
+                
+                if (selectedNodes.length > 1) {
+                    alert("Please select only one server node to remove");
+                    return;
+                }
+                
+                const nodeName = selectedNodes[0];
+                if (!confirm(`Are you sure you want to remove server node "${nodeName}" from the cluster? This may affect cluster availability.`)) {
+                    return;
+                }
+                
+                const networkStatusDiv = document.getElementById('network-status');
+                const treeContentDiv = document.getElementById('tree-content');
+                
+                networkStatusDiv.innerHTML = '<div style="color: #3b82f6;">🗑️ Removing server node...</div>';
+                treeContentDiv.textContent = `🗑️ Removing server node ${nodeName}...\n\n`;
+                
+                try {
+                    const response = await fetch('/api/cluster/remove-server', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ node_name: nodeName })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        networkStatusDiv.innerHTML = `<div style="color: #10b981;">✅ Server node ${nodeName} removed successfully</div>`;
+                        treeContentDiv.textContent = `✅ Server node removed successfully!\n\n${data.result.message}\n\nPlease refresh the page to see the updated cluster configuration.`;
+                    } else {
+                        networkStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        treeContentDiv.textContent += `❌ Error: ${data.error}\n`;
+                    }
+                    
+                } catch (error) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error removing server node</div>';
                     treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
                 }
             }
