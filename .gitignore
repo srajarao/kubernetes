@@ -66,4 +66,4 @@ fi_lines.txt
 if_lines.txt
 
 # PgAdmin data (runtime data, should not be committed)
-server/pgadmin/data/server/pgadmin/data
+server/pgadmin/data/
