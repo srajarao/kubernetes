@@ -1,10 +1,10 @@
 # 🚀 K3s Multi-Node AI Cluster with PostgreSQL, pgAdmin & VPN Gateway
 
-**� CURRENT STATUS: KUBERNETES CLUSTER OPERATIONAL WITH VPN GATEWAY** - K3s agents running on 4 GPU worker nodes, Blackwell GPU support active, OpenVPN gateway on Krithi providing secure remote access, comprehensive network integration and shared storage.
+**� CURRENT STATUS: KUBERNETES CLUSTER OPERATIONAL WITH VPN GATEWAY & CLUSTER MANAGEMENT** - K3s agents running on 4 GPU worker nodes, Blackwell GPU support active, OpenVPN gateway on Krithi providing secure remote access, comprehensive network integration, shared storage, and complete web-based cluster management system.
 
-This repository provides a complete, automated setup for a high-performance Kubernetes cluster optimized for AI/ML workloads on Jetson devices. It combines K3s (lightweight Kubernetes), dual-network architecture (10G + 1G), GPU acceleration, PostgreSQL database, comprehensive application deployments, and **secure VPN gateway access** with **production-ready stability verification**.
+This repository provides a complete, automated setup for a high-performance Kubernetes cluster optimized for AI/ML workloads on Jetson devices. It combines K3s (lightweight Kubernetes), dual-network architecture (10G + 1G), GPU acceleration, PostgreSQL database, comprehensive application deployments, **secure VPN gateway access**, and **enterprise-grade cluster management interface** with **production-ready stability verification**.
 
-**🎯 October 30, 2025 Update**: Blackwell GPU support successfully implemented with NVIDIA GPU Operator for DGX Spark nodes. GPU operator deployment configurations created for Spark1 and Spark2 nodes, replacing manual device mounting approach. **✅ Blackwell GB10 GPUs now fully operational with TensorFlow, PyTorch, and TensorRT support.** Krithi VPN gateway fully integrated with complete network access, NFS client functionality, and OpenVPN server configuration.
+**🎯 October 31, 2025 Update**: Blackwell GPU support successfully implemented with NVIDIA GPU Operator for DGX Spark nodes. GPU operator deployment configurations created for Spark1 and Spark2 nodes, replacing manual device mounting approach. **✅ Blackwell GB10 GPUs now fully operational with TensorFlow, PyTorch, and TensorRT support.** Krithi VPN gateway fully integrated with complete network access, NFS client functionality, and OpenVPN server configuration. **🖥️ Cluster Management Application fully deployed** with comprehensive web interface, real-time monitoring, script execution, and enterprise security features.
 
 ## 🎯 What This Project Provides
 
@@ -13,6 +13,7 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **GPU Optimization**: NVIDIA GPU support with runtime classes, device plugins, and Blackwell GB10 compatibility
 - **Dual-Network Performance**: 10G dedicated link for AGX Orin, 1G for Nano, optimized for DGX Spark devices
 - **Application Stack**: FastAPI with GPU acceleration, PostgreSQL with pgvector, pgAdmin
+- **🖥️ Cluster Management**: Complete web-based administrative interface with real-time monitoring, script execution, and node management
 - **Secure Remote Access**: OpenVPN gateway on Krithi for encrypted external connectivity
 - **Shared Storage**: NFS server on tower with client access across all nodes
 - **Production Ready**: Comprehensive stability verification and monitoring
@@ -29,6 +30,7 @@ This repository provides a complete, automated setup for a high-performance Kube
   - `spark1-gpuoperator/` - NVIDIA GPU Operator deployment configuration for Spark1 Blackwell GPU
   - `spark2-gpuoperator/` - NVIDIA GPU Operator deployment configuration for Spark2 Blackwell GPU
 - `archive/` - Backup scripts, old configs, and health checks
+- `cluster-management/` - **🆕 Web-based cluster management application** with real-time monitoring, script execution, and node management
 - `docs/` - Documentation and project plans
 - `images/` - Built images and configs for containerization
 - `rag/` - Reference and deployment files for RAG (Retrieval-Augmented Generation) workflows
@@ -42,10 +44,72 @@ This repository provides a complete, automated setup for a high-performance Kube
 - `dockerfile.*` for container builds
 - `*.yaml` for Kubernetes deployments
 
-## �🖥️ **Current Cluster Status** (October 30, 2025)
+## 🖥️ **Cluster Management Application**
+
+**🆕 Web-Based Cluster Management System** - Complete administrative interface for cluster operations, monitoring, and management.
+
+### **🎯 Application Overview**
+- **Framework**: FastAPI web application with modern HTML/CSS/JavaScript interface
+- **Architecture**: Dedicated management node (nano) - eliminates chicken-and-egg deployment problems
+- **Deployment**: Automated deployment scripts with instant updates during development
+- **Security**: JWT-based authentication with role-based access control (Admin/Operator/Viewer)
+- **Real-time**: WebSocket integration for live script execution and monitoring
+
+### **✨ Key Features**
+- **🌳 Tree-Based Visualization**: Hierarchical cluster structure display with node status
+- **📜 Script Execution**: 94+ discovered scripts with real-time output streaming
+- **🔄 Multi-Node Operations**: Select and operate on multiple nodes simultaneously
+- **🐳 Docker Integration**: Complete container management and building capabilities
+- **📊 Node Monitoring**: Real-time ping, SSH connectivity, and health checks
+- **🔍 Comprehensive Health Checks**: Full system diagnostic testing (12+ component checks)
+- **📝 Advanced Logging**: Terminal output, URL tracing, and command recording for firewall compliance
+- **📚 Documentation System**: Integrated man pages and wiki interface
+- **🤖 AI Context**: One-click context gathering for seamless AI assistant communication
+- **🔐 Enterprise Security**: Password hashing, session management, audit logging
+
+### **🌐 Access Points**
+- **HTTP (Demo)**: `http://192.168.1.181:8000/` - Clean browser access, no warnings
+- **HTTPS (Production)**: `https://192.168.1.181:8443/` - Encrypted with auto-generated SSL certificates
+- **Health Check**: `https://192.168.1.181:8443/health` - System status endpoint
+- **API Documentation**: `https://192.168.1.181:8443/docs` - Interactive FastAPI docs
+
+### **🛠️ Development & Deployment**
+- **Development**: Edit on Tower (`~/containers/kubernetes/cluster-management/`)
+- **Deployment**: `./cluster-management/quick_deploy.sh` - Instant deployment to nano
+- **Setup**: `./cluster-management/deploy_to_nano.sh` - Complete environment setup
+- **Architecture**: Tower (development) ↔ Nano (production) with SSH automation
+
+### **📋 API Capabilities**
+- **Script Management**: Discovery, execution, and real-time monitoring
+- **Node Operations**: Add/remove agents and servers, cluster visualization
+- **Docker Operations**: Image building, container management, real-time builds
+- **Authentication**: JWT tokens, user management, role-based permissions
+- **Monitoring**: Health checks, system diagnostics, performance metrics
+- **Documentation**: Man pages, wiki interface, searchable content
+- **Logging**: Terminal output capture, URL tracing, audit trails
+- **AI Integration**: Context gathering for seamless AI communication
+
+### **🔒 Security Features**
+- **User Authentication**: Secure login with password hashing
+- **Role-Based Access**: Admin, Operator, and Viewer permissions
+- **Session Management**: JWT tokens with expiration and renewal
+- **Audit Logging**: Complete activity tracking and compliance
+- **SSL/TLS**: Auto-generated certificates for encrypted communication
+
+### **📈 Current Status**
+- **Phase**: 7/7 Complete - Production Ready
+- **Features**: All core functionality implemented and tested
+- **Health**: Comprehensive health checks passing
+- **Documentation**: Complete with man pages and wiki
+- **Security**: Enterprise-grade authentication and authorization
+- **Performance**: Optimized for real-time operations and monitoring
+
+**🎯 October 31, 2025 Update**: Advanced logging and tracing features added for firewall compliance. AI context button implemented for seamless communication recovery. Comprehensive health check system deployed for demo reliability. All features production-ready with enterprise security.
+
+## �🖥️ **Current Cluster Status** (October 31, 2025)
 
 ### � **Cluster Status Update**
-- **Status**: ✅ **BLACKWELL GPU OPERATOR FULLY AUTOMATED & SUCCESSFUL** - NVIDIA GPU Operator v25.10.0 running on Spark1 with complete end-to-end automation
+- **Status**: ✅ **FULLY OPERATIONAL WITH CLUSTER MANAGEMENT** - Blackwell GPU Operator automated, VPN gateway integrated, cluster management application deployed with enterprise features
 - **Infrastructure**: Updated with Comcast Business Router → ER605 Router → 10G Unifi Switch topology
 - **GPU Verification**: All GPU checks passed - TensorFlow, PyTorch, TensorRT, cuSPARSELt, cuDNN all functional on Blackwell GB10 (CUDA 12.1)
 - **Registry Configuration**: HTTP registry properly configured for both K3s and containerd
@@ -54,6 +118,7 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **Shared Storage**: NFS server on tower with client access on all nodes including krithi
 - **Script Automation**: k3s-spark1.sh fully automated - handles registry config, service restarts, job cleanup, GPU operator readiness, containerd configuration, and containerd restarts
 - **Management Scripts**: Complete suite of agent removal and memory monitoring scripts available
+- **🖥️ Cluster Management**: Web-based administrative interface fully deployed on nano node with real-time monitoring, script execution, and enterprise security
 - **Last Updated**: October 30, 2025
 
 ### 🏗️ **Cluster Architecture**
@@ -172,7 +237,7 @@ Located in `scripts/` directory for advanced network setup:
 - **VPN Gateway**: Krithi OpenVPN server operational
 - **Shared Storage**: NFS server and clients fully functional
 
-## 🔧 **Recent Updates (October 30, 2025)**
+## 🔧 **Recent Updates (October 31, 2025)**
 
 ### 🟢 **Krithi VPN Gateway Integration**
 - **VPN Gateway Setup**: Krithi configured as OpenVPN server for secure external access to cluster network
@@ -205,12 +270,22 @@ A comprehensive web-based cluster management system has been implemented and dep
 - 🌳 **Tree-based Cluster Visualization**: Hierarchical display of all 6 cluster nodes (Tower, Nano, AGX, DGX-Spark-1, DGX-Spark-2, Krithi)
 - 📊 **Real-time Node Monitoring**: Live status checking with ping and SSH connectivity verification
 - 🎯 **Multi-Node Operations**: Select and operate on multiple nodes simultaneously
-- 📂 **Script Management**: Catalog and execute 94+ cluster management scripts
-- 🐳 **Docker Integration**: Build and manage containers with real-time streaming
-- 🔄 **WebSocket Streaming**: Live output for script execution and Docker builds
+- 📂 **Script Management**: Catalog and execute 94+ cluster management scripts with real-time output streaming
+- 🐳 **Docker Integration**: Complete container management and building with WebSocket streaming
+- 🔍 **Comprehensive Health Checks**: 12-component system diagnostic testing for demo reliability
+- 📝 **Advanced Logging**: Terminal output capture, URL tracing, and command recording for firewall compliance
+- 📚 **Documentation System**: Integrated man pages and wiki interface with searchable content
+- 🤖 **AI Context Integration**: One-click context gathering for seamless AI assistant communication
+- 🔐 **Enterprise Security**: JWT authentication with role-based access control (Admin/Operator/Viewer)
+- 🔄 **WebSocket Streaming**: Live output for all operations and real-time updates
 
-**Access:** http://192.168.1.181:8000/
-**Status:** ✅ **FULLY OPERATIONAL** - All 6 bootstrap phases completed
+**Access Points:**
+- **HTTP (Demo)**: `http://192.168.1.181:8000/` - Clean browser access
+- **HTTPS (Production)**: `https://192.168.1.181:8443/` - SSL encrypted with auto-generated certificates
+- **Health Check**: `https://192.168.1.181:8443/health` - System status endpoint
+- **API Documentation**: `https://192.168.1.181:8443/docs` - Interactive FastAPI documentation
+
+**Status:** ✅ **PRODUCTION READY** - All 7 development phases completed with enterprise-grade security, comprehensive monitoring, and full cluster management capabilities
 
 ### 🛠️ **Management Tools**
 
