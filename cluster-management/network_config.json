@@ -1,4 +1,42 @@
 {
+  "device_types": {
+    "router": {
+      "name": "Router",
+      "description": "Network routing device",
+      "icon": "🌐",
+      "color": "#3b82f6"
+    },
+    "switch": {
+      "name": "Switch",
+      "description": "Network switching device",
+      "icon": "⚡",
+      "color": "#8b5cf6"
+    },
+    "firewall": {
+      "name": "Firewall",
+      "description": "Network security device",
+      "icon": "🔒",
+      "color": "#10b981"
+    },
+    "server": {
+      "name": "Server",
+      "description": "Server node",
+      "icon": "🖥️",
+      "color": "#f59e0b"
+    },
+    "workstation": {
+      "name": "Workstation",
+      "description": "Client workstation",
+      "icon": "💻",
+      "color": "#ef4444"
+    },
+    "gpu_node": {
+      "name": "GPU Node",
+      "description": "GPU-enabled compute node",
+      "icon": "🎯",
+      "color": "#06b6d4"
+    }
+  },
   "network_topology": {
     "internet": {
       "name": "Internet",
@@ -6,6 +44,7 @@
     },
     "comcast_router": {
       "name": "Comcast Router",
+      "type": "router",
       "ip_address": "192.168.1.1",
       "wan_ip": null,
       "role": "Internet Gateway",
@@ -14,6 +53,7 @@
     },
     "tp_link_firewall": {
       "name": "TP-Link Firewall",
+      "type": "firewall",
       "lan_ip": "192.168.1.1",
       "wan_ip": "10.1.10.2",
       "role": "Network Security",
@@ -22,6 +62,7 @@
     },
     "unifi_switch": {
       "name": "Unifi Switch",
+      "type": "switch",
       "ip_address": "192.168.1.101",
       "role": "Network Switch",
       "management_url": "https://localhost:8443/manage/account/login?redirect=%2Fmanage%2Fdefault%2Fdevices",
@@ -31,6 +72,7 @@
   "cluster_nodes": {
     "nano": {
       "name": "Nano",
+      "type": "server",
       "ip_address": "192.168.1.181",
       "role": "Management Node",
       "management_url": "https://192.168.1.181:8443/",
@@ -39,6 +81,7 @@
     },
     "tower": {
       "name": "Tower",
+      "type": "server",
       "ip_address": "192.168.1.150",
       "role": "K3s Server",
       "management_url": null,
@@ -47,30 +90,43 @@
     },
     "spark1": {
       "name": "Spark1",
+      "type": "gpu_node",
       "ip_address": "192.168.1.201",
       "role": "GPU Worker",
       "management_url": null,
       "description": "GPU-enabled worker node for AI/ML workloads",
-      "services": ["NVIDIA GPU Support"]
+      "services": ["NVIDIA GPU Support"],
+      "dockerfile_path": "../agent/spark1/dockerfile.spark1.req",
+      "requirements_path": "../agent/spark1/requirements.spark1.txt",
+      "build_path": "../agent/spark1/build.sh"
     },
     "spark2": {
       "name": "Spark2",
+      "type": "gpu_node",
       "ip_address": "192.168.1.202",
       "role": "GPU Worker",
       "management_url": null,
       "description": "GPU-enabled worker node for AI/ML workloads",
-      "services": ["NVIDIA GPU Support"]
+      "services": ["NVIDIA GPU Support"],
+      "dockerfile_path": "../agent/spark2/dockerfile.spark2.req",
+      "requirements_path": "../agent/spark2/requirements.spark2.txt",
+      "build_path": "../agent/spark2/build.sh"
     },
     "agx": {
       "name": "AGX",
+      "type": "gpu_node",
       "ip_address": "192.168.1.244",
       "role": "GPU Worker",
       "management_url": null,
       "description": "GPU-enabled worker node for AI/ML workloads",
-      "services": ["NVIDIA GPU Support"]
+      "services": ["NVIDIA GPU Support"],
+      "dockerfile_path": "../agent/agx/dockerfile.agx.req",
+      "requirements_path": "../agent/agx/requirements.agx.txt",
+      "build_path": "../agent/agx/build.sh"
     },
     "krithi": {
       "name": "Krithi",
+      "type": "workstation",
       "ip_address": "192.168.1.100",
       "role": "Development",
       "management_url": null,

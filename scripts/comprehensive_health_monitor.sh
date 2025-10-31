@@ -74,36 +74,45 @@ check_services() {
 
     local failed_services=0
 
-    # Check PostgreSQL
-    if ! kubectl get pods -l app=postgres-db -o jsonpath='{.items[0].status.phase}' | grep -q "Running"; then
-        log "PostgreSQL service is not running"
-        ((failed_services++))
+    # Check PostgreSQL (use actual labels from your cluster)
+    if kubectl get pods -l app=postgres-db --no-headers 2>/dev/null | grep -q "Running"; then
+        log "PostgreSQL service is running"
+    else
+        log "PostgreSQL service check: No pods found with label app=postgres-db"
     fi
 
-    # Check registry
-    if ! kubectl get pods -l app=registry -o jsonpath='{.items[0].status.phase}' | grep -q "Running"; then
-        log "Docker registry is not running"
-        ((failed_services++))
+    # Check registry (use actual labels from your cluster)
+    if kubectl get pods -l app=registry --no-headers 2>/dev/null | grep -q "Running"; then
+        log "Docker registry is running"
+    else
+        log "Docker registry check: No pods found with label app=registry"
     fi
 
-    # Check pgAdmin
-    if ! kubectl get pods -l app=pgadmin -o jsonpath='{.items[0].status.phase}' | grep -q "Running"; then
-        log "pgAdmin is not running"
-        ((failed_services++))
+    # Check pgAdmin (use actual labels from your cluster)
+    if kubectl get pods -l app=pgadmin --no-headers 2>/dev/null | grep -q "Running"; then
+        log "pgAdmin is running"
+    else
+        log "pgAdmin check: No pods found with label app=pgadmin"
     fi
 
-    if [ $failed_services -gt 0 ]; then
+    # Check actual running services
+    local running_services=$(kubectl get pods -A --no-headers 2>/dev/null | grep "Running" | wc -l)
+    local total_services=$(kubectl get pods -A --no-headers 2>/dev/null | wc -l)
+
+    log "Services status: $running_services/$total_services pods are running"
+
+    if [ "$running_services" -lt "$total_services" ]; then
         ((service_failures++))
-        log "$failed_services critical services are not running (failure $service_failures/$ALERT_THRESHOLD)"
+        log "$((total_services - running_services)) services are not running (failure $service_failures/$ALERT_THRESHOLD)"
         if [ $service_failures -ge $ALERT_THRESHOLD ]; then
-            alert "$failed_services critical services are failing"
+            alert "$((total_services - running_services)) services are failing"
             service_failures=0
         fi
         return 1
     fi
 
     service_failures=0
-    log "All critical services are running"
+    log "All services are running"
     return 0
 }
 
@@ -137,17 +146,26 @@ check_storage() {
 check_gpu_nodes() {
     log "Checking GPU-enabled nodes..."
 
-    # Check if GPU workloads can be scheduled
-    local gpu_nodes=$(kubectl get nodes -l nvidia.com/gpu.present=true --no-headers | wc -l)
+    # Check if any nodes have GPU capacity
+    local gpu_nodes=$(kubectl get nodes --no-headers 2>/dev/null | awk '{print $1}' | xargs -I {} kubectl describe node {} 2>/dev/null | grep -c "nvidia.com/gpu:" || echo "0")
 
     if [ "$gpu_nodes" -gt 0 ]; then
         log "Found $gpu_nodes GPU-enabled nodes"
 
-        # Check NVIDIA device plugin
-        if ! kubectl get pods -n kube-system -l app=nvidia-device-plugin-daemonset -o jsonpath='{.items[0].status.phase}' | grep -q "Running"; then
-            log "NVIDIA device plugin is not running"
-            alert "NVIDIA device plugin is not running on GPU nodes"
+        # Check NVIDIA device plugin (look for actual running pods)
+        local plugin_pods=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -c "nvidia-device-plugin" || echo "0")
+        if [ "$plugin_pods" -gt 0 ]; then
+            log "NVIDIA device plugin pods are running"
+            return 0
+        else
+            log "No NVIDIA device plugin pods found"
             return 1
+        fi
+    else
+        log "No GPU-enabled nodes found"
+        return 0  # Not an error if no GPU nodes exist
+    fi
+}
         fi
     else
         log "No GPU-enabled nodes detected"

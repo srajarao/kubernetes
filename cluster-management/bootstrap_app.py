@@ -534,6 +534,10 @@ URL_TRACE_FILE = os.path.join(LOG_FOLDER, "url_trace.log")
 # Ensure log directory exists
 os.makedirs(LOG_FOLDER, exist_ok=True)
 
+# SSL certificate file paths
+SSL_CERT_FILE = "ssl/cert.pem"
+SSL_KEY_FILE = "ssl/key.pem"
+
 def generate_ssl_certificates():
     """Generate self-signed SSL certificates for HTTPS"""
     from cryptography import x509
@@ -1876,6 +1880,517 @@ async def remove_server_node(node_name: str) -> tuple[bool, Dict[str, Any]]:
         
     except Exception as e:
         return False, {"error": f"Exception during server removal: {str(e)}"}
+
+# Network Device Management API endpoints
+@app.get("/api/network/devices")
+async def get_network_devices(request: Request, current_user: User = Depends(get_current_active_user)):
+    """
+    Get all network devices from configuration.
+    """
+    # Log network device access
+    client_host, user_agent = get_client_info(request)
+    log_audit_event(
+        event_type="NETWORK_OPERATION",
+        username=current_user.username,
+        action="LIST_DEVICES",
+        resource="network_devices",
+        details={"user_role": current_user.role},
+        ip_address=client_host,
+        user_agent=user_agent
+    )
+
+    return {
+        "device_types": network_config.get("device_types", {}),
+        "network_topology": network_config.get("network_topology", {}),
+        "cluster_nodes": network_config.get("cluster_nodes", {})
+    }
+
+@app.post("/api/network/devices")
+async def add_network_device(
+    device_data: Dict[str, Any],
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Add a new network device to the configuration.
+    """
+    # Log device addition
+    client_host, user_agent = get_client_info(request)
+    log_audit_event(
+        event_type="NETWORK_OPERATION",
+        username=current_user.username,
+        action="ADD_DEVICE",
+        resource="network_devices",
+        details={"device_data": device_data, "user_role": current_user.role},
+        ip_address=client_host,
+        user_agent=user_agent
+    )
+
+    try:
+        device_id = device_data.get("id")
+        device_type = device_data.get("type", "server")
+        category = device_data.get("category", "cluster_nodes")  # network_topology or cluster_nodes
+
+        if not device_id:
+            raise HTTPException(status_code=400, detail="Device ID is required")
+
+        # Validate device type
+        device_types = network_config.get("device_types", {})
+        if device_type not in device_types:
+            raise HTTPException(status_code=400, detail=f"Invalid device type: {device_type}")
+
+        # Add device to appropriate category
+        if category not in network_config:
+            network_config[category] = {}
+
+        network_config[category][device_id] = {
+            "name": device_data.get("name", device_id.title()),
+            "type": device_type,
+            "ip_address": device_data.get("ip_address"),
+            "role": device_data.get("role", device_types[device_type]["name"]),
+            "management_url": device_data.get("management_url"),
+            "description": device_data.get("description", ""),
+            "services": device_data.get("services", [])
+        }
+
+        # Save updated configuration
+        save_network_config()
+
+        return {"success": True, "message": f"Device {device_id} added successfully"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add device: {str(e)}")
+
+@app.put("/api/network/devices/{device_id}")
+async def update_network_device(
+    device_id: str,
+    device_data: Dict[str, Any],
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Update an existing network device.
+    """
+    # Log device update
+    client_host, user_agent = get_client_info(request)
+    log_audit_event(
+        event_type="NETWORK_OPERATION",
+        username=current_user.username,
+        action="UPDATE_DEVICE",
+        resource=f"network_devices/{device_id}",
+        details={"device_data": device_data, "user_role": current_user.role},
+        ip_address=client_host,
+        user_agent=user_agent
+    )
+
+    try:
+        # Find device in configuration
+        device_found = False
+        for category in ["network_topology", "cluster_nodes"]:
+            if device_id in network_config.get(category, {}):
+                network_config[category][device_id].update(device_data)
+                device_found = True
+                break
+
+        if not device_found:
+            raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+        # Save updated configuration
+        save_network_config()
+
+        return {"success": True, "message": f"Device {device_id} updated successfully"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update device: {str(e)}")
+
+@app.delete("/api/network/devices/{device_id}")
+async def delete_network_device(
+    device_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Delete a network device from configuration.
+    """
+    # Log device deletion
+    client_host, user_agent = get_client_info(request)
+    log_audit_event(
+        event_type="NETWORK_OPERATION",
+        username=current_user.username,
+        action="DELETE_DEVICE",
+        resource=f"network_devices/{device_id}",
+        details={"user_role": current_user.role},
+        ip_address=client_host,
+        user_agent=user_agent
+    )
+
+    try:
+        # Find and remove device from configuration
+        device_found = False
+        for category in ["network_topology", "cluster_nodes"]:
+            if device_id in network_config.get(category, {}):
+                del network_config[category][device_id]
+                device_found = True
+                break
+
+        if not device_found:
+            raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+        # Save updated configuration
+        save_network_config()
+
+        return {"success": True, "message": f"Device {device_id} deleted successfully"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete device: {str(e)}")
+
+def save_network_config():
+    """Save the updated network configuration to file"""
+    try:
+        config_path = pathlib.Path(__file__).parent / NETWORK_CONFIG_FILE
+        with open(config_path, 'w') as f:
+            json.dump(network_config, f, indent=2)
+        print(f"✅ Network configuration saved to {NETWORK_CONFIG_FILE}")
+    except Exception as e:
+        print(f"❌ Error saving network config: {e}")
+        raise
+
+# File management endpoints for cluster node configuration files
+@app.get("/api/files/content")
+async def get_file_content(
+    path: str,
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get the content of a configuration file.
+    Query parameter: path - relative path to the file from cluster-management directory
+    """
+    # Log file access
+    client_host, user_agent = get_client_info(request)
+    log_audit_event(
+        event_type="FILE_OPERATION",
+        username=current_user.username,
+        action="READ_FILE",
+        resource=f"files/{path}",
+        details={"user_role": current_user.role},
+        ip_address=client_host,
+        user_agent=user_agent
+    )
+
+    try:
+        # Security: only allow access to specific file types and directories
+        allowed_extensions = ['.txt', '.req', '.yaml', '.yml', '.json', '.md', '.sh', '.py']
+        allowed_dirs = ['../agent/', '../server/', '../spark1/', '../spark2/', '../nano/', '../agx/']
+
+        # Check if path is allowed
+        if not any(path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+            raise HTTPException(status_code=403, detail="Access to this directory is not allowed")
+
+        if not any(path.endswith(ext) for ext in allowed_extensions):
+            raise HTTPException(status_code=403, detail="Access to this file type is not allowed")
+
+        # Resolve path relative to cluster-management directory
+        base_dir = pathlib.Path(__file__).parent
+        file_path = (base_dir / path).resolve()
+
+        # Ensure file is within allowed directories
+        if not any(str(file_path).startswith(str((base_dir / allowed_dir).resolve())) for allowed_dir in allowed_dirs):
+            raise HTTPException(status_code=403, detail="File access outside allowed directories")
+
+        if not file_path.exists():
+            return {"content": "", "exists": False}
+
+        if not file_path.is_file():
+            raise HTTPException(status_code=400, detail="Path is not a file")
+
+        # Read file content
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        return {"content": content, "exists": True, "path": str(file_path)}
+
+    except FileNotFoundError:
+        return {"content": "", "exists": False}
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File contains non-text content")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
+
+@app.post("/api/files/content")
+async def save_file_content(
+    file_data: Dict[str, str],
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Save content to a configuration file.
+    Expected JSON: {"path": "relative/path/to/file", "content": "file content"}
+    """
+    path = file_data.get("path")
+    content = file_data.get("content", "")
+
+    if not path:
+        raise HTTPException(status_code=400, detail="File path is required")
+
+    # Log file modification
+    client_host, user_agent = get_client_info(request)
+    log_audit_event(
+        event_type="FILE_OPERATION",
+        username=current_user.username,
+        action="WRITE_FILE",
+        resource=f"files/{path}",
+        details={"user_role": current_user.role, "content_length": len(content)},
+        ip_address=client_host,
+        user_agent=user_agent
+    )
+
+    try:
+        # Security: only allow access to specific file types and directories
+        allowed_extensions = ['.txt', '.req', '.yaml', '.yml', '.json', '.md', '.sh', '.py']
+        allowed_dirs = ['../agent/', '../server/', '../spark1/', '../spark2/', '../nano/', '../agx/']
+
+        # Check if path is allowed
+        if not any(path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+            raise HTTPException(status_code=403, detail="Access to this directory is not allowed")
+
+        if not any(path.endswith(ext) for ext in allowed_extensions):
+            raise HTTPException(status_code=403, detail="Access to this file type is not allowed")
+
+        # Resolve path relative to cluster-management directory
+        base_dir = pathlib.Path(__file__).parent
+        file_path = (base_dir / path).resolve()
+
+        # Ensure file is within allowed directories
+        if not any(str(file_path).startswith(str((base_dir / allowed_dir).resolve())) for allowed_dir in allowed_dirs):
+            raise HTTPException(status_code=403, detail="File access outside allowed directories")
+
+        # Create directory if it doesn't exist
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write file content
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+        return {"success": True, "message": f"File saved successfully: {path}", "path": str(file_path)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+@app.post("/api/cluster/build")
+async def execute_build_script(
+    build_data: Dict[str, str],
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Execute build script for a cluster node.
+    Expected JSON: {"node": "node_key", "script_path": "relative/path/to/build.sh"}
+    """
+    node_key = build_data.get("node")
+    script_path = build_data.get("script_path")
+
+    if not node_key or not script_path:
+        raise HTTPException(status_code=400, detail="Node key and script path are required")
+
+    # Log build execution
+    client_host, user_agent = get_client_info(request)
+    log_audit_event(
+        event_type="BUILD_OPERATION",
+        username=current_user.username,
+        action="EXECUTE_BUILD",
+        resource=f"build/{node_key}",
+        details={"user_role": current_user.role, "script_path": script_path},
+        ip_address=client_host,
+        user_agent=user_agent
+    )
+
+    try:
+        # Security: only allow access to build scripts in specific directories
+        allowed_dirs = ['../agent/']
+
+        # Check if script path is allowed
+        if not any(script_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+            raise HTTPException(status_code=403, detail="Access to this script location is not allowed")
+
+        if not script_path.endswith('.sh'):
+            raise HTTPException(status_code=403, detail="Only shell scripts (.sh) are allowed")
+
+        # Resolve script path relative to cluster-management directory
+        base_dir = pathlib.Path(__file__).parent
+        script_file_path = (base_dir / script_path).resolve()
+
+        # Ensure script is within allowed directories
+        if not any(str(script_file_path).startswith(str((base_dir / allowed_dir).resolve())) for allowed_dir in allowed_dirs):
+            raise HTTPException(status_code=403, detail="Script access outside allowed directories")
+
+        # Check if script file exists
+        if not script_file_path.exists():
+            raise HTTPException(status_code=404, detail=f"Build script not found: {script_path}")
+
+        # Execute the build script with enhanced output capture
+        try:
+            print(f"🏗️  Starting build for {node_key}...")
+            result = subprocess.run(
+                [str(script_file_path)],
+                cwd=script_file_path.parent,
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minute timeout for builds
+            )
+
+            # Parse output to extract key information
+            output_lines = result.stdout.split('\n')
+            build_success = result.returncode == 0
+
+            # Extract image information from output
+            image_info = None
+            for line in output_lines:
+                if 'FULL_IMAGE=' in line or 'Pushing' in line:
+                    if 'FULL_IMAGE=' in line:
+                        image_info = line.split('FULL_IMAGE=')[1].strip()
+                    elif 'Pushing' in line and '192.168.1.150:30500' in line:
+                        image_info = line.split('Pushing ')[1].strip()
+
+            if build_success:
+                message = f"✅ Build completed successfully for {node_key}"
+                if image_info:
+                    message += f"\n📦 Image: {image_info}"
+                    message += f"\n🏷️  Tagged and pushed to registry"
+
+                return {
+                    "success": True,
+                    "message": message,
+                    "output": result.stdout,
+                    "error": result.stderr,
+                    "node": node_key,
+                    "image": image_info,
+                    "tagged": True,
+                    "pushed": True
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"❌ Build failed for {node_key}",
+                    "error": result.stderr,
+                    "output": result.stdout,
+                    "node": node_key,
+                    "tagged": False,
+                    "pushed": False
+                }
+
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=408, detail=f"Build script timed out for {node_key} (10 minutes)")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to execute build script: {str(e)}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Build execution failed: {str(e)}")
+
+@app.post("/api/cluster/deploy")
+async def deploy_kubernetes_manifest(
+    deploy_data: Dict[str, str],
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Deploy Kubernetes manifest for a cluster node.
+    Expected JSON: {"node": "node_key", "manifest_path": "relative/path/to/deployment.yaml"}
+    """
+    node_key = deploy_data.get("node")
+    manifest_path = deploy_data.get("manifest_path")
+
+    if not node_key or not manifest_path:
+        raise HTTPException(status_code=400, detail="Node key and manifest path are required")
+
+    # Log deployment execution
+    client_host, user_agent = get_client_info(request)
+    log_audit_event(
+        event_type="DEPLOYMENT_OPERATION",
+        username=current_user.username,
+        action="DEPLOY_KUBERNETES",
+        resource=f"deploy/{node_key}",
+        details={"user_role": current_user.role, "manifest_path": manifest_path},
+        ip_address=client_host,
+        user_agent=user_agent
+    )
+
+    try:
+        # Security: only allow access to deployment manifests in specific directories
+        allowed_dirs = ['../agent/']
+
+        # Check if manifest path is allowed
+        if not any(manifest_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+            raise HTTPException(status_code=403, detail="Access to this manifest location is not allowed")
+
+        if not manifest_path.endswith('.yaml') and not manifest_path.endswith('.yml'):
+            raise HTTPException(status_code=403, detail="Only YAML manifests are allowed")
+
+        # Resolve manifest path relative to cluster-management directory
+        base_dir = pathlib.Path(__file__).parent
+        manifest_file_path = (base_dir / manifest_path).resolve()
+
+        # Ensure manifest is within allowed directories
+        if not any(str(manifest_file_path).startswith(str((base_dir / allowed_dir).resolve())) for allowed_dir in allowed_dirs):
+            raise HTTPException(status_code=403, detail="Manifest access outside allowed directories")
+
+        # Check if manifest file exists
+        if not manifest_file_path.exists():
+            raise HTTPException(status_code=404, detail=f"Deployment manifest not found: {manifest_path}")
+
+        # Execute kubectl apply
+        try:
+            print(f"🚀 Deploying {node_key}...")
+            result = subprocess.run(
+                ['kubectl', 'apply', '-f', str(manifest_file_path)],
+                capture_output=True,
+                text=True,
+                timeout=60  # 1 minute timeout
+            )
+
+            if result.returncode == 0:
+                # Force restart pods to use new image
+                pod_label = f"app=fastapi-{node_key}"
+                restart_result = subprocess.run(
+                    ['kubectl', 'delete', 'pods', '-l', pod_label],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+
+                message = f"✅ Deployment applied successfully for {node_key}"
+                if restart_result.returncode == 0:
+                    message += f"\n🔄 Pods restarted to use new image"
+                else:
+                    message += f"\n⚠️  Deployment applied but pod restart may be needed"
+
+                return {
+                    "success": True,
+                    "message": message,
+                    "output": result.stdout,
+                    "node": node_key,
+                    "manifest": manifest_path
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"❌ Deployment failed for {node_key}",
+                    "error": result.stderr,
+                    "output": result.stdout,
+                    "node": node_key
+                }
+
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=408, detail=f"Deployment timed out for {node_key}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to execute deployment: {str(e)}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
 
 # Docker API endpoints
 @app.get("/api/docker/info")
@@ -3246,6 +3761,10 @@ async def root():
                                         <td style="padding: 12px; border-bottom: 1px solid #eee;">{role}</td>
                                         <td style="padding: 12px; border-bottom: 1px solid #eee;">{mgmt_link}</td>
                                         <td style="padding: 12px; border-bottom: 1px solid #eee;"><span style="color: #10b981; font-weight: bold;">● Online</span></td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;">
+                                            <button class="btn btn-sm btn-warning" onclick="editDevice('{device_key}', 'network_topology')" style="margin-right: 5px;">✏️ Edit</button>
+                                            <button class="btn btn-sm btn-danger" onclick="deleteDevice('{device_key}')" {'' if device_key != 'internet' else 'disabled'}>🗑️ Delete</button>
+                                        </td>
                                     </tr>''')
 
         # Add cluster nodes
@@ -3255,11 +3774,26 @@ async def root():
             ip_address = node_info.get('ip_address', 'N/A')
             role = node_info.get('role', 'Cluster Node')
             mgmt_url = node_info.get('management_url')
+            dockerfile_path = node_info.get('dockerfile_path', '')
+            requirements_path = node_info.get('requirements_path', '')
+            build_path = node_info.get('build_path', '')
 
             if mgmt_url:
                 mgmt_link = f'<a href="{mgmt_url}" target="_blank" style="color: #3b82f6;">Cluster Management UI</a>' if 'nano' in node_key.lower() else 'SSH Access'
             else:
                 mgmt_link = 'SSH Access'
+
+            # Add buttons for dockerfile, requirements, build, and deploy
+            config_buttons = ''
+            if dockerfile_path:
+                config_buttons += f'<button class="btn btn-sm btn-info" onclick="editDockerfile(\'{node_key}\')" style="margin-right: 5px;">🐳 Dockerfile</button>'
+            if requirements_path:
+                config_buttons += f'<button class="btn btn-sm btn-secondary" onclick="editRequirements(\'{node_key}\')" style="margin-right: 5px;">📦 Requirements</button>'
+            if build_path:
+                config_buttons += f'<button class="btn btn-sm btn-success" onclick="runBuild(\'{node_key}\')" style="margin-right: 5px;">🔨 Build & Push</button>'
+                # Add deployment button for nodes with deployment files
+                deployment_path = f"../agent/{node_key}/fastapi-deployment-{node_key}.yaml"
+                config_buttons += f'<button class="btn btn-sm btn-primary" onclick="deployNode(\'{node_key}\')" style="margin-right: 5px;">🚀 Deploy</button>'
 
             row_class = 'style="background: #f8fafc;"' if len(rows) % 2 == 0 else ''
             rows.append(f'''
@@ -3269,6 +3803,10 @@ async def root():
                                         <td style="padding: 12px; border-bottom: 1px solid #eee;">{role}</td>
                                         <td style="padding: 12px; border-bottom: 1px solid #eee;">{mgmt_link}</td>
                                         <td style="padding: 12px; border-bottom: 1px solid #eee;"><span style="color: #10b981; font-weight: bold;">● Online</span></td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;">
+                                            {config_buttons}
+                                            <button class="btn btn-sm btn-warning" onclick="editDevice('{node_key}', 'cluster_nodes')" style="margin-left: 5px;">✏️ Edit</button>
+                                        </td>
                                     </tr>''')
 
         return '\n'.join(rows)
@@ -4792,7 +5330,13 @@ async def root():
 
                     <!-- Device Details Table -->
                     <div style="margin: 20px 0;">
-                        <h3>📋 Device Inventory</h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 style="margin: 0;">📋 Device Inventory</h3>
+                            <div>
+                                <button class="btn btn-success" onclick="showAddDeviceModal()" style="margin-right: 10px;">➕ Add Device</button>
+                                <button class="btn btn-primary" onclick="refreshNetworkDevices()">🔄 Refresh</button>
+                            </div>
+                        </div>
                         <div style="overflow-x: auto;">
                             <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                 <thead style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
@@ -4854,6 +5398,9 @@ async def root():
                         </div>
                     </div>
                 </div>
+
+                <!-- Device Management Modal (will be dynamically created) -->
+            </div>
             </div>
         </div>
 
@@ -7227,6 +7774,577 @@ ${data.execution_result.stdout}
             document.addEventListener('DOMContentLoaded', function() {
                 initializeLoggingStatus();
             });
+
+            // Network Device Management Functions
+            async function showAddDeviceModal() {
+                // Create modal for adding new device
+                const modal = document.createElement('div');
+                modal.id = 'device-modal';
+                modal.style.cssText = `
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.8); z-index: 1000; display: flex;
+                    align-items: center; justify-content: center;
+                `;
+
+                modal.innerHTML = `
+                    <div style="background: white; padding: 30px; border-radius: 10px; width: 500px; max-width: 90vw;">
+                        <h3 style="margin-top: 0; color: #374151;">➕ Add Network Device</h3>
+                        <form id="device-form">
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Device Key:</label>
+                                <input type="text" id="device-key" required style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Device Name:</label>
+                                <input type="text" id="device-name" required style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 500;">IP Address:</label>
+                                <input type="text" id="device-ip" required style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Device Type:</label>
+                                <select id="device-type" required style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                                    <option value="">Select device type...</option>
+                                    <option value="router">🔀 Router</option>
+                                    <option value="switch">🔗 Switch</option>
+                                    <option value="firewall">🛡️ Firewall</option>
+                                    <option value="server">🖥️ Server</option>
+                                    <option value="workstation">💻 Workstation</option>
+                                    <option value="gpu_node">🚀 GPU Node</option>
+                                </select>
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Role:</label>
+                                <input type="text" id="device-role" required style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Management URL:</label>
+                                <input type="url" id="device-mgmt-url" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                            </div>
+                            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                <button type="button" onclick="closeDeviceModal()" class="btn btn-secondary">Cancel</button>
+                                <button type="submit" class="btn btn-success">Add Device</button>
+                            </div>
+                        </form>
+                    </div>
+                `;
+
+                document.body.appendChild(modal);
+
+                // Handle form submission
+                document.getElementById('device-form').addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    await addDevice();
+                });
+            }
+
+            async function addDevice() {
+                const deviceData = {
+                    key: document.getElementById('device-key').value,
+                    name: document.getElementById('device-name').value,
+                    ip: document.getElementById('device-ip').value,
+                    type: document.getElementById('device-type').value,
+                    role: document.getElementById('device-role').value,
+                    mgmt_url: document.getElementById('device-mgmt-url').value
+                };
+
+                try {
+                    const response = await fetch('/api/network/devices', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify(deviceData)
+                    });
+
+                    const data = await response.json();
+
+                    if (data.error) {
+                        alert(`❌ Failed to add device: ${data.error}`);
+                    } else {
+                        alert(`✅ ${data.message}`);
+                        closeDeviceModal();
+                        refreshNetworkDevices();
+                    }
+                } catch (error) {
+                    alert('❌ Failed to add device');
+                    console.error('Failed to add device:', error);
+                }
+            }
+
+            async function editDevice(deviceKey, section) {
+                try {
+                    // Get current device data
+                    const response = await fetch('/api/network/devices', {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        alert('❌ Failed to load device data');
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const device = data.devices[deviceKey];
+
+                    if (!device) {
+                        alert('❌ Device not found');
+                        return;
+                    }
+
+                    // Create edit modal
+                    const modal = document.createElement('div');
+                    modal.id = 'device-modal';
+                    modal.style.cssText = `
+                        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                        background: rgba(0,0,0,0.8); z-index: 1000; display: flex;
+                        align-items: center; justify-content: center;
+                    `;
+
+                    modal.innerHTML = `
+                        <div style="background: white; padding: 30px; border-radius: 10px; width: 500px; max-width: 90vw;">
+                            <h3 style="margin-top: 0; color: #374151;">✏️ Edit Network Device</h3>
+                            <form id="device-form">
+                                <div style="margin-bottom: 15px;">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Device Key:</label>
+                                    <input type="text" id="device-key" value="${deviceKey}" readonly style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px; background: #f9fafb;">
+                                </div>
+                                <div style="margin-bottom: 15px;">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Device Name:</label>
+                                    <input type="text" id="device-name" value="${device.name || ''}" required style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                                </div>
+                                <div style="margin-bottom: 15px;">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">IP Address:</label>
+                                    <input type="text" id="device-ip" value="${device.ip || ''}" required style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                                </div>
+                                <div style="margin-bottom: 15px;">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Device Type:</label>
+                                    <select id="device-type" required style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                                        <option value="">Select device type...</option>
+                                        <option value="router" ${device.type === 'router' ? 'selected' : ''}>🔀 Router</option>
+                                        <option value="switch" ${device.type === 'switch' ? 'selected' : ''}>🔗 Switch</option>
+                                        <option value="firewall" ${device.type === 'firewall' ? 'selected' : ''}>🛡️ Firewall</option>
+                                        <option value="server" ${device.type === 'server' ? 'selected' : ''}>🖥️ Server</option>
+                                        <option value="workstation" ${device.type === 'workstation' ? 'selected' : ''}>💻 Workstation</option>
+                                        <option value="gpu_node" ${device.type === 'gpu_node' ? 'selected' : ''}>🚀 GPU Node</option>
+                                    </select>
+                                </div>
+                                <div style="margin-bottom: 15px;">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Role:</label>
+                                    <input type="text" id="device-role" value="${device.role || ''}" required style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                                </div>
+                                <div style="margin-bottom: 15px;">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Management URL:</label>
+                                    <input type="url" id="device-mgmt-url" value="${device.mgmt_url || ''}" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px;">
+                                </div>
+                                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                    <button type="button" onclick="closeDeviceModal()" class="btn btn-secondary">Cancel</button>
+                                    <button type="submit" class="btn btn-success">Update Device</button>
+                                </div>
+                            </form>
+                        </div>
+                    `;
+
+                    document.body.appendChild(modal);
+
+                    // Handle form submission
+                    document.getElementById('device-form').addEventListener('submit', async function(e) {
+                        e.preventDefault();
+                        await updateDevice(deviceKey);
+                    });
+
+                } catch (error) {
+                    alert('❌ Failed to load device data for editing');
+                    console.error('Failed to load device data:', error);
+                }
+            }
+
+            async function updateDevice(deviceKey) {
+                const deviceData = {
+                    name: document.getElementById('device-name').value,
+                    ip: document.getElementById('device-ip').value,
+                    type: document.getElementById('device-type').value,
+                    role: document.getElementById('device-role').value,
+                    mgmt_url: document.getElementById('device-mgmt-url').value
+                };
+
+                try {
+                    const response = await fetch(`/api/network/devices/${deviceKey}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify(deviceData)
+                    });
+
+                    const data = await response.json();
+
+                    if (data.error) {
+                        alert(`❌ Failed to update device: ${data.error}`);
+                    } else {
+                        alert(`✅ ${data.message}`);
+                        closeDeviceModal();
+                        refreshNetworkDevices();
+                    }
+                } catch (error) {
+                    alert('❌ Failed to update device');
+                    console.error('Failed to update device:', error);
+                }
+            }
+
+            async function deleteDevice(deviceKey) {
+                if (!confirm(`Delete device "${deviceKey}"? This action cannot be undone.`)) return;
+
+                try {
+                    const response = await fetch(`/api/network/devices/${deviceKey}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    const data = await response.json();
+
+                    if (data.error) {
+                        alert(`❌ Failed to delete device: ${data.error}`);
+                    } else {
+                        alert(`✅ ${data.message}`);
+                        refreshNetworkDevices();
+                    }
+                } catch (error) {
+                    alert('❌ Failed to delete device');
+                    console.error('Failed to delete device:', error);
+                }
+            }
+
+            function closeDeviceModal() {
+                const modal = document.getElementById('device-modal');
+                if (modal) {
+                    modal.remove();
+                }
+            }
+
+            async function refreshNetworkDevices() {
+                try {
+                    // Reload the network tab content
+                    const response = await fetch('/api/network/devices', {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Update the device table
+                        const tableBody = document.querySelector('#network table tbody');
+                        if (tableBody) {
+                            // Re-render the device table
+                            location.reload(); // Simple refresh for now
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to refresh network devices:', error);
+                }
+            }
+
+            // Update showTab function to load network data when network tab is selected
+            const originalShowTab3 = window.showTab;
+            window.showTab = function(tabName) {
+                originalShowTab3(tabName);
+
+                if (tabName === 'network') {
+                    // Network data is loaded dynamically in the HTML template
+                }
+            };
+
+            // File editing functions for cluster nodes
+            async function editDockerfile(nodeKey) {
+                await editNodeFile(nodeKey, 'dockerfile');
+            }
+
+            async function editRequirements(nodeKey) {
+                await editNodeFile(nodeKey, 'requirements');
+            }
+
+            async function runBuild(nodeKey) {
+                try {
+                    // Get node configuration
+                    const response = await fetch('/api/network/devices', {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        alert('❌ Failed to load node configuration');
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const node = data.devices[nodeKey];
+
+                    if (!node) {
+                        alert('❌ Node not found');
+                        return;
+                    }
+
+                    const buildPath = node.build_path;
+
+                    if (!buildPath) {
+                        alert('❌ Build script path not configured for this node');
+                        return;
+                    }
+
+                    // Confirm build execution
+                    if (!confirm(`🔨 Execute build script for ${node.name || nodeKey}?\n\nScript: ${buildPath}\n\nThis will run the build process on the target node.`)) {
+                        return;
+                    }
+
+                    // Show loading indicator
+                    const buildButton = event.target;
+                    const originalText = buildButton.innerHTML;
+                    buildButton.innerHTML = '🔄 Building...';
+                    buildButton.disabled = true;
+
+                    // Execute build script
+                    const buildResponse = await fetch('/api/cluster/build', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({
+                            node: nodeKey,
+                            script_path: buildPath
+                        })
+                    });
+
+                    if (buildResponse.ok) {
+                        const result = await buildResponse.json();
+                        let message = result.message || 'Build process finished';
+
+                        // Add detailed feedback about tagging and pushing
+                        if (result.success && result.image) {
+                            message += `\n\n🏷️  Tagged: ${result.image}`;
+                            if (result.tagged && result.pushed) {
+                                message += `\n📤 Pushed to registry successfully!`;
+                            }
+                        }
+
+                        // Show build output if available
+                        if (result.output) {
+                            message += `\n\n📋 Build Output:\n${result.output.slice(-500)}`; // Last 500 chars
+                        }
+
+                        alert(message);
+                    } else {
+                        const error = await buildResponse.json();
+                        alert(`❌ Build failed for ${node.name || nodeKey}\n\n${error.detail || 'Unknown error occurred'}`);
+                    }
+
+                } catch (error) {
+                    alert(`❌ Failed to execute build for ${nodeKey}`);
+                    console.error('Build execution failed:', error);
+                } finally {
+                    // Restore button
+                    if (buildButton) {
+                        buildButton.innerHTML = originalText;
+                        buildButton.disabled = false;
+                    }
+                }
+            }
+
+            async function deployNode(nodeKey) {
+                try {
+                    // Get node configuration
+                    const response = await fetch('/api/network/devices', {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        alert('❌ Failed to load node configuration');
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const node = data.devices[nodeKey];
+
+                    if (!node) {
+                        alert('❌ Node not found');
+                        return;
+                    }
+
+                    const deploymentPath = `../agent/${nodeKey}/fastapi-deployment-${nodeKey}.yaml`;
+
+                    // Confirm deployment
+                    if (!confirm(`🚀 Deploy ${node.name || nodeKey} to Kubernetes?\n\nThis will apply the deployment manifest:\n${deploymentPath}\n\nThis will create/update the Kubernetes deployment and restart pods.`)) {
+                        return;
+                    }
+
+                    // Show loading indicator
+                    const deployButton = event.target;
+                    const originalText = deployButton.innerHTML;
+                    deployButton.innerHTML = '🚀 Deploying...';
+                    deployButton.disabled = true;
+
+                    // Execute deployment
+                    const deployResponse = await fetch('/api/cluster/deploy', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({
+                            node: nodeKey,
+                            manifest_path: deploymentPath
+                        })
+                    });
+
+                    if (deployResponse.ok) {
+                        const result = await deployResponse.json();
+                        alert(`✅ Deployment completed for ${node.name || nodeKey}\n\n${result.message || 'Deployment applied successfully'}`);
+                    } else {
+                        const error = await deployResponse.json();
+                        alert(`❌ Deployment failed for ${node.name || nodeKey}\n\n${error.detail || 'Unknown error occurred'}`);
+                    }
+
+                } catch (error) {
+                    alert(`❌ Failed to deploy ${nodeKey}`);
+                    console.error('Deployment failed:', error);
+                } finally {
+                    // Restore button
+                    if (deployButton) {
+                        deployButton.innerHTML = originalText;
+                        deployButton.disabled = false;
+                    }
+                }
+            }
+
+            async function editNodeFile(nodeKey, fileType) {
+                try {
+                    // Get node configuration
+                    const response = await fetch('/api/network/devices', {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        alert('❌ Failed to load node configuration');
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const node = data.devices[nodeKey];
+
+                    if (!node) {
+                        alert('❌ Node not found');
+                        return;
+                    }
+
+                    const filePath = fileType === 'dockerfile' ? node.dockerfile_path : node.requirements_path;
+                    const fileName = fileType === 'dockerfile' ? 'Dockerfile' : 'Requirements';
+
+                    if (!filePath) {
+                        alert(`❌ ${fileName} path not configured for this node`);
+                        return;
+                    }
+
+                    // Load file content
+                    const fileResponse = await fetch(`/api/files/content?path=${encodeURIComponent(filePath)}`, {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+
+                    let fileContent = '';
+                    if (fileResponse.ok) {
+                        const fileData = await fileResponse.json();
+                        fileContent = fileData.content || '';
+                    } else {
+                        console.warn(`File not found: ${filePath}, will create new file`);
+                    }
+
+                    // Create edit modal
+                    const modal = document.createElement('div');
+                    modal.id = 'file-edit-modal';
+                    modal.style.cssText = `
+                        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                        background: rgba(0,0,0,0.8); z-index: 1000; display: flex;
+                        align-items: center; justify-content: center;
+                    `;
+
+                    modal.innerHTML = `
+                        <div style="background: white; padding: 30px; border-radius: 10px; width: 80%; max-width: 900px; max-height: 80vh; overflow: auto;">
+                            <h3 style="margin-top: 0; color: #374151;">📝 Edit ${fileName} - ${node.name || nodeKey}</h3>
+                            <div style="margin-bottom: 15px;">
+                                <strong>File:</strong> ${filePath}
+                            </div>
+                            <textarea id="file-content" style="width: 100%; height: 400px; padding: 12px; border: 1px solid #d1d5db; border-radius: 5px; font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.4;" placeholder="Enter ${fileName.toLowerCase()} content...">${fileContent}</textarea>
+                            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                                <button type="button" onclick="closeFileEditModal()" class="btn btn-secondary">Cancel</button>
+                                <button type="button" onclick="saveNodeFile('${nodeKey}', '${fileType}', '${filePath}')" class="btn btn-success">💾 Save File</button>
+                            </div>
+                        </div>
+                    `;
+
+                    document.body.appendChild(modal);
+
+                    // Focus on textarea
+                    setTimeout(() => {
+                        document.getElementById('file-content').focus();
+                    }, 100);
+
+                } catch (error) {
+                    alert(`❌ Failed to load ${fileType} for editing`);
+                    console.error('Failed to load file for editing:', error);
+                }
+            }
+
+            async function saveNodeFile(nodeKey, fileType, filePath) {
+                const content = document.getElementById('file-content').value;
+                const fileName = fileType === 'dockerfile' ? 'Dockerfile' : 'Requirements';
+
+                try {
+                    const response = await fetch('/api/files/content', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({
+                            path: filePath,
+                            content: content
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.error) {
+                        alert(`❌ Failed to save ${fileName}: ${data.error}`);
+                    } else {
+                        alert(`✅ ${fileName} saved successfully!`);
+                        closeFileEditModal();
+                    }
+                } catch (error) {
+                    alert(`❌ Failed to save ${fileName}`);
+                    console.error('Failed to save file:', error);
+                }
+            }
+
+            function closeFileEditModal() {
+                const modal = document.getElementById('file-edit-modal');
+                if (modal) {
+                    modal.remove();
+                }
+            }
         </script>
         </div>
     </body>

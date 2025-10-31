@@ -196,6 +196,38 @@ curl http://192.168.1.181:8000/api/info
 - ✅ **Automated Deployment**: One-command deployment workflow
 - ✅ **Backup Friendly**: Organized structure works with existing backup scripts
 
+## 🏠 Network Infrastructure
+
+### **Network Topology**
+```
+Comcast Router (WAN) → TP-Link Firewall (LAN: 192.168.1.1) → Cluster Nodes
+```
+
+### **Device Configuration**
+
+| Device | IP Address | Management URL | Role |
+|--------|------------|----------------|------|
+| **Comcast Router** | `192.168.1.1` (LAN) | http://10.1.10.1/ | Internet Gateway |
+| **TP-Link Firewall** | `192.168.1.1` (LAN)<br>`10.1.10.2` (WAN) | https://192.168.1.1/webpages/login.html | Network Firewall |
+| **Unifi Switch** | `192.168.1.101` | https://localhost:8443/manage/account/login?redirect=%2Fmanage%2Fdefault%2Fdevices | Network Switch |
+| **Nano** | `192.168.1.181` | https://192.168.1.181:8443/ | Management Node |
+| **Krithi** | `192.168.1.100` | - | Development Workstation |
+| **Spark1** | `192.168.1.201` | - | GPU Worker Node |
+| **Spark2** | `192.168.1.202` | - | GPU Worker Node |
+| **AGX** | `192.168.1.244` | - | GPU Worker Node |
+| **Tower** | `192.168.1.150` | - | K3s Server Node |
+
+### **Network Segments**
+- **WAN**: Comcast (external internet)
+- **DMZ**: 10.1.10.0/24 (firewall external interface)
+- **LAN**: 192.168.1.0/24 (internal cluster network)
+- **Management**: HTTPS on port 8443 (secure web interfaces)
+
+### **Cluster Access Points**
+- **Management UI**: https://192.168.1.181:8443/ (Nano)
+- **Network Management**: https://192.168.1.1/webpages/login.html (TP-Link)
+- **Switch Management**: https://localhost:8443/manage/account/login (Unifi)
+
 ## 🔧 Technical Details
 
 - **Python Version**: 3.10+ (both Tower and Nano)
