@@ -1015,6 +1015,99 @@ async def setup_nfs_on_node(node_name: str, node_ip: str) -> tuple[bool, str]:
     except Exception as e:
         return False, f"Exception during NFS setup: {str(e)}"
 
+async def hostfile_setup_nodes(node_names: List[str]) -> Dict[str, Any]:
+    """
+    Setup hostfiles on multiple nodes and return detailed results.
+    """
+    nodes_info = get_cluster_node_info()
+    results = {}
+    
+    for node_name in node_names:
+        node_name_lower = node_name.lower()
+        
+        # Find node IP
+        node_ip = None
+        for category, node_list in nodes_info["nodes"].items():
+            if isinstance(node_list, list):
+                for node in node_list:
+                    if node["name"].lower() == node_name_lower:
+                        node_ip = node["ip"]
+                        break
+            else:
+                if node_list["name"].lower() == node_name_lower:
+                    node_ip = node_list["ip"]
+                    break
+        
+        if node_ip:
+            # Execute hostfile setup for this node
+            success, details = await setup_hostfile_on_node(node_name, node_ip)
+            results[node_name] = {
+                "ip": node_ip,
+                "success": success,
+                "details": details,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            results[node_name] = {
+                "error": f"Node '{node_name}' not found in cluster configuration",
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    return {
+        "hostfile_results": results,
+        "summary": {
+            "requested_nodes": len(node_names),
+            "successful_hostfile": sum(1 for r in results.values() if r.get("success", False)),
+            "timestamp": datetime.now().isoformat()
+        }
+    }
+
+async def setup_hostfile_on_node(node_name: str, node_ip: str) -> tuple[bool, str]:
+    """
+    Setup hostfile on a specific node by executing the appropriate script.
+    Returns (success, details)
+    """
+    try:
+        # Map node names to script numbers
+        node_script_map = {
+            "tower": "01",
+            "spark1": "02", 
+            "spark2": "03",
+            "agx": "04",
+            "nano": "05",
+            "krithi": "06"
+        }
+        
+        script_number = node_script_map.get(node_name.lower())
+        if not script_number:
+            return False, f"No hostfile script available for node: {node_name}"
+        
+        script_path = f"/home/sanjay/containers/kubernetes/server/utils/host/{script_number}-check-hostfile-{node_name.lower()}.sh"
+        
+        # Check if script exists
+        if not os.path.exists(script_path):
+            return False, f"Hostfile script not found: {script_path}"
+        
+        # Execute the script
+        cmd = ["bash", script_path]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode == 0:
+            return True, "Hostfile setup completed successfully"
+        else:
+            error_msg = stderr.decode().strip() or "Unknown error"
+            return False, f"Hostfile setup failed: {error_msg}"
+            
+    except Exception as e:
+        return False, f"Exception during hostfile setup: {str(e)}"
+
 # Docker API endpoints
 @app.get("/api/docker/info")
 async def docker_info():
@@ -1117,6 +1210,18 @@ async def nfs_setup_cluster_nodes(request: dict):
         return {"error": "No nodes specified"}
     
     return await nfs_setup_nodes(nodes)
+
+@app.post("/api/cluster/hostfile-setup")
+async def hostfile_setup_cluster_nodes(request: dict):
+    """
+    Setup hostfiles on specified nodes.
+    Expected JSON: {"nodes": ["node1", "node2", ...]}
+    """
+    nodes = request.get("nodes", [])
+    if not nodes:
+        return {"error": "No nodes specified"}
+    
+    return await hostfile_setup_nodes(nodes)
 
 @app.get("/api/cluster/resources")
 async def get_cluster_resources(request: Request, current_user: User = Depends(get_current_active_user)):
@@ -2702,6 +2807,7 @@ async def root():
                                         <button class="btn btn-success" onclick="pingSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">🏓 Ping Test</button>
                                         <button class="btn btn-primary" onclick="sshCheckSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">🔐 SSH Check</button>
                                         <button class="btn btn-warning" onclick="nfsSetupSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">📁 NFS Setup</button>
+                                        <button class="btn btn-info" onclick="hostfileSetupSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">📋 Hostfile Setup</button>
                                     </div>
                                     <div id="network-status" style="margin-top: 10px; font-size: 0.9em;"></div>
                                 </div>
@@ -3919,6 +4025,61 @@ ${data.execution_result.stdout}
                     
                 } catch (error) {
                     networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing NFS setup</div>';
+                    treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
+                }
+            }
+
+            async function hostfileSetupSelectedNodes() {
+                const selectedNodes = getSelectedNodes();
+                const networkStatusDiv = document.getElementById('network-status');
+                const treeContentDiv = document.getElementById('tree-content');
+                
+                if (selectedNodes.length === 0) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f59e0b;">⚠️ Please select at least one node for hostfile setup</div>';
+                    return;
+                }
+                
+                networkStatusDiv.innerHTML = '<div style="color: #3b82f6;">📋 Setting up hostfiles on selected nodes...</div>';
+                treeContentDiv.textContent = `📋 Starting hostfile setup for ${selectedNodes.length} node(s)...\n\n`;
+                
+                try {
+                    const response = await fetch('/api/cluster/hostfile-setup', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ nodes: selectedNodes })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        networkStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        treeContentDiv.textContent += `❌ Error: ${data.error}\n`;
+                        return;
+                    }
+                    
+                    networkStatusDiv.innerHTML = `<div style="color: #10b981;">✅ Hostfile setup completed for ${selectedNodes.length} node(s)</div>`;
+                    
+                    // Display results in terminal
+                    let resultsText = `📋 Hostfile Setup Results (${new Date().toLocaleString()})\n`;
+                    resultsText += `═`.repeat(50) + `\n\n`;
+                    
+                    Object.entries(data.hostfile_results).forEach(([node, result]) => {
+                        const status = result.success ? '✅ HOSTFILE UPDATED' : '❌ HOSTFILE FAILED';
+                        const ip = result.ip ? ` (${result.ip})` : '';
+                        const details = result.details ? ` - ${result.details}` : '';
+                        resultsText += `${status} ${node}${ip}${details}\n`;
+                    });
+                    
+                    resultsText += `\n📊 Summary: ${data.summary.successful_hostfile}/${data.summary.requested_nodes} nodes hostfile updated\n\n`;
+                    resultsText += `Ready for next operation...\n`;
+                    
+                    treeContentDiv.textContent = resultsText;
+                    
+                } catch (error) {
+                    networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing hostfile setup</div>';
                     treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
                 }
             }
