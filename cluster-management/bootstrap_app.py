@@ -2538,6 +2538,14 @@ async def root():
                                 <div id="cluster-status" style="flex: 1;">
                                     <p>Loading cluster status...</p>
                                 </div>
+                                
+                                <!-- Ping Test Section -->
+                                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                                    <h3>🏓 Network Testing</h3>
+                                    <p>Test connectivity to selected nodes in the cluster tree.</p>
+                                    <button class="btn btn-success" onclick="pingSelectedNodes()" style="font-size: 0.9em; padding: 8px 16px;">🏓 Ping Selected Nodes</button>
+                                    <div id="ping-status" style="margin-top: 10px; font-size: 0.9em;"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3565,6 +3573,85 @@ ${data.execution_result.stdout}
                     treeDiv.textContent = `🌐 ${data.cluster_name} - ${data.nodes.gpu_workers.length + data.nodes.network_gateways.length + 1} nodes online\n\nReady for live operations and monitoring...`;
                 } catch (error) {
                     document.getElementById('tree-content').textContent = 'Error loading cluster info';
+                }
+            }
+
+            // Ping test functions
+            function getSelectedNodes() {
+                const selectedNodes = [];
+                const checkboxes = document.querySelectorAll('.node-checkbox:checked');
+                
+                checkboxes.forEach(checkbox => {
+                    const treeNode = checkbox.closest('.tree-node');
+                    const nodeLabel = treeNode.querySelector('.tree-label');
+                    
+                    if (nodeLabel) {
+                        let nodeName = nodeLabel.textContent.trim();
+                        
+                        // Skip parent nodes (Server, GPU Worker Nodes, Network Gateways)
+                        if (nodeName === 'Server' || nodeName === 'GPU Worker Nodes' || nodeName === 'Network Gateways') {
+                            return;
+                        }
+                        
+                        // Use the node name directly (this matches the cluster configuration)
+                        selectedNodes.push(nodeName);
+                    }
+                });
+                
+                return selectedNodes;
+            }
+
+            async function pingSelectedNodes() {
+                const selectedNodes = getSelectedNodes();
+                const pingStatusDiv = document.getElementById('ping-status');
+                const treeContentDiv = document.getElementById('tree-content');
+                
+                if (selectedNodes.length === 0) {
+                    pingStatusDiv.innerHTML = '<div style="color: #f59e0b;">⚠️ Please select at least one node to ping</div>';
+                    return;
+                }
+                
+                pingStatusDiv.innerHTML = '<div style="color: #3b82f6;">🏓 Pinging selected nodes...</div>';
+                treeContentDiv.textContent = `🏓 Starting ping test for ${selectedNodes.length} node(s)...\n\n`;
+                
+                try {
+                    const response = await fetch('/api/cluster/ping', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ nodes: selectedNodes })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        pingStatusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        treeContentDiv.textContent += `❌ Error: ${data.error}\n`;
+                        return;
+                    }
+                    
+                    pingStatusDiv.innerHTML = `<div style="color: #10b981;">✅ Ping test completed for ${selectedNodes.length} node(s)</div>`;
+                    
+                    // Display results in terminal
+                    let resultsText = `🏓 Ping Test Results (${new Date().toLocaleString()})\n`;
+                    resultsText += `═`.repeat(50) + `\n\n`;
+                    
+                    Object.entries(data.ping_results).forEach(([node, result]) => {
+                        const status = result.pingable ? '✅ REACHABLE' : '❌ UNREACHABLE';
+                        const ip = result.ip ? ` (${result.ip})` : '';
+                        resultsText += `${status} ${node}${ip}\n`;
+                    });
+                    
+                    resultsText += `\n📊 Summary: ${data.summary.successful_pings}/${data.summary.requested_nodes} nodes reachable\n\n`;
+                    resultsText += `Ready for next operation...\n`;
+                    
+                    treeContentDiv.textContent = resultsText;
+                    
+                } catch (error) {
+                    pingStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing ping test</div>';
+                    treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
                 }
             }
 
