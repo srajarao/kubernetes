@@ -1,0 +1,148 @@
+{
+  "network_topology": {
+    "internet": {
+      "name": "Internet",
+      "description": "External WAN connection"
+    },
+    "comcast_router": {
+      "name": "Comcast Router",
+      "ip_address": "192.168.1.1",
+      "wan_ip": null,
+      "role": "Internet Gateway",
+      "management_url": "http://10.1.10.1/",
+      "description": "Primary internet router and gateway"
+    },
+    "tp_link_firewall": {
+      "name": "TP-Link Firewall",
+      "lan_ip": "192.168.1.1",
+      "wan_ip": "10.1.10.2",
+      "role": "Network Security",
+      "management_url": "https://192.168.1.1/webpages/login.html",
+      "description": "Network firewall and security gateway"
+    },
+    "unifi_switch": {
+      "name": "Unifi Switch",
+      "ip_address": "192.168.1.101",
+      "role": "Network Switch",
+      "management_url": "https://localhost:8443/manage/account/login?redirect=%2Fmanage%2Fdefault%2Fdevices",
+      "description": "Managed network switch for cluster connectivity"
+    }
+  },
+  "cluster_nodes": {
+    "nano": {
+      "name": "Nano",
+      "ip_address": "192.168.1.181",
+      "role": "Management Node",
+      "management_url": "https://192.168.1.181:8443/",
+      "description": "Cluster management and monitoring node",
+      "services": ["FastAPI Web App", "Health Monitoring"]
+    },
+    "tower": {
+      "name": "Tower",
+      "ip_address": "192.168.1.150",
+      "role": "K3s Server",
+      "management_url": null,
+      "description": "Kubernetes control plane and storage server",
+      "services": ["K3s Server", "Docker Registry", "NFS Storage"]
+    },
+    "spark1": {
+      "name": "Spark1",
+      "ip_address": "192.168.1.201",
+      "role": "GPU Worker",
+      "management_url": null,
+      "description": "GPU-enabled worker node for AI/ML workloads",
+      "services": ["NVIDIA GPU Support"]
+    },
+    "spark2": {
+      "name": "Spark2",
+      "ip_address": "192.168.1.202",
+      "role": "GPU Worker",
+      "management_url": null,
+      "description": "GPU-enabled worker node for AI/ML workloads",
+      "services": ["NVIDIA GPU Support"]
+    },
+    "agx": {
+      "name": "AGX",
+      "ip_address": "192.168.1.244",
+      "role": "GPU Worker",
+      "management_url": null,
+      "description": "GPU-enabled worker node for AI/ML workloads",
+      "services": ["NVIDIA GPU Support"]
+    },
+    "krithi": {
+      "name": "Krithi",
+      "ip_address": "192.168.1.100",
+      "role": "Development",
+      "management_url": null,
+      "description": "Development workstation",
+      "services": ["Development Environment"]
+    }
+  },
+  "network_segments": {
+    "wan": {
+      "name": "WAN",
+      "subnet": "10.1.10.0/24",
+      "description": "Firewall external interface network"
+    },
+    "lan": {
+      "name": "LAN",
+      "subnet": "192.168.1.0/24",
+      "description": "Internal cluster network"
+    },
+    "management": {
+      "name": "Management",
+      "port": 8443,
+      "description": "Secure web management interfaces"
+    }
+  },
+  "topology_tree": [
+    "Internet (WAN)",
+    "├── Comcast Router",
+    "│   ├── WAN: External Internet",
+    "│   └── LAN: 192.168.1.1 (Gateway)",
+    "│       └── Management: http://10.1.10.1/",
+    "│",
+    "└── TP-Link Firewall",
+    "    ├── WAN: 10.1.10.2",
+    "    └── LAN: 192.168.1.1 (Gateway)",
+    "        ├── Management: https://192.168.1.1/webpages/login.html",
+    "        │",
+    "        ├── Unifi Switch (192.168.1.101)",
+    "        │   ├── Management: https://localhost:8443/manage/account/login",
+    "        │   └── Connected Devices:",
+    "        │       ├── Nano (192.168.1.181) - Management Node",
+    "        │       │   ├── Role: Cluster Management UI",
+    "        │       │   ├── Services: FastAPI Web App, Health Monitoring",
+    "        │       │   └── Management: https://192.168.1.181:8443/",
+    "        │       │",
+    "        │       ├── Spark1 (192.168.1.201) - GPU Worker Node",
+    "        │       │   ├── Role: AI/ML Workloads",
+    "        │       │   └── GPU: NVIDIA GPU Support",
+    "        │       │",
+    "        │       ├── Spark2 (192.168.1.202) - GPU Worker Node",
+    "        │       │   ├── Role: AI/ML Workloads",
+    "        │       │   └── GPU: NVIDIA GPU Support",
+    "        │       │",
+    "        │       ├── AGX (192.168.1.244) - GPU Worker Node",
+    "        │       │   ├── Role: AI/ML Workloads",
+    "        │       │   └── GPU: NVIDIA GPU Support",
+    "        │       │",
+    "        │       └── Tower (192.168.1.150) - K3s Server Node",
+    "        │           ├── Role: Kubernetes Control Plane",
+    "        │           ├── Services: K3s Server, Docker Registry, NFS",
+    "        │           └── Storage: Shared NFS Storage",
+    "        │",
+    "        ├── Krithi (192.168.1.100) - Development Workstation",
+    "        │   └── Role: Development and Testing",
+    "",
+    "Network Segments:",
+    "├── WAN (10.1.10.0/24): Firewall external interface",
+    "├── LAN (192.168.1.0/24): Internal cluster network",
+    "└── Management (Port 8443): Secure web interfaces"
+  ],
+  "metadata": {
+    "version": "1.0",
+    "last_updated": "2025-10-31",
+    "description": "Network configuration for Kubernetes cluster infrastructure"
+  }
+}

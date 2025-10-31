@@ -48,6 +48,41 @@ audit_formatter = logging.Formatter(
 audit_handler.setFormatter(audit_formatter)
 audit_logger.addHandler(audit_handler)
 
+# Load network configuration
+NETWORK_CONFIG_FILE = "network_config.json"
+network_config = {}
+
+def load_network_config():
+    """Load network configuration from JSON file"""
+    global network_config
+    try:
+        config_path = pathlib.Path(__file__).parent / NETWORK_CONFIG_FILE
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                network_config = json.load(f)
+            print(f"✅ Loaded network configuration from {NETWORK_CONFIG_FILE}")
+        else:
+            print(f"⚠️  Network config file {NETWORK_CONFIG_FILE} not found, using defaults")
+            network_config = get_default_network_config()
+    except Exception as e:
+        print(f"❌ Error loading network config: {e}, using defaults")
+        network_config = get_default_network_config()
+
+def get_default_network_config():
+    """Return default network configuration if file is not found"""
+    return {
+        "network_topology": {},
+        "cluster_nodes": {},
+        "network_segments": {},
+        "topology_tree": ["Network configuration not available"],
+        "metadata": {"version": "0.0", "description": "Default config"}
+    }
+
+# Load network config on startup
+load_network_config()
+
+
+
 def log_audit_event(event_type: str, username: str, action: str, resource: str = None,
                    details: Dict[str, Any] = None, ip_address: str = None, user_agent: str = None):
     """Log an audit event"""
@@ -3180,6 +3215,156 @@ async def websocket_pod_logs(websocket: WebSocket):
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the interactive cluster management interface"""
+
+    def generate_device_table():
+        """Generate HTML table rows for all network devices"""
+        rows = []
+
+        # Add network topology devices
+        topology_devices = network_config.get('network_topology', {})
+        for device_key, device_info in topology_devices.items():
+            if device_key == 'internet':
+                continue  # Skip internet entry
+
+            device_name = device_info.get('name', device_key.replace('_', ' ').title())
+            ip_address = device_info.get('ip_address', device_info.get('lan_ip', 'N/A'))
+            if device_info.get('wan_ip'):
+                ip_address += f"<br>{device_info['wan_ip']} (WAN)"
+            role = device_info.get('role', 'Network Device')
+            mgmt_url = device_info.get('management_url')
+
+            if mgmt_url:
+                mgmt_link = f'<a href="{mgmt_url}" target="_blank" style="color: #3b82f6;">{mgmt_url}</a>'
+            else:
+                mgmt_link = 'N/A'
+
+            row_class = 'style="background: #f8fafc;"' if len(rows) % 2 == 0 else ''
+            rows.append(f'''
+                                    <tr {row_class}>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;"><strong>{device_name}</strong></td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;">{ip_address}</td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;">{role}</td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;">{mgmt_link}</td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;"><span style="color: #10b981; font-weight: bold;">● Online</span></td>
+                                    </tr>''')
+
+        # Add cluster nodes
+        cluster_nodes = network_config.get('cluster_nodes', {})
+        for node_key, node_info in cluster_nodes.items():
+            device_name = node_info.get('name', node_key.title())
+            ip_address = node_info.get('ip_address', 'N/A')
+            role = node_info.get('role', 'Cluster Node')
+            mgmt_url = node_info.get('management_url')
+
+            if mgmt_url:
+                mgmt_link = f'<a href="{mgmt_url}" target="_blank" style="color: #3b82f6;">Cluster Management UI</a>' if 'nano' in node_key.lower() else 'SSH Access'
+            else:
+                mgmt_link = 'SSH Access'
+
+            row_class = 'style="background: #f8fafc;"' if len(rows) % 2 == 0 else ''
+            rows.append(f'''
+                                    <tr {row_class}>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;"><strong>{device_name}</strong></td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;">{ip_address}</td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;">{role}</td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;">{mgmt_link}</td>
+                                        <td style="padding: 12px; border-bottom: 1px solid #eee;"><span style="color: #10b981; font-weight: bold;">● Online</span></td>
+                                    </tr>''')
+
+        return '\n'.join(rows)
+
+    def get_network_stats():
+        """Generate network statistics from config"""
+        lan_segment = network_config.get('network_segments', {}).get('lan', {})
+        firewall_info = network_config.get('network_topology', {}).get('tp_link_firewall', {})
+        switch_info = network_config.get('network_topology', {}).get('unifi_switch', {})
+
+        lan_subnet = lan_segment.get('subnet', '192.168.1.0/24')
+        firewall_name = firewall_info.get('name', 'TP-Link').split()[0]
+        switch_name = switch_info.get('name', 'Unifi').split()[0]
+
+        # Count total devices
+        topology_count = len([d for d in network_config.get('network_topology', {}).keys() if d != 'internet'])
+        cluster_count = len(network_config.get('cluster_nodes', {}))
+        total_devices = topology_count + cluster_count
+
+        return {
+            'lan_subnet': lan_subnet,
+            'firewall_name': firewall_name,
+            'switch_name': switch_name,
+            'total_devices': total_devices
+        }
+
+    def get_network_ips():
+        """Generate JavaScript array of all network device IPs"""
+        ips = []
+
+        # Add topology device IPs
+        topology_devices = network_config.get('network_topology', {})
+        for device_key, device_info in topology_devices.items():
+            if device_key == 'internet':
+                continue
+            ip = device_info.get('ip_address') or device_info.get('lan_ip')
+            if ip:
+                ips.append(f"'{ip}'")
+
+        # Add cluster node IPs
+        cluster_nodes = network_config.get('cluster_nodes', {})
+        for node_key, node_info in cluster_nodes.items():
+            ip = node_info.get('ip_address')
+            if ip:
+                ips.append(f"'{ip}'")
+
+        return f"[{', '.join(ips)}]"
+
+    def get_device_names_js():
+        """Generate JavaScript object mapping IPs to device names"""
+        mappings = []
+
+        # Add topology device mappings
+        topology_devices = network_config.get('network_topology', {})
+        for device_key, device_info in topology_devices.items():
+            if device_key == 'internet':
+                continue
+            ip = device_info.get('ip_address') or device_info.get('lan_ip')
+            name = device_info.get('name', device_key.replace('_', ' ').title())
+            if ip:
+                mappings.append(f"'{ip}': '{name}'")
+
+        # Add cluster node mappings
+        cluster_nodes = network_config.get('cluster_nodes', {})
+        for node_key, node_info in cluster_nodes.items():
+            ip = node_info.get('ip_address')
+            name = node_info.get('name', node_key.title())
+            if ip:
+                mappings.append(f"'{ip}': '{name}'")
+
+        return f"{{{', '.join(mappings)}}}"
+
+    def get_device_roles_js():
+        """Generate JavaScript object mapping IPs to device roles"""
+        mappings = []
+
+        # Add topology device mappings
+        topology_devices = network_config.get('network_topology', {})
+        for device_key, device_info in topology_devices.items():
+            if device_key == 'internet':
+                continue
+            ip = device_info.get('ip_address') or device_info.get('lan_ip')
+            role = device_info.get('role', 'Network Device')
+            if ip:
+                mappings.append(f"'{ip}': '{role}'")
+
+        # Add cluster node mappings
+        cluster_nodes = network_config.get('cluster_nodes', {})
+        for node_key, node_info in cluster_nodes.items():
+            ip = node_info.get('ip_address')
+            role = node_info.get('role', 'Cluster Node')
+            if ip:
+                mappings.append(f"'{ip}': '{role}'")
+
+        return f"{{{', '.join(mappings)}}}"
+
     # Serve a simple HTML page with pod management JS functions
     return HTMLResponse("""
     <!DOCTYPE html>
@@ -4059,6 +4244,7 @@ async def root():
                     <li class="nav-tab" onclick="showTab('operations')">Operations</li>
                     <li class="nav-tab" onclick="showTab('api')">API</li>
                     <li class="nav-tab" onclick="showTab('wiki')">📚 Wiki</li>
+                    <li class="nav-tab" onclick="showTab('network')">🌐 Network</li>
                 </ul>
             </nav>
 
@@ -4584,6 +4770,88 @@ async def root():
                             <li>Refer to the <strong>Deployment Guide</strong> for complete setup instructions</li>
                             <li>Use the <strong>Troubleshooting</strong> section for common issues and solutions</li>
                         </ul>
+                    </div>
+                </div>
+
+                <!-- Network Tab -->
+                <div id="network" class="tab-content">
+                    <h2>🌐 Network Infrastructure</h2>
+
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                        <h3 style="margin-top: 0;">📡 Network Topology Overview</h3>
+                        <p>Complete network infrastructure diagram showing the connection flow from internet to cluster nodes.</p>
+                    </div>
+
+                    <!-- Network Tree Diagram -->
+                    <div style="background: #1f2937; color: #e5e7eb; padding: 30px; border-radius: 10px; margin: 20px 0; font-family: 'Courier New', monospace;">
+                        <h3 style="color: #60a5fa; margin-top: 0; text-align: center;">🌐 Network Architecture Tree</h3>
+                        <pre style="margin: 20px 0; line-height: 1.6; white-space: pre-wrap;">
+{chr(10).join(network_config.get('topology_tree', ['Network configuration not available']))}
+                        </pre>
+                    </div>
+
+                    <!-- Device Details Table -->
+                    <div style="margin: 20px 0;">
+                        <h3>📋 Device Inventory</h3>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <thead style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                                    <tr>
+                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #ddd;">Device</th>
+                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #ddd;">IP Address</th>
+                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #ddd;">Role</th>
+                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #ddd;">Management URL</th>
+                                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #ddd;">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+{generate_device_table()}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Network Statistics -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 20px 0;">
+                        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0 0 10px 0;">🌐 Network Segment</h3>
+                            <p style="margin: 0; font-size: 24px; font-weight: bold;">{get_network_stats()['lan_subnet']}</p>
+                            <p style="margin: 5px 0 0 0; opacity: 0.9;">Internal Cluster Network</p>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0 0 10px 0;">🔒 Firewall</h3>
+                            <p style="margin: 0; font-size: 24px; font-weight: bold;">{get_network_stats()['firewall_name']}</p>
+                            <p style="margin: 5px 0 0 0; opacity: 0.9;">Network Security Gateway</p>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0 0 10px 0;">⚡ Switch</h3>
+                            <p style="margin: 0; font-size: 24px; font-weight: bold;">{get_network_stats()['switch_name']}</p>
+                            <p style="margin: 5px 0 0 0; opacity: 0.9;">Managed Network Switch</p>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0 0 10px 0;">🖥️ Active Nodes</h3>
+                            <p style="margin: 0; font-size: 24px; font-weight: bold;">{get_network_stats()['total_devices']} Devices</p>
+                            <p style="margin: 5px 0 0 0; opacity: 0.9;">Cluster + Infrastructure</p>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div style="background: #f8fafc; padding: 20px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+                        <h3 style="margin-top: 0; color: #1f2937;">🚀 Quick Network Actions</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                            <button onclick="window.open('https://192.168.1.181:8443/', '_blank')" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                                🌐 Open Management UI
+                            </button>
+                            <button onclick="window.open('https://192.168.1.1/webpages/login.html', '_blank')" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                                🔒 Firewall Management
+                            </button>
+                            <button onclick="window.open('https://localhost:8443/manage/account/login?redirect=%2Fmanage%2Fdefault%2Fdevices', '_blank')" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                                ⚡ Switch Management
+                            </button>
+                            <button onclick="pingAllNodes()" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                                🏥 Network Health Check
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -5424,6 +5692,87 @@ ${data.execution_result.stdout}
                 } catch (error) {
                     networkStatusDiv.innerHTML = '<div style="color: #f87171;">❌ Error performing ping test</div>';
                     treeContentDiv.textContent += `❌ Error: ${error.message}\n`;
+                }
+            }
+
+            async function pingAllNodes() {
+                // Get all network devices from the network configuration
+                const allNodes = {get_network_ips()};
+
+                // Show loading state in network tab
+                const networkTab = document.getElementById('network');
+                let statusDiv = networkTab.querySelector('.network-ping-status');
+                if (!statusDiv) {
+                    statusDiv = document.createElement('div');
+                    statusDiv.className = 'network-ping-status';
+                    statusDiv.style = 'background: #1f2937; color: #e5e7eb; padding: 20px; border-radius: 8px; margin: 20px 0; font-family: monospace;';
+                    networkTab.appendChild(statusDiv);
+                }
+
+                statusDiv.innerHTML = '<div style="color: #3b82f6;">🏓 Pinging all network devices...</div>';
+
+                try {
+                    const response = await fetch('/api/cluster/ping', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ nodes: allNodes })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.error) {
+                        statusDiv.innerHTML = `<div style="color: #f87171;">❌ Error: ${data.error}</div>`;
+                        return;
+                    }
+
+                    // Create detailed results display
+                    let resultsHTML = `<h3 style="color: #60a5fa; margin-top: 0;">🌐 Network Health Check Results</h3>`;
+                    resultsHTML += `<div style="color: #10b981; margin-bottom: 15px;">✅ Health check completed for ${allNodes.length} devices</div>`;
+
+                    resultsHTML += `<table style="width: 100%; border-collapse: collapse; background: #2d3748; border-radius: 6px; overflow: hidden;">`;
+                    resultsHTML += `<thead style="background: #4a5568;"><tr>`;
+                    resultsHTML += `<th style="padding: 10px; text-align: left; color: #e2e8f0;">Device</th>`;
+                    resultsHTML += `<th style="padding: 10px; text-align: left; color: #e2e8f0;">IP Address</th>`;
+                    resultsHTML += `<th style="padding: 10px; text-align: left; color: #e2e8f0;">Status</th>`;
+                    resultsHTML += `<th style="padding: 10px; text-align: left; color: #e2e8f0;">Role</th>`;
+                    resultsHTML += `</tr></thead><tbody>`;
+
+                    const deviceNames = {get_device_names_js()};
+                    const deviceRoles = {get_device_roles_js()};
+
+                    let onlineCount = 0;
+
+                    Object.entries(data.ping_results).forEach(([ip, result]) => {
+                        const deviceName = deviceNames[ip] || ip;
+                        const role = deviceRoles[ip] || 'Unknown';
+                        const isOnline = result.pingable;
+                        if (isOnline) onlineCount++;
+
+                        const statusColor = isOnline ? '#10b981' : '#f87171';
+                        const statusIcon = isOnline ? '✅' : '❌';
+                        const statusText = isOnline ? 'Online' : 'Offline';
+
+                        resultsHTML += `<tr style="border-bottom: 1px solid #4a5568;">`;
+                        resultsHTML += `<td style="padding: 10px; color: #e2e8f0;">${deviceName}</td>`;
+                        resultsHTML += `<td style="padding: 10px; color: #cbd5e0; font-family: monospace;">${ip}</td>`;
+                        resultsHTML += `<td style="padding: 10px;"><span style="color: ${statusColor};">${statusIcon} ${statusText}</span></td>`;
+                        resultsHTML += `<td style="padding: 10px; color: #cbd5e0;">${role}</td>`;
+                        resultsHTML += `</tr>`;
+                    });
+
+                    resultsHTML += `</tbody></table>`;
+                    resultsHTML += `<div style="margin-top: 15px; padding: 10px; background: #2d3748; border-radius: 6px;">`;
+                    resultsHTML += `<strong style="color: #60a5fa;">📊 Summary:</strong> ${onlineCount}/${allNodes.length} devices online`;
+                    resultsHTML += `<br><small style="color: #a0aec0;">Last checked: ${new Date().toLocaleString()}</small>`;
+                    resultsHTML += `</div>`;
+
+                    statusDiv.innerHTML = resultsHTML;
+
+                } catch (error) {
+                    statusDiv.innerHTML = `<div style="color: #f87171;">❌ Error performing network health check: ${error.message}</div>`;
                 }
             }
 
