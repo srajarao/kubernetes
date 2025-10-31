@@ -1,0 +1,26 @@
+[Unit]
+Description=K3s Comprehensive Health Monitor
+After=network.target k3s.service
+Wants=k3s.service
+
+[Service]
+Type=simple
+User=sanjay
+Group=sanjay
+Environment="PATH=/snap/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="KUBECONFIG=/home/sanjay/.kube/config"
+ExecStart=/home/sanjay/containers/kubernetes/scripts/health_monitor_wrapper.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/home/sanjay/containers/kubernetes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
