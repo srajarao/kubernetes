@@ -1,0 +1,161 @@
+.TH K3S_AGENT_SCRIPTS 1 "October 31, 2025" "Kubernetes Setup" "User Commands"
+.SH NAME
+k3s-agx.sh, k3s-nano.sh, k3s-spark1.sh, k3s-spark2.sh \- K3s Agent Node Setup Scripts
+.SH SYNOPSIS
+.B ./k3s-agx.sh
+[SERVER_IP] [TOKEN]
+.br
+.B ./k3s-nano.sh
+[SERVER_IP] [TOKEN]
+.br
+.B ./k3s-spark1.sh
+[SERVER_IP] [TOKEN]
+.br
+.B ./k3s-spark2.sh
+[SERVER_IP] [TOKEN]
+.SH DESCRIPTION
+Automated scripts for setting up K3s agent nodes with specialized configurations for different hardware types. Each script configures the node to join a K3s cluster with appropriate resource allocations and service deployments.
+.SH NODE TYPES
+.TP
+.B AGX (k3s-agx.sh)
+NVIDIA Jetson AGX Xavier configuration
+.RS
+\- GPU-accelerated workloads
+\- Edge computing optimization
+\- FastAPI application deployment
+.RE
+.TP
+.B Nano (k3s-nano.sh)
+NVIDIA Jetson Nano configuration
+.RS
+\- Lightweight edge computing
+\- Network processing workloads
+\- Resource-constrained optimization
+.RE
+.TP
+.B Spark1/Spark2 (k3s-spark1.sh, k3s-spark2.sh)
+High-performance GPU servers
+.RS
+\- Multi-GPU configurations
+\- CUDA workload optimization
+\- High-throughput computing
+.RE
+.SH PARAMETERS
+.TP
+.B SERVER_IP
+IP address of the K3s server node (default: auto-discover)
+.TP
+.B TOKEN
+K3s cluster token for authentication (default: read from file)
+.SH CONFIGURATION
+.TP
+Cluster Discovery
+Automatic server IP detection via network scanning
+.TP
+Token Management
+Secure token storage and retrieval
+.TP
+Resource Allocation
+Node-specific CPU, memory, and GPU resource limits
+.TP
+Network Configuration
+Automatic network interface detection and configuration
+.SH INSTALLED COMPONENTS
+.TP
+K3s Agent
+Kubernetes node agent with cluster registration
+.TP
+NVIDIA Runtime
+GPU workload execution environment
+.TP
+Monitoring Tools
+Node health monitoring and metrics collection
+.TP
+Application Runtimes
+FastAPI, Docker, and custom application support
+.SH HARDWARE SPECIFIC FEATURES
+.TP
+AGX Xavier
+\- 32GB RAM, 8-core CPU
+\- NVIDIA Xavier GPU
+\- Edge AI optimization
+.TP
+Jetson Nano
+\- 4GB RAM, 4-core CPU
+\- NVIDIA Maxwell GPU
+\- Low-power edge computing
+.TP
+Spark Servers
+\- High-end GPU configurations
+\- Multi-GPU support
+\- CUDA acceleration
+.SH VERIFICATION
+Post-installation verification includes:
+.TP
+Cluster Registration
+Node appears in kubectl get nodes
+.TP
+GPU Resources
+GPU capacity reporting
+.TP
+Network Connectivity
+Inter-node communication
+.TP
+Service Deployment
+Application pod scheduling
+.SH EXAMPLES
+.TP
+Install AGX agent:
+.B ./k3s-agx.sh 192.168.1.100 my-cluster-token
+.TP
+Auto-discover server:
+.B ./k3s-nano.sh
+.TP
+Check node status:
+.B kubectl get nodes
+.SH TROUBLESHOOTING
+.TP
+Server Connection Failed
+Verify server IP and network connectivity
+.TP
+Token Invalid
+Check token from server: cat /var/lib/rancher/k3s/server/token
+.TP
+GPU Not Available
+Verify NVIDIA drivers and hardware
+.TP
+Resource Constraints
+Check node capacity and resource requests
+.SH FILES
+.TP
+.B k3s-agx.sh
+AGX Xavier agent setup
+.TP
+.B k3s-nano.sh
+Jetson Nano agent setup
+.TP
+.B k3s-spark1.sh
+Spark1 server agent setup
+.TP
+.B k3s-spark2.sh
+Spark2 server agent setup
+.TP
+.B fastapi-deployment-*.yaml
+Application deployment configurations
+.TP
+.B dockerfile.*.req
+Docker build configurations
+.SH ENVIRONMENT VARIABLES
+.TP
+.B K3S_URL
+K3s server URL (auto-configured)
+.TP
+.B K3S_TOKEN
+Cluster authentication token
+.TP
+.B K3S_NODE_NAME
+Unique node identifier
+.SH SEE ALSO
+.BR k3s-server.sh (1),
+.BR fastapi-deployment-agx.yaml (5),
+.BR dockerfile.agx.req (5)

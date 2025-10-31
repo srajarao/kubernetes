@@ -1,0 +1,155 @@
+.TH BOOTSTRAP_APP 1 "October 31, 2025" "Cluster Management" "User Commands"
+.SH NAME
+bootstrap_app.py \- Cluster Management Web Application
+.SH SYNOPSIS
+.B python3 bootstrap_app.py
+[OPTIONS]
+.SH DESCRIPTION
+The Cluster Management Bootstrap Application is a comprehensive web-based interface for managing Kubernetes clusters. It provides network testing, node management, script execution, and monitoring capabilities through a modern web UI.
+.SH FEATURES
+.TP
+Network Operations
+\- Ping testing with checkbox selection
+\- SSH connectivity checks
+\- NFS setup and configuration
+\- Hostfile management
+\- Memory monitoring
+\- Home directory backup
+.TP
+Node Management
+\- Add/remove agent nodes (GPU/network types)
+\- Add/remove server nodes
+\- Real-time cluster tree visualization
+\- Status color coding (green/gray/red)
+.TP
+Script Execution
+\- Interactive script selection and execution
+\- Real-time output streaming via WebSocket
+\- Script library management
+.TP
+Container Management
+\- Docker image and container monitoring
+\- Kubernetes pod deployment tracking
+.SH ENVIRONMENT VARIABLES
+.TP
+.B ENABLE_HTTPS
+Enable HTTPS mode with SSL/TLS encryption
+.RS
+Default: false
+.RE
+.TP
+.B HTTPS_PORT
+Port for HTTPS server
+.RS
+Default: 8443
+.RE
+.TP
+.B HTTP_PORT
+Port for HTTP server (when HTTPS disabled)
+.RS
+Default: 8000
+.RE
+.TP
+.B JWT_SECRET_KEY
+Secret key for JWT token generation
+.RS
+Auto-generated if not provided
+.RE
+.TP
+.B ACCESS_TOKEN_EXPIRE_MINUTES
+JWT token expiration time in minutes
+.RS
+Default: 30
+.RE
+.SH API ENDPOINTS
+.TP
+.B GET /health
+Health check endpoint
+.TP
+.B POST /api/auth/login
+User authentication and token generation
+.TP
+.B GET /api/cluster/nodes
+Retrieve cluster node information
+.TP
+.B POST /api/cluster/ping
+Execute ping tests on selected nodes
+.TP
+.B POST /api/cluster/ssh-check
+Perform SSH connectivity checks
+.TP
+.B POST /api/cluster/nfs-setup
+Configure NFS on cluster nodes
+.TP
+.B POST /api/cluster/hostfile-setup
+Update hostfiles across cluster
+.TP
+.B POST /api/cluster/memory-check
+Monitor memory usage on nodes
+.TP
+.B POST /api/cluster/backup-home
+Backup home directories
+.TP
+.B POST /api/cluster/add-agent
+Add new agent node to cluster
+.TP
+.B POST /api/cluster/remove-agent
+Remove agent node from cluster
+.TP
+.B POST /api/cluster/add-server
+Add new server node to cluster
+.TP
+.B POST /api/cluster/remove-server
+Remove server node from cluster
+.SH SECURITY
+.TP
+Authentication
+JWT-based authentication for API access
+.TP
+SSL/TLS
+Automatic SSL certificate generation for HTTPS
+.TP
+Audit Logging
+Comprehensive audit logging of all operations
+.SH DEPENDENCIES
+.TP
+Python Packages
+fastapi, uvicorn, python-jose, python-multipart, docker, pyyaml
+.TP
+System Requirements
+Python 3.8+, OpenSSL for SSL certificate generation
+.SH FILES
+.TP
+.B bootstrap_app.py
+Main application file
+.TP
+.B bootstrap_requirements.txt
+Python dependencies
+.TP
+.B ssl/cert.pem
+SSL certificate (auto-generated)
+.TP
+.B ssl/key.pem
+SSL private key (auto-generated)
+.TP
+.B audit.log
+Audit log file
+.TP
+.B server.log
+Server log file
+.SH EXAMPLES
+.TP
+Start HTTP server:
+.B python3 bootstrap_app.py
+.TP
+Start HTTPS server:
+.B ENABLE_HTTPS=true HTTPS_PORT=8443 python3 bootstrap_app.py
+.TP
+Start with custom JWT secret:
+.B JWT_SECRET_KEY="your-secret-key" python3 bootstrap_app.py
+.SH SEE ALSO
+.BR start_https.sh (1),
+.BR deploy_to_nano.sh (1),
+.BR enable_https.sh (1),
+.BR k3s-server.sh (1),
+.BR k3s-agx.sh (1)

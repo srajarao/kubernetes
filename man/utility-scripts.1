@@ -1,0 +1,183 @@
+.TH UTILITY_SCRIPTS 1 "October 31, 2025" "System Administration" "User Commands"
+.SH NAME
+env.sh, monitor-service.sh, nvcr_login.sh, update-scripts \- System Utility Scripts
+.SH SYNOPSIS
+.B ./env.sh
+.br
+.B ./monitor-service.sh
+[SERVICE_NAME]
+.br
+.B ./nvcr_login.sh
+.br
+.B ./update-all-nfs-fstab.sh
+.br
+.B ./update-docker-registry.sh
+.br
+.B ./update-nfs-exports.sh
+.br
+.B ./update-nfs-fstab.sh
+.br
+.B ./validate-k3s-agent.sh
+.br
+.B ./restore_backup.sh
+.br
+.B ./inconsistencyCheck.sh
+.SH DESCRIPTION
+Collection of utility scripts for system administration, monitoring, and maintenance of the Kubernetes cluster environment.
+.SH SCRIPTS OVERVIEW
+.TP
+.B env.sh
+Environment variable configuration and validation
+.TP
+.B monitor-service.sh
+Service health monitoring and status reporting
+.TP
+.B nvcr_login.sh
+NVIDIA GPU Cloud (NVCR) authentication setup
+.TP
+.B update-all-nfs-fstab.sh
+Bulk NFS mount configuration across all nodes
+.TP
+.B update-docker-registry.sh
+Docker registry configuration and authentication
+.TP
+.B update-nfs-exports.sh
+NFS server export configuration
+.TP
+.B update-nfs-fstab.sh
+Individual node NFS mount configuration
+.TP
+.B validate-k3s-agent.sh
+K3s agent node validation and health checks
+.TP
+.B restore_backup.sh
+System backup restoration utilities
+.TP
+.B inconsistencyCheck.sh
+Configuration consistency validation
+.SH ENVIRONMENT SCRIPT (env.sh)
+.TP
+Purpose
+Set and validate environment variables for cluster operations
+.TP
+Variables Configured
+KUBECONFIG, DOCKER_REGISTRY, NFS_SERVER, GPU_SETTINGS
+.TP
+Validation
+Checks for required tools and configurations
+.SH MONITORING SCRIPT (monitor-service.sh)
+.TP
+Parameters
+SERVICE_NAME - Name of service to monitor
+.TP
+Supported Services
+k3s, docker, postgresql, pgadmin, jupyter, registry
+.TP
+Output
+Service status, resource usage, error logs
+.SH NVIDIA LOGIN (nvcr_login.sh)
+.TP
+Authentication
+Docker login to NVIDIA GPU Cloud registry
+.TP
+Requirements
+NVIDIA NGC account and API key
+.TP
+Configuration
+Sets up registry access for GPU-accelerated containers
+.SH NFS SCRIPTS
+.TP
+update-nfs-exports.sh
+Configure NFS server exports and permissions
+.TP
+update-nfs-fstab.sh
+Configure NFS client mounts on individual nodes
+.TP
+update-all-nfs-fstab.sh
+Bulk NFS mount configuration across cluster
+.SH VALIDATION SCRIPTS
+.TP
+validate-k3s-agent.sh
+Comprehensive K3s agent node validation
+.RS
+\- Node registration status
+\- GPU resource availability
+\- Network connectivity
+\- Service health checks
+.RE
+.TP
+inconsistencyCheck.sh
+Configuration drift detection and reporting
+.SH BACKUP AND RESTORE
+.TP
+restore_backup.sh
+Automated system restoration from backups
+.RS
+\- Database restoration
+\- Configuration file recovery
+\- Application state restoration
+.RE
+.SH EXAMPLES
+.TP
+Configure environment:
+.B ./env.sh
+.TP
+Monitor K3s service:
+.B ./monitor-service.sh k3s
+.TP
+Setup NVIDIA registry:
+.B ./nvcr_login.sh
+.TP
+Update all NFS mounts:
+.B ./update-all-nfs-fstab.sh
+.TP
+Validate agent node:
+.B ./validate-k3s-agent.sh
+.SH REQUIREMENTS
+.TP
+Permissions
+Root or sudo access for system modifications
+.TP
+Network Access
+Connectivity to cluster nodes and external services
+.TP
+Dependencies
+kubectl, docker, ssh, rsync, curl
+.SH LOGGING
+All scripts generate logs in /var/log/cluster-management/
+.TP
+Execution Logs
+Command execution and output
+.TP
+Error Logs
+Failures and troubleshooting information
+.TP
+Audit Logs
+Security and access events
+.SH TROUBLESHOOTING
+.TP
+Permission Denied
+Check sudo configuration and user privileges
+.TP
+Connection Failed
+Verify SSH keys and network connectivity
+.TP
+Service Not Found
+Check service names and cluster configuration
+.TP
+Validation Failed
+Review error logs and system configuration
+.SH FILES
+.TP
+.B /var/log/cluster-management/
+Log directory for all utility scripts
+.TP
+.B /etc/cluster-config/
+Configuration files and templates
+.TP
+.B ~/.ssh/cluster-keys
+SSH keys for cluster access
+.SH SEE ALSO
+.BR k3s-server.sh (1),
+.BR k3s-agent-scripts (1),
+.BR bootstrap_app.py (1)

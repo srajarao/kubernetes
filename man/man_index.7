@@ -1,0 +1,104 @@
+.TH MAN_INDEX 7 "October 31, 2025" "Cluster Management" "Miscellaneous"
+.SH NAME
+man_index \- Index of all manual pages for Cluster Management
+.SH DESCRIPTION
+This index provides an overview of all available manual pages in the Cluster Management documentation system. Each page covers a specific aspect of the system deployment, configuration, and operation.
+.SH APPLICATION MANUALS (SECTION 1)
+.TP
+.B bootstrap_app(1)
+Main web application for cluster management
+.RS
+Covers application features, API endpoints, configuration options
+.RE
+.TP
+.B start_https(1)
+HTTPS server startup and SSL configuration
+.RS
+SSL certificate generation, environment setup, service management
+.RE
+.TP
+.B deploy_to_nano(1)
+Remote deployment to Nano server
+.RS
+Automated deployment scripts, file transfer, remote setup
+.RE
+.SH SYSTEM SETUP MANUALS (SECTION 1)
+.TP
+.B k3s-server(1)
+K3s Kubernetes server installation and configuration
+.RS
+Server setup, NVIDIA GPU support, service deployment
+.RE
+.TP
+.B k3s-agent-scripts(1)
+K3s agent node setup for different hardware types
+.RS
+AGX, Nano, Spark configurations, cluster registration
+.RE
+.TP
+.B utility-scripts(1)
+System administration and maintenance utilities
+.RS
+Monitoring, backup, validation, and utility scripts
+.RE
+.SH REFERENCE MANUALS (SECTION 7)
+.TP
+.B environment_variables(7)
+Complete list of environment variables
+.RS
+Configuration options, security settings, deployment variables
+.RE
+.TP
+.B deployment_guide(7)
+Step-by-step deployment instructions
+.RS
+Prerequisites, installation phases, troubleshooting
+.RE
+.SH SEE ALSO
+.BR man (1),
+.BR mandb (8),
+.BR manpath (1)
+.SH ACCESSING DOCUMENTATION
+Documentation is available through:
+.TP
+Web Interface
+Navigate to the Wiki tab in the cluster management web interface
+.TP
+Command Line
+.B man -M /path/to/man <page_name>
+.TP
+API Access
+.B curl https://localhost:8443/api/docs/man/<page_name>
+.SH ORGANIZATION
+Manual pages are organized by:
+.TP
+Section 1
+User commands and applications
+.TP
+Section 7
+Miscellaneous information and reference
+.SH UPDATING DOCUMENTATION
+To update documentation:
+.TP
+Edit man page files in the man/ directory
+.TP
+Use standard man page formatting with groff/troff macros
+.TP
+Test rendering with: man ./man/<page>.1
+.SH CONVENTIONS
+All manual pages follow standard Unix conventions:
+.TP
+.TH
+Title header with name, section, date
+.TP
+.SH
+Section headers for organization
+.TP
+.TP
+Tagged paragraphs for definitions
+.TP
+.B
+Bold text for emphasis
+.TP
+.I
+Italic text for parameters

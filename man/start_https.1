@@ -1,0 +1,79 @@
+.TH START_HTTPS 1 "October 31, 2025" "Cluster Management" "User Commands"
+.SH NAME
+start_https.sh \- Start Cluster Management with HTTPS
+.SH SYNOPSIS
+.B ./start_https.sh
+.SH DESCRIPTION
+Production startup script for the Cluster Management System with SSL/TLS encryption. This script configures the environment for HTTPS operation and starts the FastAPI application with proper SSL certificates.
+.SH ENVIRONMENT SETUP
+.TP
+HTTPS Configuration
+Sets ENABLE_HTTPS=true and HTTPS_PORT=8443
+.TP
+Virtual Environment
+Activates the management_venv Python virtual environment
+.TP
+Process Management
+Kills existing server processes before starting
+.SH REQUIREMENTS
+.TP
+Virtual Environment
+management_venv must exist in the cluster-management directory
+.TP
+Dependencies
+All Python packages from bootstrap_requirements.txt must be installed
+.TP
+Permissions
+Script must be executable (chmod +x start_https.sh)
+.SH FILES
+.TP
+.B start_https.sh
+HTTPS startup script
+.TP
+.B management_venv/
+Python virtual environment directory
+.TP
+.B bootstrap_app.py
+Main application file
+.TP
+.B server.log
+Server output log
+.SH OUTPUT
+The script provides the following information:
+.TP
+Server URL
+https://192.168.1.181:8443 (configurable)
+.TP
+Security Warning
+Browser SSL certificate warning notice
+.TP
+Process ID
+Background process PID for monitoring
+.TP
+Log Location
+server.log file location
+.SH EXAMPLES
+.TP
+Start HTTPS server:
+.B ./start_https.sh
+.TP
+Check server status:
+.B curl -k https://192.168.1.181:8443/health
+.TP
+Monitor server logs:
+.B tail -f server.log
+.SH TROUBLESHOOTING
+.TP
+Virtual Environment Not Found
+Run: python3 -m venv management_venv && source management_venv/bin/activate && pip install -r bootstrap_requirements.txt
+.TP
+Port Already in Use
+Check: lsof -i :8443
+Kill: pkill -f bootstrap_app
+.TP
+SSL Certificate Issues
+Delete ssl/ directory and restart to regenerate certificates
+.SH SEE ALSO
+.BR bootstrap_app.py (1),
+.BR enable_https.sh (1),
+.BR deploy_to_nano.sh (1)

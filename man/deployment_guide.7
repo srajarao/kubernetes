@@ -1,0 +1,278 @@
+.TH DEPLOYMENT_GUIDE 7 "October 31, 2025" "Cluster Management" "Miscellaneous"
+.SH NAME
+deployment_guide \- Complete Cluster Management Deployment Guide
+.SH DESCRIPTION
+Step-by-step guide for deploying the complete Cluster Management system including server setup, agent configuration, and application deployment.
+.SH PREREQUISITES
+.SS Hardware Requirements
+.TP
+Server Node
+\- 8-core CPU, 32GB RAM, 500GB SSD
+\- NVIDIA GPU (optional but recommended)
+\- Static IP address
+.TP
+Agent Nodes
+\- 4-core CPU, 8GB RAM minimum
+\- GPU support for compute nodes
+\- Network connectivity to server
+.SS Software Requirements
+.TP
+Operating System
+Ubuntu 20.04 LTS or compatible
+.TP
+Network Configuration
+DNS resolution, NTP synchronization
+.TP
+SSH Access
+Passwordless SSH between all nodes
+.SH DEPLOYMENT PHASES
+.SH 1. SERVER SETUP
+.SS 1.1 Prepare Server Node
+.TP
+Update System
+.B apt update && apt upgrade -y
+.TP
+Install Dependencies
+.B apt install -y curl wget git docker.io
+.TP
+Configure Firewall
+.B ufw allow 22,80,443,6443,30001:30004/tcp
+.SS 1.2 Install K3s Server
+.TP
+Run Server Setup
+.B cd /path/to/kubernetes/server && ./k3s-server.sh
+.TP
+Verify Installation
+.B kubectl get nodes && kubectl get pods -A
+.TP
+Check GPU Support
+.B kubectl get pods -n gpu-operator
+.SH 2. AGENT NODE SETUP
+.SS 2.1 Prepare Agent Nodes
+.TP
+Update System (on each agent)
+.B apt update && apt upgrade -y
+.TP
+Install Dependencies
+.B apt install -y curl docker.io
+.TP
+Configure SSH Access
+.B ssh-copy-id server-node
+.SS 2.2 Deploy Agents
+.TP
+AGX Node
+.B cd /path/to/kubernetes/agent/agx && ./k3s-agx.sh
+.TP
+Nano Node
+.B cd /path/to/kubernetes/agent/nano && ./k3s-nano.sh
+.TP
+Spark Nodes
+.B cd /path/to/kubernetes/agent/spark1 && ./k3s-spark1.sh
+.B cd /path/to/kubernetes/agent/spark2 && ./k3s-spark2.sh
+.SS 2.3 Verify Agent Registration
+.TP
+Check Node Status
+.B kubectl get nodes
+.TP
+Verify GPU Resources
+.B kubectl describe node <agent-name>
+.SH 3. APPLICATION DEPLOYMENT
+.SS 3.1 Setup Management Environment
+.TP
+Create Virtual Environment
+.B python3 -m venv management_venv
+.TP
+Activate Environment
+.B source management_venv/bin/activate
+.TP
+Install Dependencies
+.B pip install -r bootstrap_requirements.txt
+.SS 3.2 Deploy to Nano Server
+.TP
+Run Deployment Script
+.B ./deploy_to_nano.sh
+.TP
+Verify Deployment
+.B ssh nano 'cd cluster-management && ls -la'
+.SS 3.3 Start Application
+.TP
+Start HTTPS Server
+.B ssh nano 'cd cluster-management && ./start_https.sh'
+.TP
+Verify Application
+.B curl -k https://nano-server:8443/health
+.SH 4. NETWORK CONFIGURATION
+.SS 4.1 NFS Setup
+.TP
+Configure NFS Server
+.B ./update-nfs-exports.sh
+.TP
+Configure NFS Clients
+.B ./update-all-nfs-fstab.sh
+.TP
+Verify Mounts
+.B df -h | grep nfs
+.SS 4.2 Hostfile Configuration
+.TP
+Update Hostfiles
+.B ./update-hostfiles.sh
+.TP
+Verify Resolution
+.B getent hosts cluster-node
+.SH 5. MONITORING AND VALIDATION
+.SS 5.1 Service Health Checks
+.TP
+Check All Services
+.B ./monitor-service.sh all
+.TP
+Validate Cluster
+.B ./validate-k3s-agent.sh
+.TP
+Check Configuration
+.B ./inconsistencyCheck.sh
+.SS 5.2 Backup Configuration
+.TP
+Setup Automated Backups
+.B crontab -e
+.RS
+.B 0 2 * * * /path/to/scripts/backup-home.sh
+.RE
+.SH TROUBLESHOOTING
+.SS Common Issues
+.TP
+Agent Won't Join Cluster
+Check network connectivity and firewall rules
+.TP
+GPU Not Detected
+Verify NVIDIA drivers and k3s configuration
+.TP
+Application Won't Start
+Check Python dependencies and environment variables
+.TP
+Network Issues
+Verify DNS, routing, and hostfile configuration
+.SH SECURITY CONFIGURATION
+.SS SSL/TLS Setup
+.TP
+Generate Certificates
+.B ./create_ca.sh && ./enable_https.sh
+.TP
+Configure Authentication
+Set JWT_SECRET_KEY environment variable
+.SS Access Control
+.TP
+Configure Firewall
+.B ufw enable && ufw default deny incoming
+.TP
+SSH Hardening
+Disable password authentication, use key-based access
+.SH MONITORING SETUP
+.SS Log Aggregation
+.TP
+Centralized Logging
+Configure rsyslog to forward logs to central server
+.TP
+Log Rotation
+.B logrotate /etc/logrotate.d/cluster-management
+.SS Metrics Collection
+.TP
+Node Exporter
+Deploy Prometheus node exporter on all nodes
+.TP
+Application Metrics
+Configure application-specific monitoring endpoints
+.SH BACKUP AND RECOVERY
+.SS Backup Strategy
+.TP
+Database Backups
+Automated PostgreSQL backups
+.TP
+Configuration Backups
+Version controlled configuration files
+.TP
+Application Backups
+Container image and deployment backups
+.SS Recovery Procedures
+.TP
+Database Recovery
+.B ./restore_backup.sh database
+.TP
+Application Recovery
+.B ./restore_backup.sh application
+.TP
+Full System Recovery
+Complete redeployment from backup
+.SH PERFORMANCE OPTIMIZATION
+.SS Resource Allocation
+.TP
+CPU/Memory Limits
+Configure appropriate resource requests and limits
+.TP
+GPU Scheduling
+Set up GPU resource quotas and priorities
+.SS Network Optimization
+.TP
+MTU Configuration
+Set optimal MTU for cluster network
+.TP
+DNS Caching
+Configure local DNS caching
+.SH MAINTENANCE PROCEDURES
+.SS Regular Tasks
+.TP
+System Updates
+.B apt update && apt upgrade -y
+.TP
+Certificate Renewal
+.B ./enable_https.sh (before expiration)
+.TP
+Log Rotation
+Automatic log rotation and cleanup
+.SS Emergency Procedures
+.TP
+Service Restart
+.B systemctl restart k3s
+.TP
+Node Replacement
+Remove failed node, deploy replacement
+.TP
+Disaster Recovery
+Execute backup restoration procedures
+.SH VALIDATION CHECKLIST
+.SS Pre-Deployment
+- [ ] Hardware requirements met
+- [ ] Network connectivity verified
+- [ ] SSH access configured
+- [ ] Base OS installed and updated
+.SS Post-Deployment
+- [ ] K3s server running
+- [ ] All agents registered
+- [ ] GPU resources available
+- [ ] Application accessible
+- [ ] Services responding
+- [ ] Backups configured
+.SH SUPPORT AND DOCUMENTATION
+.SS Documentation Access
+.TP
+Man Pages
+.B man bootstrap_app
+.B man k3s-server
+.B man deployment_guide
+.TP
+Web Interface
+Access documentation through the wiki button in the web UI
+.SS Getting Help
+.TP
+Log Files
+Check /var/log/cluster-management/ for detailed logs
+.TP
+Health Checks
+Use built-in health check endpoints
+.TP
+Community Support
+Refer to project documentation and issue tracker
+.SH SEE ALSO
+.BR bootstrap_app.py (1),
+.BR k3s-server.sh (1),
+.BR k3s-agent-scripts (1),
+.BR environment_variables (7)

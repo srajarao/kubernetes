@@ -1,0 +1,85 @@
+.TH DEPLOY_TO_NANO 1 "October 31, 2025" "Cluster Management" "User Commands"
+.SH NAME
+deploy_to_nano.sh \- Deploy Cluster Management to Nano Server
+.SH SYNOPSIS
+.B ./deploy_to_nano.sh
+.SH DESCRIPTION
+Automated deployment script for copying the Cluster Management application to the Nano server and setting up the remote environment. This script handles file transfer, dependency installation, and basic configuration.
+.SH DEPLOYMENT STEPS
+.TP
+File Transfer
+Copies all necessary files to the Nano server via SCP
+.TP
+Directory Creation
+Creates cluster-management directory on remote server
+.TP
+Virtual Environment Setup
+Creates and configures Python virtual environment
+.TP
+Dependency Installation
+Installs required Python packages
+.SH REQUIREMENTS
+.TP
+SSH Access
+Passwordless SSH access to nano server must be configured
+.TP
+Network Connectivity
+Nano server must be reachable via SSH
+.TP
+Permissions
+Script must have execute permissions
+.SH CONFIGURATION
+.TP
+Target Server
+Deploys to 'nano' host (configured in ~/.ssh/config)
+.TP
+Target Directory
+/home/sanjay/containers/kubernetes/cluster-management/
+.TP
+Virtual Environment
+Creates 'management_venv' on remote server
+.SH FILES TRANSFERRED
+.TP
+Application Files
+bootstrap_app.py, bootstrap_requirements.txt
+.TP
+Scripts
+start_https.sh, enable_https.sh, create_ca.sh
+.TP
+Configuration
+ca.crt certificate file
+.SH VERIFICATION
+After deployment, the script verifies:
+.TP
+File Transfer Success
+Checks that all files were copied correctly
+.TP
+Virtual Environment Creation
+Confirms venv was created and activated
+.TP
+Dependency Installation
+Validates Python packages were installed
+.SH EXAMPLES
+.TP
+Deploy to nano server:
+.B ./deploy_to_nano.sh
+.TP
+Verify deployment:
+.B ssh nano 'cd /home/sanjay/containers/kubernetes/cluster-management && ls -la'
+.TP
+Start remote server:
+.B ssh nano 'cd /home/sanjay/containers/kubernetes/cluster-management && ./start_https.sh'
+.SH TROUBLESHOOTING
+.TP
+SSH Connection Failed
+Check SSH key configuration and network connectivity
+.TP
+Permission Denied
+Verify SSH key permissions and remote user access
+.TP
+Virtual Environment Issues
+Check Python version and pip availability on remote server
+.SH SEE ALSO
+.BR start_https.sh (1),
+.BR enable_https.sh (1),
+.BR quick_deploy.sh (1)

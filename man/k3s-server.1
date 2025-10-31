@@ -1,0 +1,142 @@
+.TH K3S_SERVER 1 "October 31, 2025" "Kubernetes Setup" "User Commands"
+.SH NAME
+k3s-server.sh \- Setup K3s Kubernetes Server
+.SH SYNOPSIS
+.B ./k3s-server.sh
+.SH DESCRIPTION
+Automated script for installing and configuring a K3s Kubernetes server node. This script handles the complete server setup including NVIDIA GPU support, networking configuration, and service deployment.
+.SH FEATURES
+.TP
+K3s Installation
+Installs K3s server with custom configuration
+.TP
+NVIDIA GPU Support
+Configures NVIDIA device plugins and operators
+.TP
+Network Configuration
+Sets up cluster networking and firewall rules
+.TP
+Service Deployment
+Deploys PostgreSQL, pgAdmin, Jupyter, and registry services
+.TP
+Security Hardening
+Configures SSL/TLS certificates and access controls
+.SH SYSTEM REQUIREMENTS
+.TP
+Operating System
+Ubuntu 20.04+ or compatible Linux distribution
+.TP
+Hardware
+Minimum 4GB RAM, 2 CPU cores
+.TP
+Network
+Static IP configuration required
+.TP
+Storage
+20GB+ available disk space
+.SH CONFIGURATION OPTIONS
+.TP
+Cluster Token
+Auto-generated or user-provided cluster token
+.TP
+Network Interface
+Automatic detection or manual specification
+.TP
+NVIDIA Support
+Automatic detection of GPU hardware
+.TP
+Service Endpoints
+Configurable service ports and access
+.SH INSTALLED COMPONENTS
+.TP
+K3s Server
+Kubernetes control plane and API server
+.TP
+NVIDIA GPU Operator
+GPU resource management and scheduling
+.TP
+PostgreSQL Database
+Persistent data storage
+.TP
+pgAdmin
+Database administration interface
+.TP
+Jupyter Notebook
+Interactive development environment
+.TP
+Docker Registry
+Private container image registry
+.SH NETWORK PORTS
+.TP
+Kubernetes API
+6443 (HTTPS)
+.TP
+PostgreSQL
+5432 (internal), 30001 (external)
+.TP
+pgAdmin
+8080 (internal), 30002 (external)
+.TP
+Jupyter
+8888 (internal), 30003 (external)
+.TP
+Registry
+5000 (internal), 30004 (external)
+.SH VERIFICATION
+The script performs post-installation checks:
+.TP
+K3s Status
+kubectl cluster-info and node status
+.TP
+GPU Detection
+nvidia-smi and GPU resource availability
+.TP
+Service Health
+Health checks for all deployed services
+.TP
+Network Connectivity
+Inter-node communication verification
+.SH EXAMPLES
+.TP
+Install K3s server:
+.B ./k3s-server.sh
+.TP
+Check cluster status:
+.B kubectl get nodes
+.TP
+Verify GPU support:
+.B kubectl get pods -n gpu-operator
+.SH TROUBLESHOOTING
+.TP
+Installation Failed
+Check system requirements and network connectivity
+.TP
+GPU Not Detected
+Verify NVIDIA drivers and hardware compatibility
+.TP
+Services Not Starting
+Check logs: kubectl logs <pod-name> -n <namespace>
+.TP
+Network Issues
+Verify firewall rules and DNS configuration
+.SH FILES
+.TP
+.B k3s-server.sh
+Main installation script
+.TP
+.B nvidia-ds-updated.yaml
+NVIDIA device plugin configuration
+.TP
+.B gpuoperator.sh
+GPU operator installation script
+.TP
+.B postgres-db-deployment.yaml
+PostgreSQL deployment configuration
+.TP
+.B pgadmin-deployment.yaml
+pgAdmin deployment configuration
+.SH SEE ALSO
+.BR k3s-agx.sh (1),
+.BR k3s-spark1.sh (1),
+.BR k3s-nano.sh (1),
+.BR gpuoperator.sh (1)
