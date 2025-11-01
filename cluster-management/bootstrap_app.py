@@ -3988,33 +3988,6 @@ async def root():
                         </div>
                     </div>
 
-                    <h3>🎯 Phase Progress</h3>
-                    <div style="background: #f8fafc; padding: 20px; border-radius: 10px; margin: 20px 0;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                            <span><strong>Phase 1:</strong> Bootstrap Web Server</span>
-                            <span style="color: #10b981;">✅ Complete</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                            <span><strong>Phase 2:</strong> Script Discovery</span>
-                            <span style="color: #10b981;">✅ Complete</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                            <span><strong>Phase 3:</strong> Script Execution</span>
-                            <span style="color: #10b981;">✅ Complete</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                            <span><strong>Phase 4:</strong> WebSocket Streaming</span>
-                            <span style="color: #10b981;">✅ Complete</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                            <span><strong>Phase 5:</strong> Container Building</span>
-                            <span style="color: #10b981;">✅ Complete</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span><strong>Phase 6:</strong> Full Cluster UI</span>
-                            <span style="color: #10b981;">✅ Complete</span>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Cluster Tab -->
