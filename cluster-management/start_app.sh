@@ -11,7 +11,7 @@ export ENABLE_HTTPS=true
 export HTTPS_PORT=8443
 
 # Start the application with nohup to ensure it keeps running
-nohup python3 bootstrap_app.py > server.log 2>&1 &
+nohup python3 bootstrap_app.py > logs/server.log 2>&1 &
 
 # Give it a moment to start
 sleep 2
@@ -23,5 +23,5 @@ if pgrep -f "bootstrap_app.py" > /dev/null; then
     echo "📊 Health check: curl -k https://192.168.1.181:8443/health"
 else
     echo "❌ Failed to start cluster management application"
-    echo "Check server.log for details"
+    echo "Check logs/server.log for details"
 fi

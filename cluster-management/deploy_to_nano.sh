@@ -27,7 +27,7 @@ echo "🧪 Step 5: Testing application import on nano..."
 ssh nano "cd $REMOTE_DIR && source management_venv/bin/activate && python -c 'from bootstrap_app import app; print(\"✅ App imported successfully on nano\")'"
 
 echo "🌐 Step 6: Starting the management application on nano..."
-ssh nano "cd $REMOTE_DIR && source management_venv/bin/activate && nohup uvicorn bootstrap_app:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &"
+ssh nano "cd $REMOTE_DIR && source management_venv/bin/activate && nohup uvicorn bootstrap_app:app --host 0.0.0.0 --port 8000 > logs/server.log 2>&1 &"
 
 echo "⏳ Step 7: Waiting for application to start..."
 sleep 5
@@ -40,7 +40,7 @@ if curl -s --connect-timeout 10 http://$NANO_IP:8000/health > /dev/null; then
     echo "ℹ️  API info: http://$NANO_IP:8000/api/info"
 else
     echo "❌ Application failed to start. Check logs on nano:"
-    echo "ssh nano 'cd $REMOTE_DIR && cat server.log'"
+    echo "ssh nano 'cd $REMOTE_DIR && cat logs/server.log'"
     exit 1
 fi
 

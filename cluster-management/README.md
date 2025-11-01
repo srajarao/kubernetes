@@ -20,7 +20,8 @@ This folder contains the **cluster management web application** that runs on the
 ├── bootstrap_app.py          # 🚀 Live application
 ├── bootstrap_requirements.txt # 📦 Dependencies
 ├── management_venv/          # 🐍 Python virtual environment
-├── server.log                # 📋 Application logs
+├── logs/                     # 📁 Log directory
+│   └── server.log            # 📋 Application logs
 └── __pycache__/              # 💾 Python bytecode cache
 ```
 

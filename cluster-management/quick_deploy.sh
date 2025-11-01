@@ -15,7 +15,7 @@ scp -r ../server/utils nano:$REMOTE_DIR/../server/
 
 echo "🔄 Restarting application on nano..."
 ssh nano "pkill -f uvicorn; sleep 1"
-ssh -f nano "cd $REMOTE_DIR && source management_venv/bin/activate && nohup uvicorn bootstrap_app:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &"
+ssh -f nano "cd $REMOTE_DIR && source management_venv/bin/activate && nohup uvicorn bootstrap_app:app --host 0.0.0.0 --port 8000 > logs/server.log 2>&1 &"
 
 echo "⏳ Waiting for restart..."
 sleep 3
@@ -26,5 +26,5 @@ if curl -s --connect-timeout 5 http://$NANO_IP:8000/health > /dev/null; then
     echo "🌐 Access at: http://$NANO_IP:8000"
 else
     echo "❌ Deployment failed. Check logs on nano:"
-    echo "ssh nano 'cd $REMOTE_DIR && cat server.log'"
+    echo "ssh nano 'cd $REMOTE_DIR && cat logs/server.log'"
 fi
