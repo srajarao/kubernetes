@@ -1,7 +1,0 @@
-Linux spark2 6.11.0-1016-nvidia #16-Ubuntu SMP PREEMPT_DYNAMIC Sun Sep 21 16:52:46 UTC 2025 aarch64 aarch64 aarch64 GNU/Linux
-Distributor ID:	Ubuntu
-Description:	Ubuntu 24.04.3 LTS
-Release:	24.04
-Codename:	noble
-driver_version, name, uuid
-580.95.05, NVIDIA GB10, GPU-b6ede49e-9f15-2971-d402-4cced42c6829
