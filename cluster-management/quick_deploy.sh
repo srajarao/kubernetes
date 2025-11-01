@@ -68,12 +68,12 @@ else
     scp -r ../server/utils nano:$REMOTE_DIR/../server/ 2>/dev/null || echo "⚠️  utils directory not found, skipping..."
 
     echo "🔄 Stopping existing application on nano..."
-    ssh nano "pkill -f uvicorn || true"
+    ssh nano "pkill -f uvicorn; true" || true
     sleep 1
 fi
 
 echo "🌐 Starting the management application on nano..."
-ssh nano "cd $REMOTE_DIR && source management_venv/bin/activate && nohup uvicorn bootstrap_app:app --host 0.0.0.0 --port 8000 > logs/server.log 2>&1 &"
+ssh -f nano "cd $REMOTE_DIR && source management_venv/bin/activate && nohup uvicorn bootstrap_app:app --host 0.0.0.0 --port 8000 > logs/server.log 2>&1"
 
 echo "⏳ Waiting for application to start..."
 sleep 5
