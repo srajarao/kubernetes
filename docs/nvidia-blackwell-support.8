@@ -1,0 +1,136 @@
+.TH NVIDIA-BLACKWELL-SUPPORT 8 "November 1, 2025" "K3s Cluster" "NVIDIA GPU Support"
+.SH NAME
+nvidia-blackwell-support \- NVIDIA Blackwell GB10 GPU support and troubleshooting guide
+.SH SYNOPSIS
+.B nvidia-blackwell-support
+.RI [ OPTION ]
+.SH DESCRIPTION
+This document provides comprehensive information about NVIDIA Blackwell GB10 GPU support in Kubernetes environments, including known issues, workarounds, and troubleshooting steps.
+.SH HARDWARE SETUP
+.TP
+.B GPU Model
+NVIDIA Blackwell GB10 GPU
+.TP
+.B Node
+spark2 (192.168.1.202)
+.TP
+.B Operating System
+Ubuntu 22.04 LTS
+.TP
+.B Driver Version
+580.95.05
+.TP
+.B CUDA Version
+12.4
+.TP
+.B Kubernetes
+K3s v1.30.x
+.SH CURRENT STATUS
+.SS Working Components
+.IP \(bu 2
+Host-level GPU access via nvidia-smi
+.IP \(bu 2
+Manual GPU device mounting in privileged pods
+.IP \(bu 2
+Direct GPU access with --gpus all flag
+.IP \(bu 2
+PyTorch GPU acceleration (full functionality)
+.IP \(bu 2
+TensorFlow GPU detection (with compatibility warnings)
+.SS Known Issues
+.IP \(bu 2
+NVIDIA device plugin v0.18.0 fails GPU allocation
+.IP \(bu 2
+NVML "Not Supported" errors for memory queries
+.IP \(bu 2
+Kubernetes GPU resource scheduling not working
+.IP \(bu 2
+GPU Operator integration issues
+.SH TROUBLESHOOTING STEPS
+.SS 1. Verify Host GPU Access
+.nf
+$ nvidia-smi
+.fi
+.sp
+Expected output shows GPU information with memory usage.
+.SS 2. Check Device Plugin Logs
+.nf
+$ kubectl logs -n kube-system nvidia-device-plugin-daemonset-*
+.fi
+.sp
+Look for "Not Supported" NVML errors.
+.SS 3. Test Manual GPU Mounting
+Use the provided manual-gpu-pod.yaml for testing:
+.nf
+$ kubectl apply -f manual-gpu-pod.yaml
+$ kubectl logs gpu-test-pod
+.fi
+.SS 4. Container Testing
+Test with latest NVIDIA containers:
+.nf
+$ docker run --gpus all nvcr.io/nvidia/tensorflow:25.02-tf2-py3
+$ docker run --gpus all nvcr.io/nvidia/pytorch:25.02-py3
+.fi
+.SH WORKAROUNDS
+.SS Manual Device Mounting
+Currently working solution using privileged pods with hostPath volumes:
+.nf
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-workload
+spec:
+  hostNetwork: true
+  hostPID: true
+  hostIPC: true
+  containers:
+  - name: gpu-container
+    image: nvcr.io/nvidia/tensorflow:25.02-tf2
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - name: dev-nvidia
+      mountPath: /dev/nvidia
+    - name: nvidia-driver
+      mountPath: /usr/local/nvidia
+  volumes:
+  - name: dev-nvidia
+    hostPath:
+      path: /dev/nvidia
+  - name: nvidia-driver
+    hostPath:
+      path: /usr/local/nvidia
+.fi
+.SH NVIDIA RESOURCES
+.SS Device Plugin Documentation
+https://forums.developer.nvidia.com/t/blackwell-gb10-gpu-device-plugin-v0-18-0-driver-580-95-05/348704/7
+.SS GPU Operator Guide
+https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/getting-started.html#pre-installed-nvidia-gpu-drivers-and-nvidia-container-toolkit
+.SH FILES
+.TP
+.B /home/sanjay/containers/kubernetes/nvidia-support/
+Directory containing all diagnostic files and documentation
+.TP
+.B NVIDIA-Blackwell-Support-Issue.md
+Detailed issue report for NVIDIA support
+.TP
+.B nvidia-device-plugin-full.log
+Complete device plugin startup logs
+.TP
+.B manual-gpu-pod.yaml
+Working manual GPU pod configuration
+.TP
+.B nvidia-smi-output.txt
+Host nvidia-smi output
+.SH SEE ALSO
+.BR kubectl (1),
+.BR nvidia-smi (1),
+.BR k3s (8)
+.SH AUTHOR
+Sanjay Rao <srajarao@github.com>
+.SH REPORTING BUGS
+Report issues to:
+.IP \(bu 2
+NVIDIA Developer Forums: https://forums.developer.nvidia.com/
+.IP \(bu 2
+NVIDIA Enterprise Support: https://www.nvidia.com/en-us/support/enterprise/

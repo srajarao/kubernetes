@@ -13,6 +13,7 @@ This directory contains Unix manual pages (man pages) converted from various pro
 - `multi-select-tree-design.8` - Multi-select tree interface design for script executor
 - `cluster-tree-design.8` - Tree view design concept for cluster script management
 - `bootstrap-solution.8` - Bootstrap problem solution for script executor deployment
+- `nvidia-blackwell-support.8` - NVIDIA Blackwell GB10 GPU support and troubleshooting
 
 ## Usage
 
