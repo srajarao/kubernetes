@@ -2887,7 +2887,7 @@ async def create_backup(request: Request, current_user: User = Depends(get_curre
             "bootstrap_app.py",
             "bootstrap_requirements.txt",
             "README.md",
-            "audit.log"
+            AUDIT_LOG_FILE
         ]
 
         for config_file in config_files:
