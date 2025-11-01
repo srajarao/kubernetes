@@ -2442,12 +2442,13 @@ async def get_cluster_status():
     try:
         # Get real cluster status
         status_data = await check_cluster_status()
-        
-        # Format for frontend
+
+        # Format for frontend - include summary directly
         return {
             "status": "Healthy" if status_data["summary"]["pingable_nodes"] > 0 else "Degraded",
             "nodes": status_data["summary"]["total_nodes"],
             "pods": 11,  # We'll get this from kubectl later
+            "summary": status_data["summary"],  # Add summary directly to response
             "details": status_data
         }
     except Exception as e:
@@ -2456,6 +2457,12 @@ async def get_cluster_status():
             "status": "Unknown",
             "nodes": 5,
             "pods": 11,
+            "summary": {  # Add summary even in error case
+                "total_nodes": 5,
+                "pingable_nodes": 0,
+                "ssh_accessible_nodes": 0,
+                "timestamp": datetime.now().isoformat()
+            },
             "error": str(e)
         }
 
