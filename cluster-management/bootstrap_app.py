@@ -316,15 +316,6 @@ docker_client = None
 docker_available = None
 
 # Authentication functions
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash"""
-    try:
-        salt, hash_value = hashed_password.split(":", 1)
-        computed = hashlib.sha256((salt + plain_password).encode()).hexdigest()
-        return secrets.compare_digest(computed, hash_value)
-    except:
-        return False
-
 def get_password_hash(password):
     """Hash a password"""
     return hash_password(password)
@@ -860,33 +851,96 @@ async def check_cluster_status() -> Dict[str, Any]:
     """
     Check real-time status of cluster nodes by attempting connections.
     """
-    # Temporarily return static data to debug the 500 error
-    return {
-        "cluster_status": {
-            "tower": {
-                "name": "Tower",
-                "ip": "192.168.1.150",
-                "pingable": True,
-                "ssh_accessible": True,
-                "configured_status": "online",
-                "last_checked": datetime.now().isoformat()
-            },
-            "nano": {
-                "name": "Nano",
-                "ip": "192.168.1.181",
-                "pingable": True,
-                "ssh_accessible": True,
-                "configured_status": "online",
-                "last_checked": datetime.now().isoformat()
+    try:
+        nodes = get_cluster_node_info()
+        status_results = {}
+
+        for category, node_list in nodes["nodes"].items():
+            if isinstance(node_list, list):
+                for node in node_list:
+                    node_name = node["name"].lower()
+                    node_ip = node["ip"]
+
+                    # Ping check with timeout
+                    ping_success = False
+                    try:
+                        ping_success = await asyncio.wait_for(ping_node(node_ip), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        ping_success = False
+                    except Exception:
+                        ping_success = False
+
+                    # Basic connectivity check (if ping succeeds, try SSH)
+                    ssh_success = False
+                    if ping_success:
+                        try:
+                            ssh_success = await asyncio.wait_for(check_ssh_connectivity(node_ip), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            ssh_success = False
+                        except Exception:
+                            ssh_success = False
+
+                    status_results[node_name] = {
+                        "name": node["name"],
+                        "ip": node_ip,
+                        "pingable": ping_success,
+                        "ssh_accessible": ssh_success,
+                        "configured_status": node["status"],
+                        "last_checked": datetime.now().isoformat()
+                    }
+            else:
+                # Single node (control plane)
+                node = node_list
+                node_name = node["name"].lower()
+                node_ip = node["ip"]
+
+                ping_success = False
+                try:
+                    ping_success = await asyncio.wait_for(ping_node(node_ip), timeout=5.0)
+                except asyncio.TimeoutError:
+                    ping_success = False
+                except Exception:
+                    ping_success = False
+
+                ssh_success = False
+                if ping_success:
+                    try:
+                        ssh_success = await asyncio.wait_for(check_ssh_connectivity(node_ip), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        ssh_success = False
+                    except Exception:
+                        ssh_success = False
+
+                status_results[node_name] = {
+                    "name": node["name"],
+                    "ip": node_ip,
+                    "pingable": ping_success,
+                    "ssh_accessible": ssh_success,
+                    "configured_status": node["status"],
+                    "last_checked": datetime.now().isoformat()
+                }
+
+        return {
+            "cluster_status": status_results,
+            "summary": {
+                "total_nodes": len(status_results),
+                "pingable_nodes": sum(1 for s in status_results.values() if s["pingable"]),
+                "ssh_accessible_nodes": sum(1 for s in status_results.values() if s["ssh_accessible"]),
+                "timestamp": datetime.now().isoformat()
             }
-        },
-        "summary": {
-            "total_nodes": 2,
-            "pingable_nodes": 2,
-            "ssh_accessible_nodes": 2,
-            "timestamp": datetime.now().isoformat()
         }
-    }
+    except Exception as e:
+        # Return error information instead of crashing
+        return {
+            "error": f"Failed to check cluster status: {str(e)}",
+            "cluster_status": {},
+            "summary": {
+                "total_nodes": 0,
+                "pingable_nodes": 0,
+                "ssh_accessible_nodes": 0,
+                "timestamp": datetime.now().isoformat()
+            }
+        }
 
 async def ping_node(ip: str) -> bool:
     """
@@ -8535,17 +8589,35 @@ if __name__ == "__main__":
             print(f"📄 Certificate: {SSL_CERT_FILE}")
             print(f"🔑 Private Key: {SSL_KEY_FILE}")
 
+            # Verify certificate files are readable
+            try:
+                with open(SSL_CERT_FILE, 'r') as f:
+                    cert_content = f.read()
+                    print(f"📄 Certificate file readable ({len(cert_content)} bytes)")
+                with open(SSL_KEY_FILE, 'r') as f:
+                    key_content = f.read()
+                    print(f"🔑 Private key file readable ({len(key_content)} bytes)")
+            except Exception as file_error:
+                print(f"❌ Error reading certificate files: {file_error}")
+                raise
+
             # Start HTTPS server
+            print("🚀 Starting HTTPS server...")
+            import ssl
             uvicorn.run(
                 "bootstrap_app:app",
                 host="0.0.0.0",
                 port=int(os.getenv("HTTPS_PORT", "8443")),
                 ssl_certfile=SSL_CERT_FILE,
                 ssl_keyfile=SSL_KEY_FILE,
+                ssl_version=ssl.PROTOCOL_TLS,
                 reload=False
             )
         except Exception as e:
             print(f"❌ Failed to start HTTPS server: {e}")
+            import traceback
+            print("Full traceback:")
+            traceback.print_exc()
             print("🌐 Starting HTTP server instead...")
             https_enabled = False
 
