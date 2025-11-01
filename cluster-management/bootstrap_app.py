@@ -3951,14 +3951,6 @@ async def root():
                     <button type="submit" class="btn btn-primary">Login</button>
                 </form>
                 <div id="login-error" class="error-message" style="display: none;"></div>
-                <div class="login-info">
-                    <h4>Demo Accounts:</h4>
-                    <ul>
-                        <li><strong>admin</strong> / admin123 (Full access)</li>
-                        <li><strong>operator</strong> / operator123 (Limited operations)</li>
-                        <li><strong>viewer</strong> / viewer123 (Read-only)</li>
-                    </ul>
-                </div>
             </div>
         </div>
 
