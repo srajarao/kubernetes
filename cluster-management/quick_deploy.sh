@@ -11,6 +11,7 @@ REMOTE_DIR="/home/sanjay/containers/kubernetes/cluster-management"
 
 echo "📦 Copying updated files to nano..."
 scp bootstrap_app.py bootstrap_requirements.txt nano:$REMOTE_DIR/
+scp -r ../server/utils nano:$REMOTE_DIR/../server/
 
 echo "🔄 Restarting application on nano..."
 ssh nano "pkill -f uvicorn; sleep 1"
