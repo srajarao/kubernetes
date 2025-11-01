@@ -1,0 +1,356 @@
+.TH MIGRATION-TIMELINE 8 "Network Migration" "System Administration"
+.SH NAME
+migration-timeline \- Network migration timeline from 10.1.10.x to 192.168.1.x subnet
+.SH SYNOPSIS
+.B migration-timeline
+.RB [ phase ]
+.RB [ checkpoint ]
+.SH DESCRIPTION
+This manual documents the complete timeline for migrating the K3s cluster network from the 10.1.10.x subnet to the 192.168.1.x subnet with ER605 firewall integration and VPN setup.
+.PP
+.B Duration: 5:00 PM - 2:00 AM (9 hours)
+.br
+.B Total Duration: 9 hours | Critical Path: Network reconfiguration → Code updates → Service restart
+.SH PHASE 1: PREPARATION
+.SS 5:00 PM - 5:30 PM: Final Preparation
+.TP
+Backup current configurations
+.nf
+cd /home/sanjay/containers/kubernetes
+git status  # Ensure clean working directory
+git tag "pre-network-migration-$(date +%Y%m%d_%H%M)"
+./backup_home.sh  # Full backup of current setup
+.fi
+.TP
+Document current network state
+.nf
+# Record current IPs and connectivity
+kubectl get nodes -o wide
+kubectl get pods -o wide -A
+kubectl get services -o wide -A
+.fi
+.TP
+Test current cluster functionality
+.RS
+.IP \(bu 2
+Verify FastAPI services are accessible
+.IP \(bu
+Test backup scripts
+.IP \(bu
+Confirm NFS mounts working
+.RE
+.SS 5:30 PM - 6:00 PM: ER605 Firewall Setup
+.TP
+Unbox and connect ER605
+.RS
+.IP \(bu 2
+Connect ER605 between switch and current router
+.IP \(bu
+Power on and access web interface (192.168.0.1 or similar)
+.RE
+.TP
+Initial ER605 configuration
+.RS
+.IP \(bu 2
+Set admin password
+.IP \(bu
+Update firmware if needed
+.IP \(bu
+Configure LAN interface: 192.168.1.1/24
+.RE
+.SH PHASE 2: NETWORK RECONFIGURATION
+.SS 6:00 PM - 6:30 PM: Update Tower (Server Node)
+.TP
+Change Tower static IP
+.nf
+# Edit /etc/netplan/01-netcfg.yaml
+sudo netplan apply
+# IP: 192.168.1.150 → 192.168.1.150
+# Gateway: 192.168.1.1 → 192.168.1.1
+.fi
+.TP
+Update K3s server configuration
+.nf
+sudo systemctl stop k3s
+# Update /etc/rancher/k3s/k3s.yaml if needed
+.fi
+.TP
+Reconfigure NFS exports
+.nf
+sudo ./scripts/update-nfs-exports.sh
+sudo exportfs -ra
+.fi
+.SS 6:30 PM - 7:00 PM: Update AGX Node
+.TP
+SSH to AGX and change IP
+.nf
+ssh sanjay@192.168.1.244  # Will lose connection
+# On AGX: Update netplan, change to 192.168.1.244
+.fi
+.TP
+Update AGX K3s agent
+.nf
+# On AGX: Update k3s-agent service configuration
+.fi
+.SS 7:00 PM - 7:30 PM: Update Nano Node
+.TP
+SSH to Nano and change IP
+.nf
+ssh sanjay@192.168.1.181
+# On Nano: Update to 192.168.1.181
+.fi
+.TP
+Update Nano K3s agent
+.SS 7:30 PM - 8:00 PM: Update Spark Nodes
+.TP
+Update Spark1 (192.168.1.201 → 192.168.1.201)
+.TP
+Update Spark2 (192.168.1.202 → 192.168.1.202)
+.SH PHASE 3: CONFIGURATION UPDATES
+.SS 8:00 PM - 8:30 PM: Apply IP Changes to Codebase
+.TP
+Run IP update script (if needed)
+.nf
+cd /home/sanjay/containers/kubernetes
+./update_ips.sh "10.1.10" "192.168.1"
+git diff  # Review changes
+git add .
+git commit -m "Network migration: 10.1.10.x → 192.168.1.x"
+.fi
+.TP
+Sync changes to all nodes
+.nf
+# Push to git and pull on all nodes
+git push origin main
+.fi
+.SS 8:30 PM - 9:00 PM: Update Kubernetes Configurations
+.TP
+Restart K3s on all nodes
+.nf
+# On each node:
+sudo systemctl restart k3s-agent  # (or k3s for server)
+.fi
+.TP
+Update deployments
+.nf
+kubectl apply -f agent/*/fastapi-deployment-*.yaml
+kubectl apply -f server/fastapi-deployment-full.yaml
+.fi
+.SS 9:00 PM - 9:30 PM: Update Supporting Services
+.TP
+Update PostgreSQL and pgAdmin
+.nf
+kubectl apply -f server/postgres-db-deployment.yaml
+kubectl apply -f server/pgadmin-deployment.yaml
+.fi
+.TP
+Update Docker registry
+.nf
+kubectl apply -f server/registry-deployment.yaml
+.fi
+.SH PHASE 4: FIREWALL & VPN CONFIGURATION
+.SS 9:30 PM - 10:00 PM: ER605 Firewall Configuration
+.TP
+Set up port forwarding
+.RS
+.IP \(bu 2
+Port 1194 (UDP) → VPN server
+.IP \(bu
+Port 80/443 → Web services if needed
+.IP \(bu
+Port 30002 → FastAPI services
+.RE
+.TP
+Configure firewall rules
+.RS
+.IP \(bu 2
+Allow internal traffic
+.IP \(bu
+Block external access except VPN
+.IP \(bu
+Set up NAT rules
+.RE
+.SS 10:00 PM - 10:30 PM: OpenVPN Server Setup
+.TP
+Install OpenVPN on ER605
+.RS
+.IP \(bu 2
+Use ER605's built-in OpenVPN server
+.IP \(bu
+Configure certificates
+.IP \(bu
+Set up user accounts
+.RE
+.TP
+Generate client configurations
+.RS
+.IP \(bu 2
+Create .ovpn files for remote access
+.IP \(bu
+Test VPN connectivity
+.RE
+.SS 10:30 PM - 11:00 PM: Security Hardening
+.TP
+Update firewall policies
+.RS
+.IP \(bu 2
+Enable intrusion detection
+.IP \(bu
+Set up access time restrictions
+.IP \(bu
+Configure logging
+.RE
+.SH PHASE 5: TESTING & VALIDATION
+.SS 11:00 PM - 11:30 PM: Cluster Connectivity Tests
+.TP
+Verify node connectivity
+.nf
+kubectl get nodes
+kubectl get pods -A
+.fi
+.TP
+Test FastAPI services
+.nf
+curl http://192.168.1.181:30002/health
+curl http://192.168.1.244:30002/health
+curl http://192.168.1.201:30002/health
+curl http://192.168.1.202:30002/health
+.fi
+.SS 11:30 PM - 12:00 AM: External Access Testing
+.TP
+Test VPN connection
+.RS
+.IP \(bu 2
+Connect from external network
+.IP \(bu
+Verify access to cluster services
+.IP \(bu
+Test port forwarding
+.RE
+.TP
+Update external references
+.RS
+.IP \(bu 2
+Update any external DNS if applicable
+.IP \(bu
+Test remote monitoring tools
+.RE
+.SS 12:00 AM - 12:30 AM: Backup System Validation
+.TP
+Test backup scripts
+.nf
+./backup_home.sh  # On each node
+.fi
+.TP
+Verify NFS mounts
+.nf
+df -h | grep vmstore
+.fi
+.SS 12:30 AM - 1:00 AM: Performance & Monitoring
+.TP
+Monitor cluster health
+.nf
+kubectl top nodes
+kubectl top pods
+.fi
+.TP
+Test GPU workloads
+.RS
+.IP \(bu 2
+Run GPU-intensive tasks
+.IP \(bu
+Monitor NVIDIA GPU usage
+.RE
+.SH PHASE 6: CLEANUP & DOCUMENTATION
+.SS 1:00 AM - 1:30 AM: Final Validation
+.TP
+Run comprehensive tests
+.nf
+./scripts/validate-k3s-agent.sh  # On each node
+.fi
+.TP
+Update documentation
+.RS
+.IP \(bu 2
+Update IP addresses in README.md
+.IP \(bu
+Document new network topology
+.IP \(bu
+Update firewall rules documentation
+.RE
+.SS 1:30 AM - 2:00 AM: Backup & Sign-off
+.TP
+Final backup
+.nf
+./backup_home.sh
+git add .
+git commit -m "Post-migration: Final updates and documentation"
+git push origin main
+.fi
+.TP
+Create migration report
+.RS
+.IP \(bu 2
+Document any issues encountered
+.IP \(bu
+Note performance improvements
+.IP \(bu
+Update runbooks with new IPs
+.RE
+.SH EMERGENCY ROLLBACK PLAN
+If critical issues arise:
+.TP
+Immediate rollback
+Change all devices back to 10.1.10.x IPs
+.TP
+Git rollback
+\fBgit reset --hard HEAD~1\fR
+.TP
+K3s restart
+\fBsudo systemctl restart k3s*\fR
+.TP
+Remove ER605
+Connect devices directly to original router
+.SH CRITICAL CHECKPOINTS
+.TP
+6:00 PM
+All devices reachable on new IPs
+.TP
+8:00 PM
+Codebase updated and committed
+.TP
+9:00 PM
+Kubernetes services running
+.TP
+10:00 PM
+VPN server operational
+.TP
+11:00 PM
+External access confirmed
+.TP
+1:00 AM
+All tests passing
+.SH REQUIRED TOOLS & ACCESS
+.TP
+ER605 firewall unit
+.TP
+SSH access to all nodes
+.TP
+Admin access to ER605 web interface
+.TP
+Git repository access
+.TP
+kubectl access
+.TP
+OpenVPN client for testing
+.SH SEE ALSO
+.BR k3s (8),
+.BR kubectl (1),
+.BR netplan (5),
+.BR openvpn (8)
+.SH AUTHOR
+Network Migration Team
+.SH HISTORY
+Migration completed successfully
+.br
+Duration: 5:00 PM - 2:00 AM (9 hours)

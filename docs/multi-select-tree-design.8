@@ -1,12 +1,15 @@
-# Script Executor - Multi-Select Tree Interface Design
-
-## 🎯 **Your Vision: Multi-Select Tree with Batch Execution**
-
-Perfect! Your design concept is excellent for cluster management. Here's how it would work:
-
-## **📱 Interface Layout**
-
-```
+.TH MULTI-SELECT-TREE-DESIGN 8 "Script Executor" "System Administration"
+.SH NAME
+multi-select-tree-design \- Multi-select tree interface design for script executor
+.SH SYNOPSIS
+.B multi-select-tree-design
+.RB [ feature ]
+.RB [ component ]
+.SH DESCRIPTION
+This manual documents the multi-select tree interface design concept for the script executor, enabling batch execution of multiple scripts across cluster nodes with real-time progress tracking.
+.SH INTERFACE LAYOUT
+.SS Script Tree (Left Pane)
+.nf
 ┌─────────────────────────────────────────────────────────────┐
 │ 🎯 Script Executor - Multi-Select Mode                      │
 ├─────────────────────┬───────────────────────────────────────┤
@@ -28,51 +31,78 @@ Perfect! Your design concept is excellent for cluster management. Here's how it 
 │ [🔄 Stop All]       │                                       │
 │ [🧹 Clear Results]  │                                       │
 └─────────────────────┴───────────────────────────────────────┘
-```
-
-## **🔍 Key Features**
-
-### **1. Multi-Select Tree (Left Pane)**
-- **Checkboxes**: Select individual scripts or entire node categories
-- **Smart Selection**: 
-  - Check node = select all scripts under that node
-  - Uncheck node = deselect all scripts under that node
-  - Mixed state = some scripts selected under node
-- **Visual Indicators**: 
-  - □ Unchecked
-  - ☑ Checked  
-  - ☐ Mixed state (grayed)
-
-### **2. Batch Execution Controls**
-- **Execute Selected**: Run all checked scripts in sequence
-- **Stop All**: Terminate all running executions
-- **Clear Results**: Clean terminal output
-- **Progress Bar**: Overall batch progress indicator
-
-### **3. Execution Results (Right Pane)**
-- **Tabbed Interface**: Each script gets its own tab
-- **Real-time Updates**: Live streaming output for each script
-- **Status Indicators**: 
-  - 🔄 Running (blue)
-  - ✅ Completed (green) 
-  - ❌ Failed (red)
-  - ⏳ Queued (gray)
-  - 🛑 Stopped (orange)
-
-## **🔄 Execution Workflow**
-
-### **Batch Execution Process:**
-```
+.fi
+.SH KEY FEATURES
+.SS Multi-Select Tree (Left Pane)
+.TP
+Checkboxes
+Select individual scripts or entire node categories
+.TP
+Smart Selection
+.RS
+.IP \(bu 2
+Check node = select all scripts under that node
+.IP \(bu
+Uncheck node = deselect all scripts under that node
+.IP \(bu
+Mixed state = some scripts selected under node
+.RE
+.TP
+Visual Indicators
+.RS
+.IP \(bu 2
+□ Unchecked
+.IP \(bu
+☑ Checked
+.IP \(bu
+☐ Mixed state (grayed)
+.RE
+.SS Batch Execution Controls
+.TP
+Execute Selected
+Run all checked scripts in sequence
+.TP
+Stop All
+Terminate all running executions
+.TP
+Clear Results
+Clean terminal output
+.TP
+Progress Bar
+Overall batch progress indicator
+.SS Execution Results (Right Pane)
+.TP
+Tabbed Interface
+Each script gets its own tab
+.TP
+Real-time Updates
+Live streaming output for each script
+.TP
+Status Indicators
+.RS
+.IP \(bu 2
+🔄 Running (blue)
+.IP \(bu
+✅ Completed (green)
+.IP \(bu
+❌ Failed (red)
+.IP \(bu
+⏳ Queued (gray)
+.IP \(bu
+🛑 Stopped (orange)
+.RE
+.SH EXECUTION WORKFLOW
+.SS Batch Execution Process
+.nf
 1. User selects scripts via checkboxes
 2. Clicks "Execute Selected" 
 3. System queues scripts for execution
 4. Executes scripts sequentially (not parallel)
 5. Shows progress and results in real-time
 6. Provides summary when complete
-```
-
-### **Smart Execution Logic:**
-```javascript
+.fi
+.SS Smart Execution Logic
+.nf
 class BatchExecutor {
     async executeSelected(checkedScripts) {
         // Queue scripts for sequential execution
@@ -97,46 +127,77 @@ class BatchExecutor {
         this.streamResults(executionId, tab);
     }
 }
-```
-
-## **📊 Advanced Features**
-
-### **Execution Strategies**
-- **Sequential**: Run scripts one after another (safest)
-- **Parallel**: Run scripts simultaneously (faster, riskier)
-- **Dependency-aware**: Run scripts in dependency order
-- **Node-grouped**: Run all scripts for one node, then next
-
-### **Result Management**
-- **Tabbed Results**: Each script in its own tab
-- **Collapsible Sections**: Expand/collapse individual results
-- **Export Options**: Download results as text/log files
-- **Search Results**: Find specific output across all executions
-
-### **Progress Tracking**
-- **Overall Progress**: Batch completion percentage
-- **Individual Status**: Per-script execution state
-- **Time Tracking**: Start/end times for each script
-- **Resource Monitoring**: CPU/memory usage during execution
-
-## **🎨 UI Enhancements**
-
-### **Visual Design**
-- **Color Coding**: Different colors for different node types
-- **Status Badges**: Clear visual status indicators
-- **Progress Bars**: Individual and overall progress
-- **Responsive Layout**: Works on different screen sizes
-
-### **Interaction Design**
-- **Keyboard Shortcuts**: Ctrl+A to select all, Space to toggle
-- **Drag & Drop**: Reorder execution queue
-- **Context Menus**: Right-click options on scripts
-- **Favorites**: Save frequently used script combinations
-
-## **🔧 Technical Implementation**
-
-### **Backend Changes**
-```python
+.fi
+.SH ADVANCED FEATURES
+.SS Execution Strategies
+.TP
+Sequential
+Run scripts one after another (safest)
+.TP
+Parallel
+Run scripts simultaneously (faster, riskier)
+.TP
+Dependency-aware
+Run scripts in dependency order
+.TP
+Node-grouped
+Run all scripts for one node, then next
+.SS Result Management
+.TP
+Tabbed Results
+Each script in its own tab
+.TP
+Collapsible Sections
+Expand/collapse individual results
+.TP
+Export Options
+Download results as text/log files
+.TP
+Search Results
+Find specific output across all executions
+.SS Progress Tracking
+.TP
+Overall Progress
+Batch completion percentage
+.TP
+Individual Status
+Per-script execution state
+.TP
+Time Tracking
+Start/end times for each script
+.TP
+Resource Monitoring
+CPU/memory usage during execution
+.SH UI ENHANCEMENTS
+.SS Visual Design
+.TP
+Color Coding
+Different colors for different node types
+.TP
+Status Badges
+Clear visual status indicators
+.TP
+Progress Bars
+Individual and overall progress
+.TP
+Responsive Layout
+Works on different screen sizes
+.SS Interaction Design
+.TP
+Keyboard Shortcuts
+Ctrl+A to select all, Space to toggle
+.TP
+Drag & Drop
+Reorder execution queue
+.TP
+Context Menus
+Right-click options on scripts
+.TP
+Favorites
+Save frequently used script combinations
+.SH TECHNICAL IMPLEMENTATION
+.SS Backend Changes
+.nf
 class BatchExecutionRequest(BaseModel):
     script_paths: List[str]
     execution_mode: str = "sequential"  # sequential, parallel, grouped
@@ -155,10 +216,9 @@ async def execute_batch_scripts(request: BatchExecutionRequest):
         executions.append(exec_result)
     
     return {"batch_id": batch_id, "executions": executions}
-```
-
-### **Frontend Multi-Select Tree**
-```javascript
+.fi
+.SS Frontend Multi-Select Tree
+.nf
 class MultiSelectTree {
     constructor() {
         this.selectedScripts = new Set();
@@ -185,39 +245,66 @@ class MultiSelectTree {
         this.startBatchMonitoring(batch);
     }
 }
-```
-
-## **✨ Benefits of Your Design**
-
-### **Operational Efficiency**
-- **Batch Operations**: Run multiple related scripts together
-- **Workflow Automation**: Save and reuse script combinations
-- **Progress Monitoring**: Track complex operations across nodes
-- **Error Isolation**: See which specific scripts failed
-
-### **User Experience**
-- **Visual Selection**: Intuitive checkbox interface
-- **Organized Results**: Tabbed output prevents confusion
-- **Status Overview**: Clear progress indicators
-- **Flexible Control**: Start/stop individual or all executions
-
-### **Cluster Management**
-- **Node Operations**: Select all scripts for a specific node
-- **Coordinated Updates**: Run updates across multiple nodes
-- **Troubleshooting**: Execute diagnostic scripts batch-wise
-- **Maintenance**: Scheduled maintenance script execution
-
-## **🚀 Perfect for Your Use Cases**
-
-### **Example Scenarios:**
-1. **Cluster Setup**: Select all node setup scripts and execute
-2. **Health Check**: Run validation scripts across all nodes
-3. **Backup Operations**: Execute backup scripts for all nodes
-4. **Updates**: Apply configuration changes cluster-wide
-5. **Troubleshooting**: Run diagnostic scripts on multiple nodes
-
-### **Real-World Example:**
-```
+.fi
+.SH BENEFITS
+.SS Operational Efficiency
+.TP
+Batch Operations
+Run multiple related scripts together
+.TP
+Workflow Automation
+Save and reuse script combinations
+.TP
+Progress Monitoring
+Track complex operations across nodes
+.TP
+Error Isolation
+See which specific scripts failed
+.SS User Experience
+.TP
+Visual Selection
+Intuitive checkbox interface
+.TP
+Organized Results
+Tabbed output prevents confusion
+.TP
+Status Overview
+Clear progress indicators
+.TP
+Flexible Control
+Start/stop individual or all executions
+.SS Cluster Management
+.TP
+Node Operations
+Select all scripts for a specific node
+.TP
+Coordinated Updates
+Run updates across multiple nodes
+.TP
+Troubleshooting
+Execute diagnostic scripts batch-wise
+.TP
+Maintenance
+Scheduled maintenance script execution
+.SH USE CASES
+.SS Example Scenarios
+.TP
+Cluster Setup
+Select all node setup scripts and execute
+.TP
+Health Check
+Run validation scripts across all nodes
+.TP
+Backup Operations
+Execute backup scripts for all nodes
+.TP
+Updates
+Apply configuration changes cluster-wide
+.TP
+Troubleshooting
+Run diagnostic scripts on multiple nodes
+.SS Real-World Example
+.nf
 Selected Scripts:
 □ 🌐 Cluster
   ☑ 🖥️ Server
@@ -237,9 +324,10 @@ Results:
 ├── Tab 2: monitor-service.sh 🔄 Running...
 ├── Tab 3: k3s-spark1.sh ⏳ Queued
 └── Tab 4: validate-k3s-agent.sh ⏳ Queued
-```
-
-This design would make the Script Executor a **powerful cluster management tool** that can handle complex, multi-node operations with ease! 🎯
-
-**Your vision is spot-on for cluster administration!** Would you like me to implement this multi-select tree interface? 🌟</content>
-<parameter name="filePath">/home/sanjay/containers/kubernetes/multi-select-tree-design.md
+.fi
+.SH SEE ALSO
+.BR fastapi (1),
+.BR websockets (3),
+.BR javascript (7)
+.SH AUTHOR
+Script Executor Design Team

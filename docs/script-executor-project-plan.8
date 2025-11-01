@@ -1,0 +1,356 @@
+.TH SCRIPT-EXECUTOR-PROJECT-PLAN 8 "October 30, 2025" "Script Executor" "System Administration"
+.SH NAME
+script-executor-project-plan \- Script execution web interface project plan
+.SH SYNOPSIS
+.B script-executor-project-plan
+.RB [ phase ]
+.RB [ component ]
+.SH DESCRIPTION
+This manual documents the complete project plan for implementing a web-based interface for executing cluster management scripts with real-time terminal output display.
+.PP
+.B Project Overview:
+.RS
+Technology Stack: FastAPI backend, vanilla JavaScript frontend, WebSocket communication
+.br
+Architecture: K3s pod deployment with volume mounts for script access
+.br
+Status: Design phase with implementation roadmap
+.RE
+.SH OVERVIEW
+.SS Technology Stack
+.TP
+.B Backend
+.RS
+.IP \(bu 2
+Framework: FastAPI (Python)
+.IP \(bu
+Already familiar technology in the cluster
+.IP \(bu
+Excellent async support for script execution
+.IP \(bu
+Built-in OpenAPI documentation
+.IP \(bu
+Lightweight and fast
+.RE
+.TP
+.B Frontend
+.RS
+.IP \(bu 2
+HTML5: Structure and semantic markup
+.IP \(bu
+CSS3: Styling with modern features (Flexbox, Grid, CSS Variables)
+.IP \(bu
+Vanilla JavaScript: Interactivity and API communication
+.IP \(bu
+No heavy frameworks to reduce complexity
+.IP \(bu
+ES6+ features for modern browser support
+.RE
+.TP
+.B Real-time Communication
+.RS
+.IP \(bu 2
+WebSocket: For streaming script execution output
+.IP \(bu
+Bidirectional communication
+.IP \(bu
+Real-time updates as scripts run
+.IP \(bu
+Connection management for long-running scripts
+.RE
+.TP
+.B Hosting & Deployment
+.RS
+.IP \(bu 2
+Platform: Kubernetes (existing cluster)
+.IP \(bu
+Service Type: ClusterIP with Ingress for external access
+.IP \(bu
+Container: Docker with Python base image
+.IP \(bu
+Persistence: None required (stateless application)
+.RE
+.SH ARCHITECTURE
+.SS Components
+.TP
+1. Script Discovery Service
+Scans directories and categorizes scripts
+.TP
+2. Script Execution Engine
+Runs scripts with output capture
+.TP
+3. WebSocket Manager
+Handles real-time output streaming
+.TP
+4. Web Interface
+User-friendly script selection and execution
+.TP
+5. Terminal Emulator
+Displays script output in real-time
+.SH DIRECTORY STRUCTURE
+.nf
+script-executor/
+├── app/
+│   ├── main.py              # FastAPI application
+│   ├── script_manager.py    # Script discovery and execution
+│   ├── websocket.py         # WebSocket handling
+│   └── models.py            # Pydantic models
+├── static/
+│   ├── css/
+│   │   └── styles.css
+│   ├── js/
+│   │   ├── app.js
+│   │   └── terminal.js
+│   └── index.html
+├── Dockerfile
+├── requirements.txt
+└── deployment.yaml
+.fi
+.SH SCRIPT CATEGORIES
+.SS Server Utilities (server/utils/)
+.TP
+Agent Management
+Add/remove cluster agents
+.TP
+Host Configuration
+Host file and network setup
+.TP
+Memory Monitoring
+System memory checks
+.TP
+NFS Management
+NFS mount configuration
+.TP
+Network Testing
+Connectivity verification
+.TP
+SSH Setup
+SSH key distribution
+.SS General Scripts (scripts/)
+.TP
+Backup/Restore
+\fBbackup_home.sh\fR, \fBrestore_backup.sh\fR
+.TP
+Service Monitoring
+\fBmonitor-service.sh\fR
+.TP
+NFS Updates
+\fBupdate-nfs-*.sh\fR
+.TP
+Validation
+\fBvalidate-k3s-agent.sh\fR
+.TP
+Environment
+\fBenv.sh\fR
+.SS Agent Scripts (agent/*/)
+.TP
+Deployment Scripts
+FastAPI deployment configurations
+.TP
+Setup Scripts
+Node-specific initialization
+.TP
+Health Checks
+Service monitoring scripts
+.SH FEATURES
+.SS Core Functionality
+.TP
+Script discovery and categorization
+.TP
+Script execution with parameter support
+.TP
+Real-time output streaming
+.TP
+Execution history and status tracking
+.TP
+Error handling and timeout management
+.SS User Interface
+.TP
+Responsive design for desktop/mobile
+.TP
+Script filtering and search
+.TP
+Execution queue management
+.TP
+Dark/light theme toggle
+.TP
+Terminal output with syntax highlighting
+.SS Security & Safety
+.TP
+Script validation before execution
+.TP
+Execution confirmation dialogs
+.TP
+Timeout controls for long-running scripts
+.TP
+Audit logging of script executions
+.TP
+User authentication (if needed)
+.SH IMPLEMENTATION PHASES
+.SS Phase 1: Core Backend (Week 1)
+.TP
+FastAPI application setup
+.TP
+Script discovery service
+.TP
+Basic script execution endpoint
+.TP
+Docker containerization
+.SS Phase 2: Real-time Features (Week 2)
+.TP
+WebSocket implementation
+.TP
+Output streaming
+.TP
+Execution status tracking
+.TP
+Error handling
+.SS Phase 3: Frontend Development (Week 3)
+.TP
+HTML/CSS structure
+.TP
+JavaScript functionality
+.TP
+Terminal interface
+.TP
+Responsive design
+.SS Phase 4: Integration & Testing (Week 4)
+.TP
+Kubernetes deployment
+.TP
+End-to-end testing
+.TP
+Performance optimization
+.TP
+Documentation
+.SH DEPENDENCIES
+.SS Python Packages
+.nf
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+pydantic==2.5.0
+python-multipart==0.0.6
+.fi
+.SS Frontend Libraries
+.TP
+xterm.js
+Terminal emulation (optional)
+.TP
+Font Awesome
+Icons
+.TP
+Google Fonts
+Monospace fonts for terminal
+.SH DEPLOYMENT CONFIGURATION
+.SS Kubernetes Resources
+.TP
+Deployment
+Single replica with resource limits
+.TP
+Service
+ClusterIP for internal access
+.TP
+Ingress
+External access with TLS
+.TP
+ConfigMap
+Script directory paths
+.TP
+RBAC
+Service account permissions
+.SS Environment Variables
+.nf
+SCRIPT_BASE_PATH=/home/sanjay/containers/kubernetes
+ALLOWED_SCRIPT_DIRS=server/utils,scripts,agent
+EXECUTION_TIMEOUT=300
+WEBSOCKET_TIMEOUT=3600
+.fi
+.SH SUCCESS CRITERIA
+.SS Functional Requirements
+.TP
+All scripts discoverable through web interface
+.TP
+Scripts execute successfully with real-time output
+.TP
+Terminal-like display shows script progress
+.TP
+Multiple scripts can run concurrently
+.TP
+Execution history maintained
+.SS Non-Functional Requirements
+.TP
+Response time < 2 seconds for script listing
+.TP
+WebSocket latency < 100ms for output streaming
+.TP
+99.9% uptime for the service
+.TP
+Mobile-responsive interface
+.TP
+Accessible design (WCAG 2.1 AA)
+.SH RISK ASSESSMENT
+.SS Technical Risks
+.TP
+Script Security
+Malicious script execution
+.RS
+.IP \(bu 2
+Mitigation: Script validation and sandboxing
+.RE
+.TP
+Resource Consumption
+Long-running scripts exhausting resources
+.RS
+.IP \(bu 2
+Mitigation: Timeout controls and resource limits
+.RE
+.TP
+WebSocket Complexity
+Real-time streaming implementation
+.RS
+.IP \(bu 2
+Mitigation: Thorough testing and fallback mechanisms
+.RE
+.SS Operational Risks
+.TP
+Service Availability
+Single point of failure
+.RS
+.IP \(bu 2
+Mitigation: Health checks and monitoring
+.RE
+.TP
+User Errors
+Accidental execution of destructive scripts
+.RS
+.IP \(bu 2
+Mitigation: Confirmation dialogs and execution logging
+.RE
+.SH NEXT STEPS
+.TP
+Immediate
+Create basic FastAPI application structure
+.TP
+Week 1
+Implement script discovery and basic execution
+.TP
+Week 2
+Add WebSocket support and frontend prototype
+.TP
+Week 3
+Complete UI/UX and testing
+.TP
+Week 4
+Production deployment and monitoring setup
+.SH SEE ALSO
+.BR fastapi (1),
+.BR uvicorn (1),
+.BR kubectl (1),
+.BR docker (1)
+.SH AUTHOR
+AI Assistant
+.SH HISTORY
+Document Version: 1.0
+.br
+Last Updated: October 30, 2025

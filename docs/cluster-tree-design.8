@@ -1,9 +1,14 @@
-# Script Executor - Tree View Design Concept
-
-## 🌳 Cluster Tree Structure Interface
-
-### Current Flat Design
-```
+.TH CLUSTER-TREE-DESIGN 8 "Script Executor" "System Administration"
+.SH NAME
+cluster-tree-design \- Tree view design concept for cluster script management
+.SH SYNOPSIS
+.B cluster-tree-design
+.RB [ component ]
+.RB [ feature ]
+.SH DESCRIPTION
+This manual documents the tree view design concept for the script executor, providing a hierarchical view of cluster nodes and scripts organized by purpose and location.
+.SH CURRENT FLAT DESIGN
+.nf
 📋 Available Scripts
 ├── 📁 server/utils
 │   ├── backup_home.sh
@@ -15,10 +20,9 @@
 └── 📁 agent
     ├── k3s-spark1.sh
     └── k3s-nano.sh
-```
-
-### Proposed Tree Structure Design
-```
+.fi
+.SH PROPOSED TREE STRUCTURE DESIGN
+.nf
 🌐 Kubernetes Cluster
 ├── 🖥️ Server (tower)
 │   ├── 📁 Utils
@@ -65,39 +69,74 @@
     │   └── 🎮 gpuoperator.sh
     └── 📁 Status
         └── 📊 NVIDIA-Blackwell-Support-Issue.md
-```
-
-## 🎯 Tree View Features
-
-### Node Types & Icons
-- 🌐 **Cluster Root**: Overall cluster container
-- 🖥️ **Server**: Master/control plane node
-- 🤖 **Agent**: Worker/compute nodes
-- 📁 **Category**: Script groupings (Utils, Setup, GPU, etc.)
-- 📄 **Script**: Individual executable files
-- ⚙️ **Config**: Configuration files
-- 🔄 **Utility**: Maintenance/utility scripts
-- ✅ **Validation**: Check/validation scripts
-- 🔧 **Setup**: Installation/configuration scripts
-- 🧹 **Cleanup**: Removal/cleanup scripts
-- 📊 **Status**: Status/info files
-- 🎮 **GPU**: GPU-related scripts
-- 🌐 **Network**: Network configuration
-- 🗄️ **Database**: Database operations
-- 🐳 **Container**: Docker/container operations
-
-### Interactive Features
-- **Expand/Collapse**: Click nodes to show/hide children
-- **Search Filter**: Filter tree by script name, node, or category
-- **Execution Status**: Visual indicators for running/completed scripts
-- **Node Status**: Show online/offline status of cluster nodes
-- **Drag & Drop**: Reorganize favorite scripts
-- **Context Menu**: Right-click options (execute, view details, etc.)
-
-## 🔧 Implementation Approach
-
-### Backend Changes
-```python
+.fi
+.SH NODE TYPES & ICONS
+.TP
+🌐 Cluster Root
+Overall cluster container
+.TP
+🖥️ Server
+Master/control plane node
+.TP
+🤖 Agent
+Worker/compute nodes
+.TP
+📁 Category
+Script groupings (Utils, Setup, GPU, etc.)
+.TP
+📄 Script
+Individual executable files
+.TP
+⚙️ Config
+Configuration files
+.TP
+🔄 Utility
+Maintenance/utility scripts
+.TP
+✅ Validation
+Check/validation scripts
+.TP
+🔧 Setup
+Installation/configuration scripts
+.TP
+🧹 Cleanup
+Removal/cleanup scripts
+.TP
+📊 Status
+Status/info files
+.TP
+🎮 GPU
+GPU-related scripts
+.TP
+🌐 Network
+Network configuration
+.TP
+🗄️ Database
+Database operations
+.TP
+🐳 Container
+Docker/container operations
+.SH INTERACTIVE FEATURES
+.TP
+Expand/Collapse
+Click nodes to show/hide children
+.TP
+Search Filter
+Filter tree by script name, node, or category
+.TP
+Execution Status
+Visual indicators for running/completed scripts
+.TP
+Node Status
+Show online/offline status of cluster nodes
+.TP
+Drag & Drop
+Reorganize favorite scripts
+.TP
+Context Menu
+Right-click options (execute, view details, etc.)
+.SH BACKEND IMPLEMENTATION
+.nf
 class ClusterNode(BaseModel):
     name: str
     type: str  # 'cluster', 'server', 'agent', 'category', 'script'
@@ -110,10 +149,9 @@ class ClusterNode(BaseModel):
 async def get_cluster_tree():
     """Generate hierarchical cluster structure"""
     return build_cluster_tree()
-```
-
-### Frontend Tree Component
-```javascript
+.fi
+.SH FRONTEND TREE COMPONENT
+.nf
 class ClusterTree {
     constructor(container) {
         this.container = container;
@@ -153,36 +191,69 @@ class ClusterTree {
         `;
     }
 }
-```
-
-## 🎨 UI/UX Benefits
-
-### Visual Hierarchy
-- **Clear Structure**: Immediately see cluster topology
-- **Logical Grouping**: Scripts organized by node and purpose
-- **Progressive Disclosure**: Expand only what you need
-- **Context Awareness**: Know which node a script affects
-
-### User Experience
-- **Intuitive Navigation**: Tree structure matches mental model
-- **Quick Access**: Find scripts by node or category
-- **Status Overview**: See cluster health at a glance
-- **Efficient Workflow**: Execute related scripts together
-
-### Operational Benefits
-- **Node Awareness**: Understand which scripts affect which nodes
-- **Dependency Visualization**: See relationships between scripts
-- **Troubleshooting**: Quickly identify node-specific issues
-- **Maintenance**: Organized view for cluster management
-
-## 🚀 Implementation Steps
-
-1. **Backend API**: Create `/api/cluster-tree` endpoint
-2. **Tree Builder**: Logic to organize scripts into hierarchical structure
-3. **Frontend Component**: JavaScript tree view component
-4. **Styling**: CSS for tree structure and node types
-5. **Interactions**: Expand/collapse, search, execution
-6. **Status Integration**: Real-time node and script status
-
-This tree structure would transform the Script Executor from a simple script browser into a comprehensive cluster management dashboard! 🌟</content>
-<parameter name="filePath">/home/sanjay/containers/kubernetes/cluster-tree-design.md
+.fi
+.SH UI/UX BENEFITS
+.SS Visual Hierarchy
+.TP
+Clear Structure
+Immediately see cluster topology
+.TP
+Logical Grouping
+Scripts organized by node and purpose
+.TP
+Progressive Disclosure
+Expand only what you need
+.TP
+Context Awareness
+Know which node a script affects
+.SS User Experience
+.TP
+Intuitive Navigation
+Tree structure matches mental model
+.TP
+Quick Access
+Find scripts by node or category
+.TP
+Status Overview
+See cluster health at a glance
+.TP
+Efficient Workflow
+Execute related scripts together
+.SS Operational Benefits
+.TP
+Node Awareness
+Understand which scripts affect which nodes
+.TP
+Dependency Visualization
+See relationships between scripts
+.TP
+Troubleshooting
+Quickly identify node-specific issues
+.TP
+Maintenance
+Organized view for cluster management
+.SH IMPLEMENTATION STEPS
+.TP
+Backend API
+Create /api/cluster-tree endpoint
+.TP
+Tree Builder
+Logic to organize scripts into hierarchical structure
+.TP
+Frontend Component
+JavaScript tree view component
+.TP
+Styling
+CSS for tree structure and node types
+.TP
+Interactions
+Expand/collapse, search, execution
+.TP
+Status Integration
+Real-time node and script status
+.SH SEE ALSO
+.BR fastapi (1),
+.BR javascript (7),
+.BR css (7)
+.SH AUTHOR
+Script Executor Design Team

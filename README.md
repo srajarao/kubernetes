@@ -1,10 +1,44 @@
 # 🚀 K3s Multi-Node AI Cluster with PostgreSQL, pgAdmin & VPN Gateway
 
-**� CURRENT STATUS: KUBERNETES CLUSTER OPERATIONAL WITH VPN GATEWAY & CLUSTER MANAGEMENT** - K3s agents running on 4 GPU worker nodes, Blackwell GPU support active, OpenVPN gateway on Krithi providing secure remote access, comprehensive network integration, shared storage, and complete web-based cluster management system.
+**✅ CURRENT STATUS: KUBERNETES CLUSTER OPERATIONAL WITH VPN GATEWAY & CLUSTER MANAGEMENT** - K3s agents running on 4 GPU worker nodes, Blackwell GPU support active, OpenVPN gateway on Krithi providing secure remote access, comprehensive network integration, shared storage, and complete web-based cluster management system.
+
+**🌐 Network Configuration (Post-Migration - October 28, 2025)**: Successfully migrated from 10.1.10.x to 192.168.1.x subnet with ER605 firewall. All nodes operational with new IP assignments and hostname resolution.
 
 This repository provides a complete, automated setup for a high-performance Kubernetes cluster optimized for AI/ML workloads on Jetson devices. It combines K3s (lightweight Kubernetes), dual-network architecture (10G + 1G), GPU acceleration, PostgreSQL database, comprehensive application deployments, **secure VPN gateway access**, and **enterprise-grade cluster management interface** with **production-ready stability verification**.
 
 **🎯 October 31, 2025 Update**: Blackwell GPU support successfully implemented with NVIDIA GPU Operator for DGX Spark nodes. GPU operator deployment configurations created for Spark1 and Spark2 nodes, replacing manual device mounting approach. **✅ Blackwell GB10 GPUs now fully operational with TensorFlow, PyTorch, and TensorRT support.** Krithi VPN gateway fully integrated with complete network access, NFS client functionality, and OpenVPN server configuration. **🖥️ Cluster Management Application fully deployed** with comprehensive web interface, real-time monitoring, script execution, and enterprise security features.
+
+## 🌐 Network Topology & Configuration
+
+**Current Network Setup (Post-Migration - October 28, 2025)**:
+- **Subnet**: `192.168.1.0/24` (migrated from `10.1.10.0/24`)
+- **Gateway**: `192.168.1.1` (Comcast Business Router)
+- **Firewall**: ER605 (TP-Link) at `192.168.1.2` (WAN: `10.1.10.2`)
+- **DHCP Range**: `192.168.1.100-192.168.1.199`
+- **VPN Gateway**: Krithi node with OpenVPN server (UDP port 1194)
+
+### 📋 Node IP Assignments & Hostnames
+```
+192.168.1.150   tower     (K3s Server, NFS Server, Build Host)
+192.168.1.181   nano      (K3s Agent, Cluster Management Node)
+192.168.1.244   agx       (K3s Agent, AGX Orin GPU Node)
+192.168.1.201   spark1    (K3s Agent, DGX Spark1 Blackwell GPU)
+192.168.1.202   spark2    (K3s Agent, DGX Spark2 Blackwell GPU)
+192.168.1.203   krithi    (VPN Gateway, OpenVPN Server)
+```
+
+### 🔗 Service Endpoints
+- **Cluster Management**: `http://192.168.1.181:8000/` (Nano)
+- **PostgreSQL**: `192.168.1.150:5432` (Tower)
+- **pgAdmin**: `http://192.168.1.150:30001/` (Tower)
+- **Docker Registry**: `192.168.1.150:5000` (Tower)
+- **NFS Server**: `192.168.1.150:/exports` (Tower)
+- **VPN Access**: UDP port 1194 (Krithi, forwarded through ER605)
+
+### 🛡️ Firewall Configuration
+- **ER605 Firewall**: Advanced routing between `192.168.1.x` and `10.1.10.x` subnets
+- **Port Forwarding**: OpenVPN (UDP 1194) → ER605 → Krithi
+- **Network Isolation**: Secure separation of management and data networks
 
 ## 🎯 What This Project Provides
 
@@ -68,10 +102,20 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **🔐 Enterprise Security**: Password hashing, session management, audit logging
 
 ### **🌐 Access Points**
-- **HTTP (Demo)**: `http://192.168.1.181:8000/` - Clean browser access, no warnings
+- **HTTP (Primary)**: `http://192.168.1.181:8000/` - Clean browser access, no SSL warnings
 - **HTTPS (Production)**: `https://192.168.1.181:8443/` - Encrypted with auto-generated SSL certificates
 - **Health Check**: `https://192.168.1.181:8443/health` - System status endpoint
 - **API Documentation**: `https://192.168.1.181:8443/docs` - Interactive FastAPI docs
+- **VPN Access**: Connect via OpenVPN client to access cluster remotely
+
+### **📊 Current Cluster Status**
+- **Total Nodes**: 5 (1 server + 4 agents)
+- **GPU Nodes**: 3 (AGX Orin, DGX Spark1 Blackwell, DGX Spark2 Blackwell)
+- **Management Node**: Nano (192.168.1.181)
+- **VPN Gateway**: Krithi (192.168.1.203)
+- **Network**: Fully migrated to 192.168.1.x subnet
+- **Storage**: NFS server operational on Tower
+- **Database**: PostgreSQL + pgAdmin deployed and accessible
 
 ### **🛠️ Development & Deployment**
 - **Development**: Edit on Tower (`~/containers/kubernetes/cluster-management/`)
@@ -98,6 +142,29 @@ This repository provides a complete, automated setup for a high-performance Kube
 
 ### **📈 Current Status**
 - **Phase**: 7/7 Complete - Production Ready
+- **Migration Status**: ✅ Network migration completed October 28, 2025 (10.1.10.x → 192.168.1.x)
+- **VPN Integration**: ✅ OpenVPN gateway fully operational on Krithi
+- **GPU Support**: ✅ Blackwell GB10 GPUs operational with NVIDIA GPU Operator
+- **Cluster Health**: ✅ All nodes communicating, services deployed and accessible
+
+## 🔄 Recent Migration Summary (October 28, 2025)
+
+**Migration Scope**: Complete network infrastructure overhaul from 10.1.10.x to 192.168.1.x subnet
+- **Duration**: 9 hours (5:00 PM - 2:00 AM)
+- **Firewall**: ER605 (TP-Link) deployed with advanced routing capabilities
+- **Services Migrated**: K3s cluster, PostgreSQL, pgAdmin, NFS storage, FastAPI applications
+- **Certificates**: SSL certificates regenerated for new IP addresses
+- **VPN**: OpenVPN server configured on Krithi with port forwarding through ER605
+- **Result**: Zero-downtime migration with all services operational on new network
+
+**Post-Migration Validation**:
+- ✅ All 5 nodes reachable on new IP addresses
+- ✅ Hostname resolution working across all nodes
+- ✅ NFS storage mounted and accessible
+- ✅ K3s cluster reformed with all agents rejoined
+- ✅ FastAPI services deployed and responding
+- ✅ PostgreSQL and pgAdmin operational
+- ✅ VPN gateway providing secure remote access
 - **Features**: All core functionality implemented and tested
 - **Health**: Comprehensive health checks passing
 - **Documentation**: Complete with man pages and wiki
@@ -2193,3 +2260,141 @@ mpirun --hostfile hostfile.txt \
 **RESULT:** The test was successful, verifying high-speed GPU communication between spark2 and spark1.
 
 ---
+
+## 🔧 Troubleshooting Guide
+
+### Common Issues & Solutions
+
+#### Network Connectivity Issues
+**Problem:** Nodes cannot communicate with each other after IP changes
+**Solution:**
+1. Verify DHCP reservations on ER605 firewall
+2. Check netplan configurations: `sudo netplan apply`
+3. Test connectivity: `ping <node-ip>`
+4. Restart networking: `sudo systemctl restart networking`
+
+**Problem:** Firewall blocking cluster traffic
+**Solution:**
+1. Check ER605 firewall rules for cluster subnet (192.168.1.0/24)
+2. Verify port forwarding for VPN (1194 UDP)
+3. Disable UFW on nodes: `sudo ufw disable`
+
+#### K3s Cluster Issues
+**Problem:** Nodes not joining cluster or showing NotReady status
+**Solution:**
+1. Check k3s service status: `sudo systemctl status k3s-agent`
+2. Verify server token: `cat /var/lib/rancher/k3s/server/node-token`
+3. Rejoin node: `sudo k3s-agent-uninstall.sh && sudo k3s agent --server https://192.168.1.150:6443 --token <token>`
+4. Check logs: `sudo journalctl -u k3s-agent -f`
+
+**Problem:** Pods failing to start or CrashLoopBackOff
+**Solution:**
+1. Check pod status: `kubectl describe pod <pod-name>`
+2. View logs: `kubectl logs <pod-name>`
+3. Verify resource availability: `kubectl get nodes --show-labels`
+4. Check GPU resources: `kubectl describe node <node> | grep nvidia`
+
+#### FastAPI Service Issues
+**Problem:** 500 Internal Server Error or service unavailable
+**Solution:**
+1. Check service logs: `kubectl logs deployment/<deployment-name>`
+2. Verify database connectivity: Test PostgreSQL connection
+3. Check SSL certificates: `openssl x509 -in /path/to/cert -text -noout`
+4. Restart deployment: `kubectl rollout restart deployment/<deployment-name>`
+
+**Problem:** WebSocket connections failing
+**Solution:**
+1. Verify WebSocket endpoint configuration
+2. Check firewall rules for WebSocket ports
+3. Test connection: `wscat -c ws://192.168.1.181:8000/ws/cluster-status`
+
+#### Database Issues
+**Problem:** PostgreSQL connection refused
+**Solution:**
+1. Check pod status: `kubectl get pods -l app=postgres`
+2. Verify PVC: `kubectl get pvc`
+3. Check NFS mount: `df -h | grep nfs`
+4. Test connection: `psql -h 192.168.1.150 -U postgres`
+
+**Problem:** pgAdmin not accessible
+**Solution:**
+1. Check service: `kubectl get svc pgadmin-service`
+2. Verify NodePort: Access via `https://192.168.1.150:32001`
+3. Check SSL configuration for HTTPS access
+
+#### NFS Storage Issues
+**Problem:** NFS mounts failing
+**Solution:**
+1. Check NFS server: `sudo systemctl status nfs-server`
+2. Verify exports: `cat /etc/exports`
+3. Test mount: `sudo mount -t nfs 192.168.1.150:/mnt/nfs /mnt/test`
+4. Update fstab: Run `update-nfs-fstab.sh`
+
+#### GPU Issues
+**Problem:** GPU not detected or CUDA errors
+**Solution:**
+1. Check GPU operator: `kubectl get pods -n gpu-operator`
+2. Verify device plugin: `kubectl describe node <gpu-node> | grep nvidia`
+3. Test GPU access: `nvidia-smi`
+4. Check Blackwell driver compatibility
+
+#### VPN Issues
+**Problem:** Cannot connect to VPN
+**Solution:**
+1. Verify ER605 port forwarding (UDP 1194)
+2. Check OpenVPN configuration files
+3. Test from external network: `ping 192.168.1.1`
+4. Verify client certificates and keys
+
+### Emergency Rollback Procedures
+
+If critical issues occur:
+
+1. **Network Rollback:**
+   - Revert to static IPs in netplan configurations
+   - Remove ER605 firewall, connect directly to Comcast gateway
+   - Update DHCP reservations back to 10.1.10.x range
+
+2. **Cluster Recovery:**
+   - `kubectl apply -f cluster-backup-pre-migration.yaml`
+   - Reinstall k3s: `sudo k3s-uninstall.sh && sudo k3s server`
+   - Rejoin agents with original configuration
+
+3. **Service Restoration:**
+   - Redeploy services: `kubectl apply -f deployments/`
+   - Restore databases from backup
+   - Verify all endpoints accessible
+
+### Monitoring & Logs
+
+**Key Log Locations:**
+- K3s: `sudo journalctl -u k3s`
+- Docker: `sudo journalctl -u docker`
+- System: `/var/log/syslog`
+- Application: `kubectl logs <pod-name>`
+
+**Health Checks:**
+- Cluster: `kubectl get nodes && kubectl get pods -A`
+- Services: `curl http://localhost:8000/health`
+- Network: `ping 192.168.1.150 && ping 192.168.1.181`
+
+### Support Resources
+
+- **Documentation:** Check `docs/` directory for detailed guides
+- **Scripts:** Use utility scripts in `scripts/` for common tasks
+- **Backups:** Regular backups available in `backup_home.sh`
+- **Monitoring:** Real-time monitoring via cluster management interface
+
+---
+
+## 📚 Additional Resources
+
+- [K3s Documentation](https://k3s.io/)
+- [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/overview.html)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+- [OpenVPN Documentation](https://openvpn.net/community-resources/documentation/)
+
+---
+
+*Last updated: October 28, 2025 | Migration completed successfully*

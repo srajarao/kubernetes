@@ -1,0 +1,770 @@
+.TH MIGRATION-CHECKLIST 8 "October 28, 2025" "K3s Cluster" "System Administration"
+.SH NAME
+migration-checklist \- K3s cluster network migration guide from 10.1.10.x to 192.168.1.x subnet
+.SH SYNOPSIS
+.B migration-checklist
+.RB [ phase ]
+.RB [ checkpoint ]
+.SH DESCRIPTION
+This manual documents the complete network migration process for migrating a K3s Kubernetes cluster from the 10.1.10.x subnet to the 192.168.1.x subnet using an ER605 firewall. The migration was completed successfully on October 28, 2025.
+.PP
+.B Migration Details:
+.RS
+Date: October 27, 2025 (Migration Completed: October 28, 2025)
+.br
+Time Window: 5:00 PM - 2:00 AM (9 hours)
+.br
+Goal: Migrate K3s cluster from 10.1.10.x to 192.168.1.x subnet with ER605 firewall
+.br
+Status: MIGRATION COMPLETED - Infrastructure updated, IPs migrated, certificates regenerated, k3s server reinstalled, PostgreSQL & pgAdmin deployed, Nano & AGX agents rejoined with FastAPI
+.RE
+.SH PRE-MIGRATION PREPARATION
+.SS Prerequisites Checklist
+.TP
+ER605 firewall purchased and ready
+.TP
+Collect MAC addresses for ER605 DHCP reservations:
+.RS
+.IP \(bu 2
+ER605 device: [get from device label/sticker]
+.IP \(bu
+Nano: \fBssh sanjay@192.168.1.181 "ip link show | grep ether"\fR
+.IP \(bu
+AGX: \fBssh sanjay@192.168.1.244 "ip link show | grep ether"\fR
+.IP \(bu
+Spark1: \fBssh sanjay@192.168.1.201 "ip link show | grep ether"\fR
+.IP \(bu
+Spark2: \fBssh sanjay@192.168.1.202 "ip link show | grep ether"\fR
+.RE
+.TP
+Backup current cluster state: \fBkubectl get all -A > cluster-backup-pre-migration.yaml\fR
+.TP
+Git repository clean: \fBgit status\fR should show no uncommitted changes
+.TP
+All cluster nodes accessible via current IPs (now 192.168.1.x)
+.TP
+Current cluster services verified working:
+.RS
+.IP \(bu 2
+FastAPI services on all nodes
+.IP \(bu
+PostgreSQL/pgAdmin accessible
+.IP \(bu
+NFS storage mounted
+.IP \(bu
+GPU workloads functioning
+.RE
+.SS Tools & Scripts Ready
+.TP
+IP update script created: \fBupdate_ips.sh\fR
+.TP
+Migration checklist printed/documented
+.TP
+Emergency rollback plan documented
+.TP
+Contact info for support if needed
+.SS Script Pre-Testing
+.TP
+Test IP update script: \fB./update_ips.sh --dry-run "10.1.10" "192.168.1" | head -20\fR
+.TP
+Test NFS update scripts: \fB./scripts/update-nfs-exports.sh --dry-run && ./scripts/update-nfs-fstab.sh --dry-run\fR
+.TP
+Verify script backups work: Test backup and restore procedures
+.TP
+Validate all scripts have correct permissions: \fBls -la update_ips.sh scripts/*.sh\fR
+.SS External Dependencies Check
+.TP
+Check for external firewall rules: Any corporate firewalls allowing access to 10.1.10.x IPs?
+.TP
+VPN configurations: Any existing VPNs or remote access tools using old IPs?
+.TP
+Monitoring systems: External monitoring pointing to 10.1.10.x addresses?
+.TP
+DNS records: Any external DNS pointing to cluster IPs?
+.TP
+Backup destinations: Off-site backups using 10.1.10.x addresses?
+.SH PHASE 1: FIREWALL SETUP
+.SS Comcast Gateway DHCP Reservations Update
+.TP
+5:35 PM Access Comcast gateway admin portal at http://192.168.1.1
+.TP
+5:40 PM Navigate to DHCP reservations section
+.TP
+5:45 PM Update MAC address reservation for ER605 device:
+.RS
+ER605 (MAC: [get ER605 MAC address]): 10.1.10.2
+.RE
+.TP
+5:50 PM Save DHCP reservation changes
+.TP
+5:55 PM Verify ER605 reservation is active (192.168.1.1 and 10.1.10.2 only)
+.SS ER605 Firewall Configuration
+.TP
+6:00 PM Connect ER605 between switch and Comcast gateway
+.TP
+6:05 PM Configure ER605 WAN interface with static IP 10.1.10.2
+.TP
+6:10 PM Set up 192.168.1.0/24 subnet on LAN interface
+.TP
+6:15 PM Configure DHCP server for 192.168.1.100-192.168.1.199 range
+.TP
+6:20 PM Set up DHCP reservations for cluster nodes:
+.RS
+.IP \(bu 2
+Tower (MAC: [collected earlier]): 192.168.1.150
+.IP \(bu
+Nano (MAC: [collected earlier]): 192.168.1.181
+.IP \(bu
+AGX (MAC: [collected earlier]): 192.168.1.244
+.IP \(bu
+Spark1 (MAC: [collected earlier]): 192.168.1.201
+.IP \(bu
+Spark2 (MAC: [collected earlier]): 192.168.1.202
+.RE
+.TP
+6:25 PM Set up port forwarding: External port 1194 → ER605 port 1194
+.TP
+6:30 PM Configure firewall rules for cluster communication
+.TP
+6:35 PM Test internet connectivity through firewall
+.SS USW Flex XG Switch Configuration
+.TP
+6:40 PM Connect USW Flex XG to ER605 LAN port (not WAN port)
+.TP
+6:42 PM Switch should automatically get IP from ER605 DHCP (192.168.1.x range)
+.TP
+6:44 PM Access switch web interface using assigned IP
+.TP
+6:45 PM Verify switch can reach ER605 gateway at 192.168.1.1
+.SH PHASE 2: NODE IP MIGRATION
+.SS Network Preparation
+.TP
+6:45 PM Verify ER605 DHCP server is active and reservations are set
+.TP
+6:50 PM Confirm all nodes can reach ER605 at 10.1.10.2
+.TP
+6:55 PM Backup current network configurations on all nodes
+.SS Tower Server Migration
+.TP
+7:00 PM Update Tower netplan to use DHCP:
+.RS
+.nf
+sudo nano /etc/netplan/01-netcfg.yaml
+# Change from static IP to DHCP
+network:
+  ethernets:
+    eno1:  # or your interface name
+      dhcp4: true
+  version: 2
+.fi
+.RE
+.TP
+7:05 PM Apply netplan changes: \fBsudo netplan apply\fR
+.TP
+7:10 PM Reboot Tower: \fBsudo reboot\fR
+.SS Nano Migration
+.TP
+7:15 PM SSH to Nano (may need to use old IP temporarily)
+.TP
+7:20 PM Update Nano netplan to DHCP and apply
+.TP
+7:25 PM Reboot Nano
+.SS AGX Migration
+.TP
+7:30 PM SSH to AGX (may need to use old IP temporarily)
+.TP
+7:35 PM Update AGX netplan to DHCP and apply
+.TP
+7:40 PM Reboot AGX
+.SS Spark Nodes Migration
+.TP
+7:45 PM Update Spark1 netplan to DHCP and reboot
+.TP
+7:55 PM Update Spark2 netplan to DHCP and reboot
+.TP
+8:05 PM Wait for all nodes to come back online with new IPs
+.SS Connectivity Verification
+.TP
+8:15 PM Verify all nodes have correct new IPs:
+.RS
+.IP \(bu 2
+Tower: 192.168.1.150
+.IP \(bu
+Nano: 192.168.1.181
+.IP \(bu
+AGX: 192.168.1.244
+.IP \(bu
+Spark1: 192.168.1.201
+.IP \(bu
+Spark2: 192.168.1.202
+.RE
+.TP
+8:20 PM Test inter-node connectivity: \fBping\fR between all nodes
+.TP
+8:25 PM Update local /etc/hosts file with new IPs
+.SH PHASE 2.5: HOSTNAME RESOLUTION UPDATES
+.SS Update /etc/hosts Files
+Required /etc/hosts entries for all nodes:
+.nf
+192.168.1.150   tower
+192.168.1.181   nano
+192.168.1.244   agx
+192.168.1.201   spark1
+192.168.1.202   spark2
+.fi
+.TP
+8:30 PM Update Tower /etc/hosts:
+.RS
+.nf
+sudo sed -i 's/10\.1\.10\.150/192.168.1.150/g' /etc/hosts
+sudo sed -i 's/10\.1\.10\.181/192.168.1.181/g' /etc/hosts
+sudo sed -i 's/10\.1\.10\.244/192.168.1.244/g' /etc/hosts
+sudo sed -i 's/10\.1\.10\.201/192.168.1.201/g' /etc/hosts
+sudo sed -i 's/10\.1\.10\.202/192.168.1.202/g' /etc/hosts
+.fi
+.RE
+.TP
+8:35 PM Update Nano /etc/hosts:
+.RS
+.nf
+ssh sanjay@192.168.1.181 "sudo sed -i 's/10\.1\.10\.150/192.168.1.150/g' /etc/hosts"
+ssh sanjay@192.168.1.181 "sudo sed -i 's/10\.1\.10\.181/192.168.1.181/g' /etc/hosts"
+ssh sanjay@192.168.1.181 "sudo sed -i 's/10\.1\.10\.244/192.168.1.244/g' /etc/hosts"
+ssh sanjay@192.168.1.181 "sudo sed -i 's/10\.1\.10\.201/192.168.1.201/g' /etc/hosts"
+ssh sanjay@192.168.1.181 "sudo sed -i 's/10\.1\.10\.202/192.168.1.202/g' /etc/hosts"
+.fi
+.RE
+.TP
+8:40 PM Update AGX /etc/hosts:
+.RS
+.nf
+ssh sanjay@192.168.1.244 "sudo sed -i 's/10\.1\.10\.150/192.168.1.150/g' /etc/hosts"
+ssh sanjay@192.168.1.244 "sudo sed -i 's/10\.1\.10\.181/192.168.1.181/g' /etc/hosts"
+ssh sanjay@192.168.1.244 "sudo sed -i 's/10\.1\.10\.244/192.168.1.244/g' /etc/hosts"
+ssh sanjay@192.168.1.244 "sudo sed -i 's/10\.1\.10\.201/192.168.1.201/g' /etc/hosts"
+ssh sanjay@192.168.1.244 "sudo sed -i 's/10\.1\.10\.202/192.168.1.202/g' /etc/hosts"
+.fi
+.RE
+.TP
+8:45 PM Update Spark1 /etc/hosts:
+.RS
+.nf
+ssh sanjay@192.168.1.201 "sudo sed -i 's/10\.1\.10\.150/192.168.1.150/g' /etc/hosts"
+ssh sanjay@192.168.1.201 "sudo sed -i 's/10\.1\.10\.181/192.168.1.181/g' /etc/hosts"
+ssh sanjay@192.168.1.201 "sudo sed -i 's/10\.1\.10\.244/192.168.1.244/g' /etc/hosts"
+ssh sanjay@192.168.1.201 "sudo sed -i 's/10\.1\.10\.201/192.168.1.201/g' /etc/hosts"
+ssh sanjay@192.168.1.201 "sudo sed -i 's/10\.1\.10\.202/192.168.1.202/g' /etc/hosts"
+.fi
+.RE
+.TP
+8:50 PM Update Spark2 /etc/hosts:
+.RS
+.nf
+ssh sanjay@192.168.1.202 "sudo sed -i 's/10\.1\.10\.150/192.168.1.150/g' /etc/hosts"
+ssh sanjay@192.168.1.202 "sudo sed -i 's/10\.1\.10\.181/192.168.1.181/g' /etc/hosts"
+ssh sanjay@192.168.1.202 "sudo sed -i 's/10\.1\.10\.244/192.168.1.244/g' /etc/hosts"
+ssh sanjay@192.168.1.202 "sudo sed -i 's/10\.1\.10\.201/192.168.1.201/g' /etc/hosts"
+ssh sanjay@192.168.1.202 "sudo sed -i 's/10\.1\.10\.202/192.168.1.202/g' /etc/hosts"
+.fi
+.RE
+.TP
+8:55 PM Verify hostname resolution on all nodes:
+.RS
+.nf
+# From Tower, test all nodes
+ping tower  # should resolve to 192.168.1.150
+ping nano   # should resolve to 192.168.1.181
+ping agx    # should resolve to 192.168.1.244
+ping spark1 # should resolve to 192.168.1.201
+ping spark2 # should resolve to 192.168.1.202
+.fi
+.RE
+.SH PHASE 3: CONFIGURATION UPDATES
+.SS Repository Updates
+.TP
+9:00 PM Run IP update script: \fB./update_ips.sh "10.1.10" "192.168.1"\fR
+.TP
+9:05 PM Review changes: \fBgit diff\fR
+.TP
+9:10 PM Commit changes: \fBgit add . && git commit -m "Network migration: 10.1.10.x → 192.168.1.x"\fR
+.SS Manual Configuration Updates
+.TP
+9:20 PM Update subnet references in config files:
+.RS
+.IP \(bu 2
+\fBagent/spark2/app/config/spark2-config.env\fR: SPARK2_SUBNET
+.IP \(bu
+\fBagent/agx/agx-config.env\fR: AGX_SUBNET
+.IP \(bu
+Network validation scripts
+.RE
+.SS NFS Server & Client Updates
+.TP
+NFS Server (Tower) - 10 minutes:
+.RS
+.IP \(bu 2
+10:00 PM Stop NFS services on Tower:
+.RS
+.nf
+sudo systemctl stop nfs-server
+sudo systemctl stop nfs-kernel-server
+.fi
+.RE
+.IP \(bu
+10:02 PM Update NFS exports configuration:
+.RS
+.nf
+sudo ./scripts/update-nfs-exports.sh
+cat /etc/exports  # Verify new IPs: 192.168.1.150, 192.168.1.181, 192.168.1.244, etc.
+.fi
+.RE
+.IP \(bu
+10:05 PM Export new NFS shares: \fBsudo exportfs -ra\fR
+.IP \(bu
+10:07 PM Restart NFS server: \fBsudo systemctl start nfs-server\fR
+.RE
+.TP
+NFS Clients (All Nodes) - 15 minutes:
+.RS
+.IP \(bu 2
+10:10 PM Update Nano NFS mounts:
+.RS
+.nf
+ssh sanjay@192.168.1.181 "sudo systemctl stop nfs-client.target"
+ssh sanjay@192.168.1.181 "sudo ./scripts/update-nfs-fstab.sh"
+ssh sanjay@192.168.1.181 "sudo mount -a"
+ssh sanjay@192.168.1.181 "sudo systemctl start nfs-client.target"
+.fi
+.RE
+.IP \(bu
+10:13 PM Update AGX NFS mounts:
+.RS
+.nf
+ssh sanjay@192.168.1.244 "sudo systemctl stop nfs-client.target"
+ssh sanjay@192.168.1.244 "sudo ./scripts/update-nfs-fstab.sh"
+ssh sanjay@192.168.1.244 "sudo mount -a"
+ssh sanjay@192.168.1.244 "sudo systemctl start nfs-client.target"
+.fi
+.RE
+.IP \(bu
+10:16 PM Update Spark1 NFS mounts:
+.RS
+.nf
+ssh sanjay@192.168.1.201 "sudo systemctl stop nfs-client.target"
+ssh sanjay@192.168.1.201 "sudo ./scripts/update-nfs-fstab.sh"
+ssh sanjay@192.168.1.201 "sudo mount -a"
+ssh sanjay@192.168.1.201 "sudo systemctl start nfs-client.target"
+.fi
+.RE
+.IP \(bu
+10:19 PM Update Spark2 NFS mounts:
+.RS
+.nf
+ssh sanjay@192.168.1.202 "sudo systemctl stop nfs-client.target"
+ssh sanjay@192.168.1.202 "sudo ./scripts/update-nfs-fstab.sh"
+ssh sanjay@192.168.1.202 "sudo mount -a"
+ssh sanjay@192.168.1.202 "sudo systemctl start nfs-client.target"
+.fi
+.RE
+.RE
+.TP
+NFS Verification - 5 minutes:
+.RS
+.IP \(bu 2
+10:20 PM Test NFS connectivity from all nodes:
+.RS
+.nf
+# From Tower, test all clients
+showmount -e localhost
+ssh sanjay@192.168.1.181 "df -h | grep nfs"
+ssh sanjay@192.168.1.244 "df -h | grep nfs"
+ssh sanjay@192.168.1.201 "df -h | grep nfs"
+ssh sanjay@192.168.1.202 "df -h | grep nfs"
+.fi
+.RE
+.RE
+.SS Kubernetes Deployment Updates
+.TP
+10:25 PM Update FastAPI deployment YAMLs with new IPs:
+.RS
+.IP \(bu 2
+\fBagent/nano/fastapi-deployment-full.yaml\fR - Update service IPs and node selectors
+.IP \(bu
+\fBagent/agx/fastapi-deployment-agx.yaml\fR - Update service IPs and node selectors
+.IP \(bu
+\fBagent/spark1/fastapi-deployment-spark1.yaml\fR - Update service IPs and node selectors
+.IP \(bu
+\fBagent/spark2/fastapi-deployment-spark2.yaml\fR - Update service IPs and node selectors
+.RE
+.TP
+10:30 PM Update PostgreSQL deployment: \fBserver/postgres-db-deployment.yaml\fR
+.TP
+10:32 PM Update pgAdmin deployment: \fBserver/pgadmin-deployment.yaml\fR
+.TP
+10:35 PM Update registry deployment: \fBserver/registry-deployment.yaml\fR
+.SS Setup Scripts Updates
+.TP
+All K3s setup scripts verified clean of old IPs:
+.RS
+.IP \(bu 2
+\fBserver/k3s-server.sh\fR - Already uses correct 192.168.1.x IPs
+.IP \(bu
+\fBagent/nano/k3s-nano.sh\fR - Clean, uses correct IP variables
+.IP \(bu
+\fBagent/agx/k3s-agx.sh\fR - Updated start-fastapi-agx.yaml registry port
+.IP \(bu
+\fBagent/spark1/k3s-spark1.sh\fR - Clean, no 10.1.10 references found
+.IP \(bu
+\fBagent/spark2/k3s-spark2.sh\fR - Clean, no 10.1.10 references found
+.RE
+.TP
+All deployment YAML files verified:
+.RS
+.IP \(bu 2
+\fBagent/*/fastapi-deployment-*.yaml\fR - All use correct NFS server IP (192.168.1.150)
+.IP \(bu
+\fBserver/postgres-db-deployment.yaml\fR - Uses correct IPs
+.IP \(bu
+\fBserver/pgadmin-deployment.yaml\fR - Uses correct IPs
+.IP \(bu
+\fBserver/registry-deployment.yaml\fR - Uses correct IPs
+.RE
+.TP
+Network configuration scripts verified:
+.RS
+.IP \(bu 2
+\fBscripts/update-nfs-exports.sh\fR - Uses correct export IPs
+.IP \(bu
+\fBscripts/update-nfs-fstab.sh\fR - Uses correct mount IPs
+.IP \(bu
+\fBscripts/update-docker-registry.sh\fR - Uses correct registry IPs
+.RE
+.SS Backup Configuration Updates
+.TP
+10:55 PM Update backup scripts with new IPs:
+.RS
+.IP \(bu 2
+\fBbackup_home.sh\fR - Update target IPs
+.IP \(bu
+\fBscripts/restore_backup.sh\fR - Update source IPs
+.IP \(bu
+\fBscripts/update-all-nfs-fstab.sh\fR - Update NFS mount IPs
+.RE
+.TP
+10:57 PM Update monitoring scripts: \fBscripts/monitor-service.sh\fR
+.TP
+10:59 PM Commit all configuration changes: \fBgit add . && git commit -m "Network migration: 10.1.10.x → 192.168.1.x"\fR
+.SH PHASE 4: CLUSTER RECONFIGURATION
+.SS K3s Server Reinstallation
+.TP
+11:00 PM Reinstall k3s server on Tower (completed via script)
+.TP
+11:05 PM Verify server installation: \fBsudo systemctl status k3s\fR
+.TP
+11:10 PM Check server logs: \fBsudo journalctl -u k3s -n 20\fR
+.TP
+11:15 PM Verify kubectl access: \fBkubectl get nodes\fR (shows Tower)
+.TP
+11:20 PM Update k3s config if needed: \fB/etc/rancher/k3s/config.yaml\fR
+.TP
+11:25 PM Get cluster join token: \fBsudo cat /var/lib/rancher/k3s/server/node-token\fR
+.TP
+11:30 PM Test basic cluster functionality
+.SS Agent Nodes Rejoin
+.TP
+11:35 PM Update Nano K3s agent config and restart (completed via k3s-nano.sh)
+.TP
+11:45 PM Update AGX K3s agent config and restart (completed via k3s-agx.sh):
+.RS
+.nf
+ssh sanjay@192.168.1.244 "sudo systemctl stop k3s-agent"
+# Update /etc/rancher/k3s/config.yaml if needed
+ssh sanjay@192.168.1.244 "sudo systemctl start k3s-agent"
+.fi
+.RE
+.TP
+11:55 PM Update Spark1 K3s agent config and restart:
+.RS
+.nf
+ssh sanjay@192.168.1.201 "sudo systemctl stop k3s-agent"
+# Update /etc/rancher/k3s/config.yaml if needed
+ssh sanjay@192.168.1.201 "sudo systemctl start k3s-agent"
+.fi
+.RE
+.TP
+12:05 AM Update Spark2 K3s agent config and restart:
+.RS
+.nf
+ssh sanjay@192.168.1.202 "sudo systemctl stop k3s-agent"
+# Update /etc/rancher/k3s/config.yaml if needed
+ssh sanjay@192.168.1.202 "sudo systemctl start k3s-agent"
+.fi
+.RE
+.TP
+12:12 AM Wait for all agents to rejoin: \fBkubectl get nodes\fR (should show all nodes Ready)
+.TP
+12:15 AM Verify cluster connectivity: \fBkubectl get pods -A\fR
+.SS Services Restart
+.TP
+12:20 AM Deploy PostgreSQL: \fBkubectl apply -f server/postgres-db-deployment.yaml\fR (completed via script)
+.TP
+12:25 AM Deploy pgAdmin: \fBkubectl apply -f server/pgadmin-deployment.yaml\fR (completed via script)
+.TP
+12:30 AM Uncordon nodes: \fBkubectl uncordon <node>\fR (no nodes to uncordon yet)
+.SH PHASE 5: APPLICATION DEPLOYMENT
+.SS FastAPI Services
+.TP
+11:25 PM Deploy Nano FastAPI: \fBkubectl apply -f agent/nano/fastapi-deployment-full.yaml\fR (completed via k3s-nano.sh)
+.TP
+11:35 PM Deploy AGX FastAPI: \fBkubectl apply -f agent/agx/fastapi-deployment-agx.yaml\fR (completed via k3s-agx.sh)
+.TP
+11:45 PM Deploy Spark1 FastAPI: \fBkubectl apply -f agent/spark1/fastapi-deployment-spark1.yaml\fR
+.TP
+11:55 PM Deploy Spark2 FastAPI: \fBkubectl apply -f agent/spark2/fastapi-deployment-spark2.yaml\fR
+.SS Service Validation
+.TP
+12:05 AM Check pod status: \fBkubectl get pods -A\fR
+.TP
+12:10 AM Verify service endpoints accessible
+.TP
+12:15 AM Test GPU workloads if applicable
+.TP
+12:20 AM Run backup verification
+.SH PHASE 6: VPN SETUP & TESTING
+.SS Comcast Router Port Forwarding
+.TP
+12:20 AM Connect to the existing 10.1.10.x subnet (ensure your device is still on the old network)
+.TP
+12:25 AM Open web browser and navigate to http://192.168.1.1
+.TP
+12:30 AM Login to Comcast Business Router web interface (use admin credentials)
+.TP
+12:35 AM Navigate to Firewall > Port Forwarding (or Advanced > Port Forwarding)
+.TP
+12:40 AM Add new port forwarding rule for OpenVPN:
+.RS
+.IP \(bu 2
+Rule Name: K3s VPN Access
+.IP \(bu
+Service Type: UDP
+.IP \(bu
+External Port Start: 1194
+.IP \(bu
+External Port End: 1194
+.IP \(bu
+Internal IP Address: 10.1.10.2 (ER605 firewall IP)
+.IP \(bu
+Internal Port Start: 1194
+.IP \(bu
+Internal Port End: 1194
+.IP \(bu
+Enable: Checked
+.RE
+.TP
+12:45 AM Save the port forwarding rule
+.TP
+12:50 AM Verify the rule appears in the active forwarding list
+.TP
+12:55 AM Test external connectivity to port 1194 (optional - can use online port checker)
+.TP
+1:00 AM Switch back to 192.168.1.x subnet for ER605 configuration
+.SS OpenVPN Server Setup
+.TP
+1:00 AM Connect to the new 192.168.1.x subnet (ensure your device is on the new network)
+.TP
+1:05 AM Open web browser and navigate to http://192.168.1.1
+.TP
+1:10 AM Login to ER605 web interface (use admin credentials)
+.TP
+1:15 AM Navigate to VPN > OpenVPN > Server tab
+.TP
+1:20 AM Click "Enable" to activate OpenVPN Server
+.TP
+1:25 AM Configure OpenVPN Server settings:
+.RS
+.IP \(bu 2
+Service Type: Enable OpenVPN Server
+.IP \(bu
+Protocol: UDP
+.IP \(bu
+Port: 1194
+.IP \(bu
+VPN Subnet: 10.8.0.0/24
+.IP \(bu
+Client IP Assignment: Automatic
+.IP \(bu
+Primary DNS: 8.8.8.8 (Google DNS)
+.IP \(bu
+Secondary DNS: 1.1.1.1 (Cloudflare DNS)
+.RE
+.TP
+1:30 AM Click "Save" to apply OpenVPN server configuration
+.TP
+1:35 AM Navigate to VPN > OpenVPN > Client tab
+.TP
+1:40 AM Download the OpenVPN client configuration file (.ovpn)
+.TP
+1:45 AM Install OpenVPN client on test device (if not already installed)
+.TP
+1:50 AM Import the downloaded .ovpn configuration file
+.TP
+1:55 AM Connect to VPN and verify connection status
+.TP
+2:00 AM Test cluster access through VPN tunnel:
+.RS
+.IP \(bu 2
+Ping cluster nodes: \fBping 192.168.1.150\fR (Tower)
+.IP \(bu
+Access Kubernetes dashboard if available
+.IP \(bu
+Test SSH access to nodes through VPN
+.RE
+.TP
+2:05 AM Verify firewall rules allow VPN traffic (check ER605 logs if needed)
+.TP
+2:10 AM Test port forwarding for external access (if configured)
+.TP
+2:15 AM Disconnect VPN and verify local network access still works
+.TP
+2:20 AM Reconnect VPN and confirm persistent access
+.SS Final Testing
+.TP
+2:25 AM Test all FastAPI endpoints on new subnet:
+.RS
+.IP \(bu 2
+Nano: http://192.168.1.181:30002
+.IP \(bu
+AGX: http://192.168.1.244:30003
+.IP \(bu
+Spark1: http://192.168.1.201:30004
+.IP \(bu
+Spark2: http://192.168.1.202:30005
+.RE
+.TP
+2:30 AM Verify PostgreSQL connectivity from all nodes
+.TP
+2:35 AM Test NFS storage access and performance
+.TP
+2:40 AM Run full backup cycle and verify integrity
+.TP
+2:45 AM Performance testing of GPU workloads (if applicable)
+.TP
+2:50 AM Final cluster health check: \fBkubectl get nodes && kubectl get pods -A\fR
+.TP
+2:55 AM Migration complete - document any issues encountered
+.SH PHASE 7: CLEANUP & DOCUMENTATION
+.SS Cleanup Tasks
+.TP
+3:00 AM Remove old IP references from documentation
+.TP
+3:05 AM Update README with new network information
+.TP
+3:10 AM Clean up temporary files and backups
+.TP
+3:15 AM Update monitoring and alerting if applicable
+.SS Documentation
+.TP
+3:20 AM Document new network topology
+.TP
+3:25 AM Update runbooks with new IPs
+.TP
+3:30 AM Create VPN access documentation
+.TP
+3:35 AM Final git commit and push
+.TP
+3:40 AM Migration officially complete
+.SH EMERGENCY ROLLBACK PLAN
+If migration fails at any point:
+.PP
+.B Immediate Actions:
+.RS
+.IP 1. 3
+Revert all nodes to original 10.1.10.x IPs
+.IP 2. 3
+Remove ER605 firewall, reconnect directly to router
+.IP 3. 3
+\fBgit checkout -- .\fR to revert configuration changes
+.IP 4. 3
+\fBkubectl apply -f cluster-backup-pre-migration.yaml\fR
+.RE
+.PP
+.B Contact Info:
+.RS
+.IP \(bu 2
+Emergency contact: [Your contact info]
+.IP \(bu
+Support resources: [Relevant links]
+.RE
+.PP
+.B Success Criteria:
+.RS
+.IP \(bu 2
+All nodes reachable on original IPs
+.IP \(bu
+K3s cluster functional
+.IP \(bu
+All services accessible
+.RE
+.SH SUCCESS VALIDATION CHECKLIST
+.TP
+All nodes show Ready: \fBkubectl get nodes\fR
+.TP
+All pods running: \fBkubectl get pods -A | grep -v Running\fR should return empty
+.TP
+FastAPI services accessible on new IPs
+.TP
+PostgreSQL/pgAdmin working
+.TP
+NFS storage mounted correctly
+.TP
+VPN connection established
+.TP
+Backup scripts functional
+.TP
+GPU workloads operational
+.PP
+Final Checkpoint: Migration complete by 2:20 AM
+.SH POST-MIGRATION VALIDATION
+.SS Network Connectivity Tests
+.TP
+Verify all nodes reachable: \fBping 192.168.1.150 && ping 192.168.1.181 && ping 192.168.1.244 && ping 192.168.1.201 && ping 192.168.1.202\fR
+.TP
+Test inter-node communication: SSH between all nodes
+.TP
+Verify DNS resolution: \fBnslookup nano\fR, \fBnslookup agx\fR, etc.
+.SS Service Availability Tests
+.TP
+K3s cluster health: \fBkubectl get nodes && kubectl get pods -A\fR
+.TP
+FastAPI services: Access all endpoints from local network
+.TP
+PostgreSQL: Connect via pgAdmin and run test queries
+.TP
+NFS storage: Read/write operations from all nodes
+.SS VPN Access Tests
+.TP
+Connect via VPN from external network
+.TP
+Access cluster services through VPN tunnel
+.TP
+Test file transfers and remote management
+.SS Performance Validation
+.TP
+Run GPU workloads (if applicable)
+.TP
+Monitor system resources during normal operation
+.TP
+Verify backup scripts execute successfully
+.PP
+Migration Success: All post-migration tests pass
+.SH SEE ALSO
+.BR kubectl (1),
+.BR k3s (8),
+.BR netplan (5),
+.BR ssh (1),
+.BR ping (8),
+.BR systemctl (1)
+.SH AUTHOR
+K3s Cluster Migration Team
+.SH HISTORY
+Migration completed successfully on October 28, 2025.

@@ -1,12 +1,16 @@
-# Script Executor - K3s Pod Deployment Architecture
-
-## 🏗️ **Yes! Container as K3s Pod with WebSocket Hosting**
-
-You're absolutely correct. The architecture would be:
-
-## **🏛️ Deployment Architecture**
-
-```
+.TH POD-DEPLOYMENT-ARCHITECTURE 8 "Script Executor" "System Administration"
+.SH NAME
+pod-deployment-architecture \- Script executor K3s pod deployment architecture
+.SH SYNOPSIS
+.B pod-deployment-architecture
+.RB [ component ]
+.RB [ aspect ]
+.SH DESCRIPTION
+This manual documents the K3s pod deployment architecture for the script executor application, detailing how the web-based script execution interface runs as a containerized pod within the Kubernetes cluster.
+.SH DEPLOYMENT ARCHITECTURE
+.SS Container as K3s Pod
+The script executor runs as a containerized pod in the K3s cluster, providing web-based script execution with real-time terminal output display.
+.nf
 ┌─────────────────────────────────────────────────────────────┐
 │                    K3s Cluster                              │
 ├─────────────────────────────────────────────────────────────┤
@@ -38,12 +42,10 @@ You're absolutely correct. The architecture would be:
 │  │  └─────────────────────────────────────────────────┘ │ │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
-```
-
-## **🔗 How the Pod Connects to K3s**
-
-### **1. Kubernetes Service Integration**
-```yaml
+.fi
+.SH KUBERNETES INTEGRATION
+.SS Service Integration
+.nf
 apiVersion: v1
 kind: Service
 metadata:
@@ -55,10 +57,9 @@ spec:
   - port: 80
     targetPort: 8000  # Container port
   type: ClusterIP      # Internal cluster access
-```
-
-### **2. Ingress for External Access**
-```yaml
+.fi
+.SS Ingress for External Access
+.nf
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -75,10 +76,9 @@ spec:
             name: script-executor-service
             port:
               number: 80
-```
-
-### **3. Volume Mount for Script Access**
-```yaml
+.fi
+.SS Volume Mount for Script Access
+.nf
 spec:
   containers:
   - name: script-executor
@@ -91,32 +91,23 @@ spec:
     hostPath:
       path: /home/sanjay/containers/kubernetes
       type: Directory
-```
-
-## **🌐 WebSocket Communication Flow**
-
-### **Client → Pod Communication:**
-```
+.fi
+.SH WEBSOCKET COMMUNICATION
+.SS Client to Pod Communication
+.nf
 User Browser → Ingress → Service → Pod (Port 8000)
-                    ↓
-            WebSocket Connection
-                    ↓
-        Real-time Script Output
-```
-
-### **Script Execution Flow:**
-```
+.fi
+.SS Script Execution Flow
+.nf
 1. User selects scripts in web UI
 2. Browser sends WebSocket message to pod
 3. Pod executes scripts on host filesystem
 4. Pod streams output back via WebSocket
 5. Browser displays real-time results
-```
-
-## **🔒 Security & Access Model**
-
-### **Pod Security Context:**
-```yaml
+.fi
+.SH SECURITY & ACCESS MODEL
+.SS Pod Security Context
+.nf
 securityContext:
   runAsNonRoot: true
   runAsUser: 1000
@@ -124,22 +115,30 @@ securityContext:
   capabilities:
     drop:
     - ALL
-```
-
-### **Network Policies:**
-- Pod can only access necessary cluster resources
-- External access controlled via ingress
-- Internal communication secured
-
-### **RBAC Integration:**
-- Pod service account with minimal permissions
-- Access to Kubernetes API for cluster information
-- Script execution limited to allowed directories
-
-## **📊 Resource Requirements**
-
-### **Pod Resources:**
-```yaml
+.fi
+.SS Network Policies
+.TP
+Pod Access
+Can only access necessary cluster resources
+.TP
+External Access
+Controlled via ingress
+.TP
+Internal Communication
+Secured
+.SS RBAC Integration
+.TP
+Service Account
+Pod service account with minimal permissions
+.TP
+API Access
+Access to Kubernetes API for cluster information
+.TP
+Script Execution
+Limited to allowed directories
+.SH RESOURCE REQUIREMENTS
+.SS Pod Resources
+.nf
 resources:
   requests:
     memory: "128Mi"
@@ -147,17 +146,20 @@ resources:
   limits:
     memory: "512Mi"
     cpu: "500m"
-```
-
-### **Storage Access:**
-- Read-only access to script directories
-- No write permissions to host filesystem
-- Secure execution environment
-
-## **🔄 Pod Lifecycle**
-
-### **Startup Process:**
-```
+.fi
+.SS Storage Access
+.TP
+Read Access
+Read-only access to script directories
+.TP
+Write Permissions
+No write permissions to host filesystem
+.TP
+Execution Environment
+Secure execution environment
+.SH POD LIFECYCLE
+.SS Startup Process
+.nf
 1. Pod scheduled on tower node
 2. Container starts with script-executor image
 3. FastAPI application initializes
@@ -165,52 +167,98 @@ resources:
 5. WebSocket server starts on port 8000
 6. Health checks pass
 7. Service becomes available
-```
-
-### **Runtime Operations:**
-- Handles HTTP requests for script discovery
-- Manages WebSocket connections for execution
-- Executes scripts in isolated subprocesses
-- Streams output in real-time
-- Monitors resource usage
-
-### **Scaling & Reliability:**
-- Can be scaled to multiple replicas
-- Load balancer distributes requests
-- Automatic restart on failures
-- Rolling updates for zero downtime
-
-## **🌟 Benefits of Pod Deployment**
-
-### **Integration Advantages:**
-- **Native K3s Citizen**: Runs as first-class cluster component
-- **Service Discovery**: Automatic service registration
-- **Load Balancing**: Built-in traffic distribution
-- **Monitoring**: Integrated with cluster monitoring
-
-### **Operational Benefits:**
-- **High Availability**: Survives node failures
-- **Auto-healing**: Automatic pod restarts
-- **Resource Management**: Controlled by Kubernetes
-- **Security**: Pod security policies apply
-
-### **Development Benefits:**
-- **Consistent Environment**: Same runtime everywhere
-- **Easy Updates**: Rolling deployments
-- **Configuration Management**: ConfigMaps and Secrets
-- **Logging**: Centralized log aggregation
-
-## **🚀 Deployment Reality Check**
-
-**Yes, this is exactly how it would work!** The script-executor application runs as a pod in your K3s cluster, hosting the WebSocket server that powers the real-time web interface.
-
-The pod would be:
-- ✅ **Linked to your K3s cluster** as a managed workload
-- ✅ **Accessible via Kubernetes services and ingress**
-- ✅ **Isolated and secure** with proper resource limits
-- ✅ **Integrated with your existing scripts** via volume mounts
-
-This architecture makes the script executor a **native part of your cluster infrastructure**! 🏗️
-
-**Does this deployment model make sense for your use case?** The pod would essentially become your cluster's script execution and management control plane! 🎯</content>
-<parameter name="filePath">/home/sanjay/containers/kubernetes/pod-deployment-architecture.md
+.fi
+.SS Runtime Operations
+.TP
+HTTP Requests
+Handles HTTP requests for script discovery
+.TP
+WebSocket Connections
+Manages WebSocket connections for execution
+.TP
+Script Execution
+Executes scripts in isolated subprocesses
+.TP
+Output Streaming
+Streams output in real-time
+.TP
+Resource Monitoring
+Monitors resource usage
+.SS Scaling & Reliability
+.TP
+Scaling
+Can be scaled to multiple replicas
+.TP
+Load Balancing
+Load balancer distributes requests
+.TP
+Failure Recovery
+Automatic restart on failures
+.TP
+Updates
+Rolling updates for zero downtime
+.SH BENEFITS OF POD DEPLOYMENT
+.SS Integration Advantages
+.TP
+Native K3s Citizen
+Runs as first-class cluster component
+.TP
+Service Discovery
+Automatic service registration
+.TP
+Load Balancing
+Built-in traffic distribution
+.TP
+Monitoring
+Integrated with cluster monitoring
+.SS Operational Benefits
+.TP
+High Availability
+Survives node failures
+.TP
+Auto-healing
+Automatic pod restarts
+.TP
+Resource Management
+Controlled by Kubernetes
+.TP
+Security
+Pod security policies apply
+.SS Development Benefits
+.TP
+Consistent Environment
+Same runtime everywhere
+.TP
+Easy Updates
+Rolling deployments
+.TP
+Configuration Management
+ConfigMaps and Secrets
+.TP
+Logging
+Centralized log aggregation
+.SH DEPLOYMENT REALITY
+The script-executor application runs as a pod in the K3s cluster, hosting the WebSocket server that powers the real-time web interface.
+.PP
+The pod is:
+.TP
+Linked to K3s cluster
+As a managed workload
+.TP
+Accessible
+Via Kubernetes services and ingress
+.TP
+Isolated and secure
+With proper resource limits
+.TP
+Integrated
+With existing scripts via volume mounts
+.PP
+This architecture makes the script executor a native part of the cluster infrastructure.
+.SH SEE ALSO
+.BR kubectl (1),
+.BR k3s (8),
+.BR docker (1),
+.BR fastapi (1)
+.SH AUTHOR
+Script Executor Development Team
