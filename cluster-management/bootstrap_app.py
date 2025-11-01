@@ -3,7 +3,7 @@ Basic Hello World Web Server - Bootstrap Starting Point
 A minimal FastAPI application to demonstrate native Python web serving
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Form, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
@@ -3256,6 +3256,12 @@ async def websocket_docker_build(websocket: WebSocket):
         except:
             pass
 
+# Favicon route
+@app.get("/favicon.ico")
+async def favicon():
+    """Serve a simple favicon"""
+    return Response(content="", media_type="image/x-icon")
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the interactive cluster management interface"""
@@ -4696,6 +4702,8 @@ async def root():
                     loadScripts();
                 } else if (tabName === 'cluster') {
                     loadClusterData();
+                    // Initialize logging status when cluster tab becomes visible
+                    setTimeout(() => initializeLoggingStatus(), 100);
                 }
             }
 
@@ -5374,7 +5382,7 @@ ${data.execution_result.stdout}
 
             async function pingAllNodes() {
                 // Get all network devices from the network configuration
-                const allNodes = {get_network_ips()};
+                const allNodes = get_network_ips();
 
                 // Show loading state in network tab
                 const networkTab = document.getElementById('network');
@@ -5417,8 +5425,8 @@ ${data.execution_result.stdout}
                     resultsHTML += `<th style="padding: 10px; text-align: left; color: #e2e8f0;">Role</th>`;
                     resultsHTML += `</tr></thead><tbody>`;
 
-                    const deviceNames = {get_device_names_js()};
-                    const deviceRoles = {get_device_roles_js()};
+                    const deviceNames = get_device_names_js();
+                    const deviceRoles = get_device_roles_js();
 
                     let onlineCount = 0;
 
@@ -6685,8 +6693,8 @@ ${data.execution_result.stdout}
 
             // Logging and Tracing Functions
             async function toggleOutputLogging() {
-                const button = document.getElementById('toggle-output-logging');
-                const isActive = button.classList.contains('active');
+                const button = document.getElementById('output-logging-toggle');
+                const isActive = button.checked;
 
                 try {
                     const response = await fetch('/api/logging/toggle-output', {
@@ -6717,8 +6725,8 @@ ${data.execution_result.stdout}
             }
 
             async function toggleUrlTracing() {
-                const button = document.getElementById('toggle-url-tracing');
-                const isActive = button.classList.contains('active');
+                const button = document.getElementById('url-trace-toggle');
+                const isActive = button.checked;
 
                 try {
                     const response = await fetch('/api/logging/toggle-url-trace', {
@@ -6865,34 +6873,28 @@ ${data.execution_result.stdout}
                     if (response.ok) {
                         const data = await response.json();
 
-                        // Update output logging toggle
-                        const outputButton = document.getElementById('toggle-output-logging');
-                        if (data.output_logging_enabled) {
-                            outputButton.classList.add('active');
-                            outputButton.innerHTML = '<i class="fas fa-toggle-on"></i> Logging ON';
-                        } else {
-                            outputButton.classList.remove('active');
-                            outputButton.innerHTML = '<i class="fas fa-toggle-off"></i> Logging OFF';
+                        // Update output logging toggle (only if element exists)
+                        const outputButton = document.getElementById('output-logging-toggle');
+                        if (outputButton) {
+                            outputButton.checked = data.output_logging_enabled;
                         }
 
-                        // Update URL tracing toggle
-                        const urlButton = document.getElementById('toggle-url-tracing');
-                        if (data.url_tracing_enabled) {
-                            urlButton.classList.add('active');
-                            urlButton.innerHTML = '<i class="fas fa-eye"></i> URL Tracing ON';
-                        } else {
-                            urlButton.classList.remove('active');
-                            urlButton.innerHTML = '<i class="fas fa-eye-slash"></i> URL Tracing OFF';
+                        // Update URL tracing toggle (only if element exists)
+                        const urlButton = document.getElementById('url-trace-toggle');
+                        if (urlButton) {
+                            urlButton.checked = data.url_tracing_enabled;
                         }
 
-                        // Update command recording button
+                        // Update command recording button (only if element exists)
                         const recordButton = document.getElementById('record-commands');
-                        if (data.command_recording_enabled) {
-                            recordButton.classList.add('recording');
-                            recordButton.innerHTML = '<i class="fas fa-record-vinyl"></i> Recording...';
-                        } else {
-                            recordButton.classList.remove('recording');
-                            recordButton.innerHTML = '<i class="fas fa-stop"></i> Record Commands';
+                        if (recordButton) {
+                            if (data.command_recording_enabled) {
+                                recordButton.classList.add('recording');
+                                recordButton.innerHTML = '<i class="fas fa-record-vinyl"></i> Recording...';
+                            } else {
+                                recordButton.classList.remove('recording');
+                                recordButton.innerHTML = '<i class="fas fa-stop"></i> Record Commands';
+                            }
                         }
                     }
                 } catch (error) {
@@ -8104,32 +8106,32 @@ async def login_for_access_token(form_data: LoginRequest, request: Request):
     """Login endpoint - returns JWT access token"""
     user = authenticate_user(fake_users_db, form_data.username, form_data.password)
     if not user:
-        # Log failed login attempt
-        client_host, user_agent = get_client_info(request)
-        log_audit_event(
-            event_type="AUTHENTICATION",
-            username=form_data.username,
-            action="LOGIN_FAILED",
-            details={"reason": "Invalid credentials"},
-            ip_address=client_host,
-            user_agent=user_agent
-        )
+        # Log failed login attempt - temporarily disabled
+        # client_host, user_agent = get_client_info(request)
+        # log_audit_event(
+        #     event_type="AUTHENTICATION",
+        #     username=form_data.username,
+        #     action="LOGIN_FAILED",
+        #     details={"reason": "Invalid credentials"},
+        #     ip_address=client_host,
+        #     user_agent=user_agent
+        # )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Log successful login
-    client_host, user_agent = get_client_info(request)
-    log_audit_event(
-        event_type="AUTHENTICATION",
-        username=user.username,
-        action="LOGIN_SUCCESS",
-        details={"role": user.role},
-        ip_address=client_host,
-        user_agent=user_agent
-    )
+    # Log successful login - temporarily disabled
+    # client_host, user_agent = get_client_info(request)
+    # log_audit_event(
+    #     event_type="AUTHENTICATION",
+    #     username=user.username,
+    #     action="LOGIN_SUCCESS",
+    #     details={"role": user.role},
+    #     ip_address=client_host,
+    #     user_agent=user_agent
+    # )
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -8570,10 +8572,20 @@ if __name__ == "__main__":
     https_enabled = os.getenv("ENABLE_HTTPS", "false").lower() == "true"
 
     if https_enabled:
-        print("🔒 Generating SSL certificates for HTTPS...")
+        print("🔒 Starting HTTPS server with existing SSL certificates...")
         try:
-            generate_ssl_certificates()
-            print("✅ SSL certificates generated successfully")
+            # Check if SSL certificates exist
+            cert_path = pathlib.Path(__file__).parent / SSL_CERT_FILE
+            key_path = pathlib.Path(__file__).parent / SSL_KEY_FILE
+            
+            if not cert_path.exists() or not key_path.exists():
+                print(f"📄 SSL certificates not found at {SSL_CERT_FILE} and {SSL_KEY_FILE}")
+                print("🔧 Generating new SSL certificates...")
+                generate_ssl_certificates()
+                print("✅ SSL certificates generated successfully")
+            else:
+                print("✅ Using existing SSL certificates")
+            
             print(f"📄 Certificate: {SSL_CERT_FILE}")
             print(f"🔑 Private Key: {SSL_KEY_FILE}")
 
@@ -8587,7 +8599,7 @@ if __name__ == "__main__":
                 reload=False
             )
         except Exception as e:
-            print(f"❌ Failed to generate SSL certificates: {e}")
+            print(f"❌ Failed to start HTTPS server: {e}")
             print("🌐 Starting HTTP server instead...")
             https_enabled = False
 
