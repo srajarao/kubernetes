@@ -3506,6 +3506,84 @@ async def get_cluster_health_status(request: Request, current_user: User = Depen
         "timestamp": datetime.utcnow().isoformat()
     }
 
+@app.websocket("/ws/cluster/ping/{node_name}")
+async def websocket_cluster_ping(websocket: WebSocket, node_name: str, current_user: User = Depends(get_current_active_user)):
+    """
+    WebSocket endpoint for real-time cluster ping checks.
+    Streams output line by line from ping scripts.
+    """
+    await websocket.accept()
+
+    try:
+        # Map node names to script paths
+        script_map = {
+            "agx": "/home/sanjay/containers/kubernetes/server/utils/ping/02.check-nat-ping-agx.sh",
+            "spark1": "/home/sanjay/containers/kubernetes/server/utils/ping/03.check-nat-ping-spark1.sh",
+            "spark2": "/home/sanjay/containers/kubernetes/server/utils/ping/04.check-nat-ping-spark2.sh",
+            "nano": "/home/sanjay/containers/kubernetes/server/utils/ping/05.check-nat-ping-nano.sh",
+            "tower": "/home/sanjay/containers/kubernetes/server/utils/ping/01.check-nat-ping-tower.sh"
+        }
+
+        if node_name not in script_map:
+            await websocket.send_text(f"❌ Error: Unknown node '{node_name}'. Available nodes: {', '.join(script_map.keys())}")
+            await websocket.close()
+            return
+
+        script_path = script_map[node_name]
+
+        if not os.path.exists(script_path):
+            await websocket.send_text(f"❌ Error: Script not found: {script_path}")
+            await websocket.close()
+            return
+
+        # Log the operation
+        client_host, user_agent = get_client_info(await websocket.receive())  # Get client info from websocket
+        log_audit_event(
+            event_type="PING_CHECK_OPERATION",
+            username=current_user.username,
+            action="EXECUTE_PING_CHECK",
+            resource=f"node_{node_name}",
+            details={"script_path": script_path, "node_name": node_name},
+            ip_address=client_host,
+            user_agent=user_agent
+        )
+
+        await websocket.send_text(f"🚀 Starting ping check for {node_name.upper()}...")
+        await websocket.send_text(f"📄 Executing: {script_path}")
+        await websocket.send_text("=" * 50)
+
+        # Execute the script and stream output line by line
+        process = await asyncio.create_subprocess_exec(
+            script_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=os.path.dirname(script_path)
+        )
+
+        # Read output line by line and send to websocket
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                break
+
+            line_text = line.decode('utf-8', errors='replace').rstrip()
+            if line_text:  # Only send non-empty lines
+                await websocket.send_text(line_text)
+
+        # Wait for process to complete
+        return_code = await process.wait()
+
+        await websocket.send_text("=" * 50)
+        if return_code == 0:
+            await websocket.send_text(f"✅ Ping check completed successfully for {node_name.upper()}")
+        else:
+            await websocket.send_text(f"❌ Ping check failed for {node_name.upper()} (exit code: {return_code})")
+
+    except Exception as e:
+        await websocket.send_text(f"❌ Error during ping check: {str(e)}")
+    finally:
+        await websocket.close()
+
 @app.websocket("/ws/docker/build")
 async def websocket_docker_build(websocket: WebSocket):
     """
@@ -5785,6 +5863,12 @@ ${data.execution_result.stdout}
             function handleCheckboxChange(checkbox) {
                 const treeNode = checkbox.closest('.tree-node');
                 const isChecked = checkbox.checked;
+                const nodeLabel = treeNode.querySelector('.tree-label');
+
+                // Special handling for AGX node - execute ping check
+                if (nodeLabel && nodeLabel.textContent.toLowerCase() === 'agx' && isChecked) {
+                    executePingCheck('agx');
+                }
 
                 // If this is a parent node, update all children
                 if (treeNode.classList.contains('server-node') ||
@@ -5802,6 +5886,65 @@ ${data.execution_result.stdout}
 
                 // Update parent checkbox based on children state
                 updateParentCheckbox(treeNode);
+            }
+
+            async function executePingCheck(nodeName) {
+                try {
+                    // Clear any existing content in the terminal area
+                    const terminalDiv = document.getElementById('tree-content');
+                    terminalDiv.innerHTML = `<div style="color: #3b82f6; font-weight: bold;">🔍 Executing ping check for ${nodeName.toUpperCase()}...</div><div id="ping-output"></div>`;
+
+                    const outputDiv = document.getElementById('ping-output');
+
+                    // Create WebSocket connection
+                    const ws = new WebSocket(`wss://${window.location.host}/ws/cluster/ping/${nodeName}`);
+
+                    ws.onopen = function(event) {
+                        console.log('WebSocket connected for ping check');
+                    };
+
+                    ws.onmessage = function(event) {
+                        const line = event.data;
+                        console.log('Received:', line);
+
+                        // Create a new div for each line
+                        const lineDiv = document.createElement('div');
+                        lineDiv.textContent = line;
+                        lineDiv.style.fontFamily = 'monospace';
+                        lineDiv.style.fontSize = '12px';
+                        lineDiv.style.margin = '2px 0';
+                        lineDiv.style.whiteSpace = 'pre-wrap';
+
+                        // Color code based on content
+                        if (line.includes('✅') || line.includes('✓ SUCCESS')) {
+                            lineDiv.style.color = '#10b981'; // green
+                        } else if (line.includes('❌') || line.includes('✗ FAILED') || line.includes('Error')) {
+                            lineDiv.style.color = '#f87171'; // red
+                        } else if (line.includes('🚀') || line.includes('📄') || line.includes('===')) {
+                            lineDiv.style.color = '#3b82f6'; // blue
+                            lineDiv.style.fontWeight = 'bold';
+                        }
+
+                        outputDiv.appendChild(lineDiv);
+
+                        // Auto-scroll to bottom
+                        terminalDiv.scrollTop = terminalDiv.scrollHeight;
+                    };
+
+                    ws.onerror = function(error) {
+                        console.error('WebSocket error:', error);
+                        outputDiv.innerHTML += '<div style="color: #f87171;">❌ WebSocket connection failed</div>';
+                    };
+
+                    ws.onclose = function(event) {
+                        console.log('WebSocket closed');
+                        outputDiv.innerHTML += '<div style="color: #6b7280; font-style: italic;">--- Ping check completed ---</div>';
+                    };
+
+                } catch (error) {
+                    console.error('Error executing ping check:', error);
+                    document.getElementById('tree-content').innerHTML = '<div style="color: #f87171;">❌ Error executing ping check</div>';
+                }
             }
 
             function updateParentCheckbox(childNode) {
