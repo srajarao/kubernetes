@@ -80,7 +80,7 @@ This repository provides a complete, automated setup for a high-performance Kube
 
 ## 🖥️ **Cluster Management Application**
 
-**🆕 Web-Based Cluster Management System** - Complete administrative interface for cluster operations, monitoring, and management.
+**🆕 Web-Based Cluster Management System** - Complete administrative interface for cluster operations, monitoring, and management deployed on dedicated nano management node.
 
 ### **🎯 Application Overview**
 - **Framework**: FastAPI web application with modern HTML/CSS/JavaScript interface
@@ -100,6 +100,9 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **📚 Documentation System**: Integrated man pages and wiki interface
 - **🤖 AI Context**: One-click context gathering for seamless AI assistant communication
 - **🔐 Enterprise Security**: Password hashing, session management, audit logging
+- **🐳 Pod Management**: Complete Kubernetes pod lifecycle management (view, logs, exec, restart, delete)
+- **📊 Pod Monitoring**: Real-time pod status, resource usage, and health monitoring
+- **🔄 Pod Operations**: WebSocket-based real-time log streaming and command execution
 
 ### **🌐 Access Points**
 - **HTTP (Primary)**: `http://192.168.1.181:8000/` - Clean browser access, no SSL warnings
@@ -108,14 +111,38 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **API Documentation**: `https://192.168.1.181:8443/docs` - Interactive FastAPI docs
 - **VPN Access**: Connect via OpenVPN client to access cluster remotely
 
-### **📊 Current Cluster Status**
-- **Total Nodes**: 5 (1 server + 4 agents)
-- **GPU Nodes**: 3 (AGX Orin, DGX Spark1 Blackwell, DGX Spark2 Blackwell)
-- **Management Node**: Nano (192.168.1.181)
-- **VPN Gateway**: Krithi (192.168.1.203)
-- **Network**: Fully migrated to 192.168.1.x subnet
-- **Storage**: NFS server operational on Tower
-- **Database**: PostgreSQL + pgAdmin deployed and accessible
+### **� API Endpoints**
+
+| Protocol | Endpoint | Method | Description | Status |
+|----------|----------|--------|-------------|---------|
+| HTTP | `http://192.168.1.181:8000/` | GET | Main web interface | ✅ Active |
+| HTTPS | `https://192.168.1.181:8443/` | GET | Main web interface (encrypted) | ✅ Active |
+| HTTP | `http://192.168.1.181:8000/health` | GET | Health check endpoint | ✅ Active |
+| HTTPS | `https://192.168.1.181:8443/health` | GET | Health check endpoint | ✅ Active |
+| HTTP | `http://192.168.1.181:8000/api/info` | GET | Application information | ✅ Active |
+| HTTPS | `https://192.168.1.181:8443/api/info` | GET | Application information | ✅ Active |
+| `/api/scripts/stats` | GET | Script statistics | ✅ Active |
+| `/api/scripts/execute` | POST | Execute script (batch mode) | ✅ Active |
+| `/ws/execute` | WebSocket | **Real-time script execution with live output streaming** | ✅ Active |
+| `/api/docker/info` | GET | Docker system information | ✅ Active |
+| `/api/docker/images` | GET | List all Docker images | ✅ Active |
+| `/api/docker/containers` | GET | List all Docker containers | ✅ Active |
+| `/api/docker/build` | POST | Build Docker image from Dockerfile | ✅ Active |
+| `/ws/docker/build` | WebSocket | **Real-time Docker image building** | ✅ Active |
+| `/api/cluster/nodes` | GET | Cluster node information and configuration | ✅ Active |
+| `/api/cluster/status` | GET | Real-time cluster node status (ping, SSH) | ✅ Active |
+| `/api/cluster/ping` | POST | Ping selected nodes for connectivity | ✅ Active |
+| `/api/auth/login` | POST | User authentication - returns JWT token | ✅ Active |
+| `/api/auth/logout` | POST | User logout | ✅ Active |
+| `/api/auth/me` | GET | Get current user information | ✅ Active |
+| `/api/auth/users` | GET | List all users (admin only) | ✅ Active |
+| `/api/cluster/pods` | GET | List all pods with status and filtering | ✅ Active |
+| `/api/cluster/pods/{ns}/{name}` | GET | Get detailed pod information | ✅ Active |
+| `/api/cluster/pods/{ns}/{name}/logs` | POST | Get pod logs (static) | ✅ Active |
+| `/api/cluster/pods/{ns}/{name}/exec` | POST | Execute command in pod (admin only) | ✅ Active |
+| `/api/cluster/pods/{ns}/{name}/restart` | POST | Restart pod (admin only) | ✅ Active |
+| `/api/cluster/pods/{ns}/{name}` | DELETE | Delete pod (admin only) | ✅ Active |
+| `/ws/pod/logs` | WebSocket | **Real-time pod log streaming** | ✅ Active |
 
 ### **🛠️ Development & Deployment**
 - **Development**: Edit on Tower (`~/containers/kubernetes/cluster-management/`)
@@ -123,15 +150,15 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **Setup**: `./cluster-management/deploy_to_nano.sh` - Complete environment setup
 - **Architecture**: Tower (development) ↔ Nano (production) with SSH automation
 
-### **📋 API Capabilities**
-- **Script Management**: Discovery, execution, and real-time monitoring
-- **Node Operations**: Add/remove agents and servers, cluster visualization
-- **Docker Operations**: Image building, container management, real-time builds
-- **Authentication**: JWT tokens, user management, role-based permissions
-- **Monitoring**: Health checks, system diagnostics, performance metrics
-- **Documentation**: Man pages, wiki interface, searchable content
-- **Logging**: Terminal output capture, URL tracing, audit trails
-- **AI Integration**: Context gathering for seamless AI communication
+### **🏗️ Architecture Overview**
+
+| Component | Tower (Dev) | Nano (Prod) | Purpose |
+|-----------|-------------|-------------|---------|
+| **Codebase** | `~/containers/kubernetes/cluster-management/` | `/home/sanjay/containers/kubernetes/cluster-management/` | Source code and scripts |
+| **Runtime** | Local testing | Live production | Application execution |
+| **Framework** | FastAPI + Uvicorn | FastAPI + Uvicorn | Web framework and server |
+| **Deployment** | Manual/SSH | Automated scripts | Code deployment |
+| **Backup** | Git repository | `backup_home.sh` compatible | Data persistence |
 
 ### **🔒 Security Features**
 - **User Authentication**: Secure login with password hashing
@@ -140,12 +167,14 @@ This repository provides a complete, automated setup for a high-performance Kube
 - **Audit Logging**: Complete activity tracking and compliance
 - **SSL/TLS**: Auto-generated certificates for encrypted communication
 
-### **📈 Current Status**
-- **Phase**: 7/7 Complete - Production Ready
+### **� Current Status**
+- **Phase**: 8/8 Complete - Production Ready with Pod Management
 - **Migration Status**: ✅ Network migration completed October 28, 2025 (10.1.10.x → 192.168.1.x)
 - **VPN Integration**: ✅ OpenVPN gateway fully operational on Krithi
 - **GPU Support**: ✅ Blackwell GB10 GPUs operational with NVIDIA GPU Operator
 - **Cluster Health**: ✅ All nodes communicating, services deployed and accessible
+- **Last Updated**: October 31, 2025
+- **Version**: 1.0.0 (Production Ready)
 
 ## 🔄 Recent Migration Summary (October 28, 2025)
 
