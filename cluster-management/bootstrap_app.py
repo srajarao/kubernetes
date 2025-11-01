@@ -4534,7 +4534,6 @@ async def root():
 
                 <!-- Device Management Modal (will be dynamically created) -->
             </div>
-            </div>
         </div>
 
         <script>
